@@ -1,0 +1,12 @@
+{
+  "name": "atlas-gtnh-root",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --names \"api,app\" -c \"blue,cyan\" \"npm run dev:api\" \"npm run dev:app\"",
+    "dev:api": "uv --directory backend run uvicorn app.main:app --reload",
+    "dev:app": "cd frontend && npm run tauri dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.0.0"
+  }
+}
