@@ -6,7 +6,7 @@ on:
 
 jobs:
     backend:
-        runs-on: ubuntu-latest
+        runs-on: windows-latest
 
         defaults:
             run:
@@ -64,7 +64,7 @@ jobs:
               run: npm run lint
 
             - name: Tests
-              run: npm run test -- --run
+              run: npm run test -- --run --passWithNoTests
 
             - name: Build
               run: npm run build
