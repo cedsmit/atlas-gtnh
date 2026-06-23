@@ -28,3 +28,15 @@ class RegionDetail(BaseModel):
     chunk_count: int
     skipped_chunks: int
     chunks: list[ChunkMeta]
+
+
+class ChunkSection(BaseModel):
+    y: int
+    blocks: list[int]  # 4096 block IDs (0-4095)
+    data: list[int]    # 4096 metadata nibbles (0-15)
+
+
+class ChunkData(BaseModel):
+    chunk_x: int
+    chunk_z: int
+    sections: list[ChunkSection]

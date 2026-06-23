@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.region import RegionDetail, RegionListResponse
+from app.models.region import ChunkData, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
-from app.services.region_service import get_region_detail, list_regions
+from app.services.region_service import get_chunk_data, get_region_detail, list_regions
 from app.services.world_validator import validate_world_path
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
@@ -26,6 +26,16 @@ async def list_world_regions(world_path: str = Query(...)) -> RegionListResponse
 async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> RegionDetail:
     try:
         return get_region_detail(world_path, rx, rz)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/chunks/{cx}/{cz}", response_model=ChunkData)
+async def get_world_chunk(cx: int, cz: int, world_path: str = Query(...)) -> ChunkData:
+    try:
+        return get_chunk_data(world_path, cx, cz)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:

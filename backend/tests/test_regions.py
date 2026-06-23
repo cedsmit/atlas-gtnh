@@ -33,6 +33,55 @@ def _make_chunk_nbt(chunk_x: int, chunk_z: int) -> bytes:
     return buf.getvalue()
 
 
+def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
+    nbt_file = nbtlib.File(
+        {
+            "Level": nbtlib.Compound(
+                {
+                    "xPos": nbtlib.Int(chunk_x),
+                    "zPos": nbtlib.Int(chunk_z),
+                    "LastUpdate": nbtlib.Long(100),
+                    "InhabitedTime": nbtlib.Long(50),
+                    "TerrainPopulated": nbtlib.Byte(1),
+                    "LightPopulated": nbtlib.Byte(1),
+                    "Sections": nbtlib.List[nbtlib.Compound](
+                        [
+                            nbtlib.Compound(
+                                {
+                                    "Y": nbtlib.Byte(0),
+                                    "Blocks": nbtlib.ByteArray([1] * 4096),  # all stone
+                                    "Data": nbtlib.ByteArray([0] * 2048),
+                                }
+                            ),
+                        ]
+                    ),
+                }
+            )
+        }
+    )
+    buf = io.BytesIO()
+    nbt_file.write(buf)
+    return buf.getvalue()
+
+
+def _make_region_file_with_sections(chunk_x: int = 0, chunk_z: int = 0) -> bytes:
+    nbt_bytes = zlib.compress(_make_chunk_nbt_with_sections(chunk_x, chunk_z))
+    chunk_length = len(nbt_bytes) + 1
+    chunk_sectors = (chunk_length + 4 + SECTOR_SIZE - 1) // SECTOR_SIZE
+
+    location_table = bytearray(SECTOR_SIZE)
+    location_table[0:4] = struct.pack(">I", (2 << 8) | chunk_sectors)
+
+    timestamp_table = bytearray(SECTOR_SIZE)
+
+    chunk_data = bytearray(chunk_sectors * SECTOR_SIZE)
+    chunk_data[0:4] = struct.pack(">I", chunk_length)
+    chunk_data[4] = 2  # zlib compression
+    chunk_data[5 : 5 + len(nbt_bytes)] = nbt_bytes
+
+    return bytes(location_table) + bytes(timestamp_table) + bytes(chunk_data)
+
+
 def _make_region_file(chunk_x: int = 0, chunk_z: int = 0) -> bytes:
     nbt_bytes = zlib.compress(_make_chunk_nbt(chunk_x, chunk_z))
     chunk_length = len(nbt_bytes) + 1  # +1 for compression type byte
@@ -130,3 +179,31 @@ def test_get_region_invalid_file_too_small(tmp_path: Path) -> None:
     (region_dir / "r.0.0.mca").write_bytes(b"\x00" * 100)
     response = client.get("/worlds/regions/0/0", params={"world_path": str(world)})
     assert response.status_code == 400
+
+
+def test_get_chunk_data(tmp_path: Path) -> None:
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    response = client.get("/worlds/chunks/0/0", params={"world_path": str(world)})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["chunk_x"] == 0
+    assert data["chunk_z"] == 0
+    assert len(data["sections"]) == 1
+    section = data["sections"][0]
+    assert section["y"] == 0
+    assert len(section["blocks"]) == 4096
+    assert section["blocks"][0] == 1  # stone
+    assert len(section["data"]) == 4096
+    assert section["data"][0] == 0
+
+
+def test_get_chunk_data_missing_chunk(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.get("/worlds/chunks/1/0", params={"world_path": str(world)})
+    assert response.status_code == 404
+
+
+def test_get_chunk_data_missing_region(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.get("/worlds/chunks/32/0", params={"world_path": str(world)})
+    assert response.status_code == 404
