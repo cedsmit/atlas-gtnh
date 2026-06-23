@@ -2,6 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useState } from 'react'
 
 import { validateWorld } from '../api/worlds'
+import { addRecentWorld } from '../lib/recentWorlds'
 
 interface Props {
   onWorldSelected: (path: string) => void
@@ -21,6 +22,7 @@ export function WorldPicker({ onWorldSelected }: Props) {
     try {
       const result = await validateWorld(path)
       if (result.valid) {
+        addRecentWorld(path)
         onWorldSelected(path)
       } else {
         setError(result.error ?? 'Invalid world folder')
