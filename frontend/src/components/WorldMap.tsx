@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 
+import type { BlockColorMap } from '../api/blockColors'
 import type { ChunkData } from '../api/chunks'
 import type { RegionSummary } from '../api/regions'
 import { API_BASE } from '../lib/api'
@@ -17,6 +18,7 @@ type CacheEntry = HTMLCanvasElement | 'loading' | 'empty' | 'error'
 interface Props {
   dimensionPath: string
   regions: RegionSummary[]
+  blockColors?: BlockColorMap
 }
 
 const MAX_CONCURRENT = 4
@@ -25,7 +27,10 @@ const MAX_SCALE = 16
 // Only fetch chunk block data when zoomed in enough to see it
 const FETCH_MIN_SCALE = 1
 
-function renderChunkImage(data: ChunkData): HTMLCanvasElement {
+function renderChunkImage(
+  data: ChunkData,
+  colorMap?: BlockColorMap
+): HTMLCanvasElement {
   const offscreen = document.createElement('canvas')
   offscreen.width = 16
   offscreen.height = 16
@@ -44,7 +49,8 @@ function renderChunkImage(data: ChunkData): HTMLCanvasElement {
           const idx = (y << 8) | (z << 4) | x
           const id = section.blocks[idx]
           if (id !== 0) {
-            const [r, g, b] = blockColorRGB(id, section.data[idx])
+            const mapped = colorMap?.[id]
+            const [r, g, b] = mapped ?? blockColorRGB(id, section.data[idx])
             const p = (z * 16 + x) * 4
             pixels[p] = r
             pixels[p + 1] = g
@@ -69,8 +75,11 @@ function renderChunkImage(data: ChunkData): HTMLCanvasElement {
   return offscreen
 }
 
-export function WorldMap({ dimensionPath, regions }: Props) {
+export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const blockColorsRef = useRef<BlockColorMap | undefined>(blockColors)
+  blockColorsRef.current = blockColors
 
   const stateRef = useRef({
     camera: { cx: 0, cz: 0, scale: 4 } as Camera,
@@ -136,7 +145,7 @@ export function WorldMap({ dimensionPath, regions }: Props) {
           s.cache.set(key, 'error')
         } else {
           const data = (await res.json()) as ChunkData
-          const image = renderChunkImage(data)
+          const image = renderChunkImage(data, blockColorsRef.current)
           s.cache.set(key, image)
           void saveCachedChunk(idbKey, image)
         }

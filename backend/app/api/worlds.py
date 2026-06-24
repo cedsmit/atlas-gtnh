@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
+from app.services.block_color_service import build_block_color_map
 from app.services.region_service import (
     get_chunk_data,
     get_region_detail,
@@ -43,6 +44,14 @@ async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> Re
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/block-colors")
+async def get_block_colors(world_path: str = Query(...)) -> dict[int, list[int]]:
+    try:
+        return build_block_color_map(world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/chunks/{cx}/{cz}", response_model=ChunkData)

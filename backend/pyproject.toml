@@ -10,6 +10,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "sqlmodel>=0.0.19",
     "pydantic>=2.7",
+    "pillow>=12.2.0",
 ]
 
 [project.optional-dependencies]

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useBlockColors } from './api/blockColors'
 import { type DimensionInfo, useDimensions } from './api/dimensions'
 import { useRegions } from './api/regions'
 import { DimensionPicker } from './components/DimensionPicker'
@@ -13,6 +14,7 @@ export default function App() {
 
   const { data: dimensions } = useDimensions(worldPath)
   const { data: regionData } = useRegions(dimensionPath ?? '')
+  const { data: blockColors } = useBlockColors(worldPath)
 
   useEffect(() => {
     if (dimensions?.length === 1 && !dimensionPath) {
@@ -55,6 +57,7 @@ export default function App() {
           <WorldMap
             dimensionPath={dimensionPath}
             regions={regionData?.regions ?? []}
+            blockColors={blockColors}
           />
         </div>
       ) : null}
