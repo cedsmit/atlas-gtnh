@@ -159,7 +159,7 @@ def read_chunk_data(path: Path, local_x: int, local_z: int) -> RawChunkData:
     level = nbt_file["Level"]
 
     return RawChunkData(
-        chunk_x=int(level["xPos"]),  # type: ignore[arg-type]
-        chunk_z=int(level["zPos"]),  # type: ignore[arg-type]
+        chunk_x=int(level["xPos"]),  # pyright: ignore[reportArgumentType]
+        chunk_z=int(level["zPos"]),  # pyright: ignore[reportArgumentType]
         sections=_parse_sections(level),
     )
