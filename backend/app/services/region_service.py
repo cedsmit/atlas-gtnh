@@ -30,9 +30,11 @@ def list_dimensions(world_path: str) -> list[DimensionInfo]:
     region_dir = root / "region"
     overworld_regions = list(region_dir.glob("*.mca")) if region_dir.is_dir() else []
     if overworld_regions:
-        dims.append(DimensionInfo(
-            id="", name="Overworld", path=str(root), region_count=len(overworld_regions)
-        ))
+        dims.append(
+            DimensionInfo(
+                id="", name="Overworld", path=str(root), region_count=len(overworld_regions)
+            )
+        )
 
     for dim_dir in sorted(root.glob("DIM*")):
         if not dim_dir.is_dir():
@@ -40,12 +42,14 @@ def list_dimensions(world_path: str) -> list[DimensionInfo]:
         dim_region_dir = dim_dir / "region"
         mca_files = list(dim_region_dir.glob("*.mca")) if dim_region_dir.is_dir() else []
         if mca_files:
-            dims.append(DimensionInfo(
-                id=dim_dir.name,
-                name=_dim_name(dim_dir.name),
-                path=str(dim_dir),
-                region_count=len(mca_files),
-            ))
+            dims.append(
+                DimensionInfo(
+                    id=dim_dir.name,
+                    name=_dim_name(dim_dir.name),
+                    path=str(dim_dir),
+                    region_count=len(mca_files),
+                )
+            )
 
     return dims
 

@@ -26,7 +26,7 @@ class RawChunk:
 class ChunkSection:
     y: int
     blocks: list[int]  # 4096 unsigned block IDs (0-4095)
-    data: list[int]    # 4096 metadata nibbles (0-15)
+    data: list[int]  # 4096 metadata nibbles (0-15)
 
 
 @dataclass

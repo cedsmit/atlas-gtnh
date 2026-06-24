@@ -33,7 +33,7 @@ class RegionDetail(BaseModel):
 class ChunkSection(BaseModel):
     y: int
     blocks: list[int]  # 4096 block IDs (0-4095)
-    data: list[int]    # 4096 metadata nibbles (0-15)
+    data: list[int]  # 4096 metadata nibbles (0-15)
 
 
 class ChunkData(BaseModel):
@@ -43,7 +43,7 @@ class ChunkData(BaseModel):
 
 
 class DimensionInfo(BaseModel):
-    id: str        # e.g. "", "DIM-1", "DIM1", "DIM42"
-    name: str      # e.g. "Overworld", "Nether", "The End"
-    path: str      # absolute path to the dimension folder
+    id: str  # e.g. "", "DIM-1", "DIM1", "DIM42"
+    name: str  # e.g. "Overworld", "Nether", "The End"
+    path: str  # absolute path to the dimension folder
     region_count: int
