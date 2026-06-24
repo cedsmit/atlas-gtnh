@@ -34,14 +34,24 @@ function SectionGrid({ section, cx, cz }: GridProps) {
   const topLayer = getTopLayer(section.blocks)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(16, 18px)', gap: '1px' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(16, 18px)',
+        gap: '1px',
+      }}
+    >
       {topLayer.map((blockId, idx) => {
         const x = idx % 16
         const z = Math.floor(idx / 16)
         return (
           <div
             key={idx}
-            style={{ width: 18, height: 18, backgroundColor: blockColor(blockId) }}
+            style={{
+              width: 18,
+              height: 18,
+              backgroundColor: blockColor(blockId),
+            }}
             title={`ID ${blockId} · World (${cx * 16 + x}, ?, ${cz * 16 + z})`}
           />
         )
@@ -61,11 +71,13 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
   const { data, isLoading, error } = useChunkData(worldPath, cx, cz)
   const [selectedY, setSelectedY] = useState<number | null>(null)
 
-  if (isLoading) return <p className="text-sm text-gray-400">Loading chunk data…</p>
-  if (error) return <p className="text-sm text-red-400">{(error as Error).message}</p>
+  if (isLoading)
+    return <p className="text-sm text-gray-400">Loading chunk data…</p>
+  if (error)
+    return <p className="text-sm text-red-400">{(error as Error).message}</p>
   if (!data) return null
 
-  const activeY = selectedY ?? (data.sections[0]?.y ?? 0)
+  const activeY = selectedY ?? data.sections[0]?.y ?? 0
   const section = data.sections.find((s) => s.y === activeY) ?? null
   const nonAirCount = section ? section.blocks.filter((b) => b !== 0).length : 0
 
@@ -87,7 +99,9 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
       </div>
 
       {data.sections.length === 0 ? (
-        <p className="text-sm text-gray-500">No block sections in this chunk.</p>
+        <p className="text-sm text-gray-500">
+          No block sections in this chunk.
+        </p>
       ) : (
         <>
           <div className="flex flex-wrap gap-1">
@@ -110,8 +124,8 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
             <div className="flex gap-6">
               <div>
                 <p className="mb-2 text-xs text-gray-400">
-                  Top-layer view · section Y {section.y} (blocks {section.y * 16}–
-                  {section.y * 16 + 15})
+                  Top-layer view · section Y {section.y} (blocks{' '}
+                  {section.y * 16}–{section.y * 16 + 15})
                 </p>
                 <SectionGrid section={section} cx={cx} cz={cz} />
               </div>
@@ -122,11 +136,15 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
                   </p>
                   <p>
                     <span className="text-gray-400">Non-air blocks: </span>
-                    <span className="font-mono text-green-400">{nonAirCount}</span>
+                    <span className="font-mono text-green-400">
+                      {nonAirCount}
+                    </span>
                   </p>
                   <p>
                     <span className="text-gray-400">Air blocks: </span>
-                    <span className="font-mono text-gray-500">{4096 - nonAirCount}</span>
+                    <span className="font-mono text-gray-500">
+                      {4096 - nonAirCount}
+                    </span>
                   </p>
                 </div>
                 <div className="rounded border border-gray-700 p-3">

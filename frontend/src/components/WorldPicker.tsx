@@ -29,7 +29,9 @@ export function WorldPicker({ onWorldSelected }: Props) {
       }
     } catch (e) {
       console.error('World validation error:', e)
-      setError(`Could not reach the backend: ${e instanceof Error ? e.message : String(e)}`)
+      setError(
+        `Could not reach the backend: ${e instanceof Error ? e.message : String(e)}`
+      )
     } finally {
       setLoading(false)
     }

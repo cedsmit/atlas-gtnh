@@ -7,16 +7,26 @@ interface Props {
   selectedRz: number | null
 }
 
-export function RegionList({ worldPath, onSelect, selectedRx, selectedRz }: Props) {
+export function RegionList({
+  worldPath,
+  onSelect,
+  selectedRx,
+  selectedRz,
+}: Props) {
   const { data, isLoading, error } = useRegions(worldPath)
 
-  if (isLoading) return <p className="text-sm text-gray-400">Loading regions…</p>
-  if (error) return <p className="text-sm text-red-400">{(error as Error).message}</p>
-  if (!data?.regions.length) return <p className="text-sm text-gray-400">No regions found.</p>
+  if (isLoading)
+    return <p className="text-sm text-gray-400">Loading regions…</p>
+  if (error)
+    return <p className="text-sm text-red-400">{(error as Error).message}</p>
+  if (!data?.regions.length)
+    return <p className="text-sm text-gray-400">No regions found.</p>
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="mb-2 text-xs text-gray-500">{data.region_count} region(s)</p>
+      <p className="mb-2 text-xs text-gray-500">
+        {data.region_count} region(s)
+      </p>
       {data.regions.map((r: RegionSummary) => {
         const active = r.region_x === selectedRx && r.region_z === selectedRz
         return (

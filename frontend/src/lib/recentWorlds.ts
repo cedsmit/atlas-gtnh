@@ -11,6 +11,9 @@ export function getRecentWorlds(): string[] {
 }
 
 export function addRecentWorld(path: string): void {
-  const updated = [path, ...getRecentWorlds().filter((p) => p !== path)].slice(0, MAX_RECENT)
+  const updated = [path, ...getRecentWorlds().filter((p) => p !== path)].slice(
+    0,
+    MAX_RECENT
+  )
   localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
 }

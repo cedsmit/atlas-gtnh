@@ -16,15 +16,23 @@ function dimColor(id: string): string {
   return 'bg-sky-500'
 }
 
-export function DimensionPicker({ worldPath, dimensions, onSelect, onCancel }: Props) {
-  const folderName = worldPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? worldPath
+export function DimensionPicker({
+  worldPath,
+  dimensions,
+  onSelect,
+  onCancel,
+}: Props) {
+  const folderName =
+    worldPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? worldPath
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
       <div className="w-full max-w-md rounded border border-zinc-700 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="border-b border-zinc-800 px-5 py-4">
-          <h2 className="text-sm font-semibold text-zinc-100">Select Dimension</h2>
+          <h2 className="text-sm font-semibold text-zinc-100">
+            Select Dimension
+          </h2>
           <p className="mt-0.5 truncate text-xs text-zinc-500">{folderName}</p>
         </div>
 
@@ -36,9 +44,13 @@ export function DimensionPicker({ worldPath, dimensions, onSelect, onCancel }: P
                 onClick={() => onSelect(dim)}
                 className="flex w-full items-center gap-3 px-5 py-2.5 text-left transition-colors hover:bg-zinc-800"
               >
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dimColor(dim.id)}`} />
+                <span
+                  className={`h-2.5 w-2.5 shrink-0 rounded-full ${dimColor(dim.id)}`}
+                />
                 <span className="flex-1 text-sm text-zinc-200">{dim.name}</span>
-                <span className="text-xs text-zinc-500">{dim.region_count} region{dim.region_count !== 1 ? 's' : ''}</span>
+                <span className="text-xs text-zinc-500">
+                  {dim.region_count} region{dim.region_count !== 1 ? 's' : ''}
+                </span>
               </button>
             </li>
           ))}

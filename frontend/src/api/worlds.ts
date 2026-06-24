@@ -5,7 +5,9 @@ export interface WorldValidateResponse {
   error: string | null
 }
 
-export async function validateWorld(path: string): Promise<WorldValidateResponse> {
+export async function validateWorld(
+  path: string
+): Promise<WorldValidateResponse> {
   const response = await fetch(`${API_BASE}/worlds/validate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

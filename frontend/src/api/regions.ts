@@ -47,7 +47,8 @@ async function fetchRegionDetail(
   const res = await fetch(
     `${API_BASE}/worlds/regions/${rx}/${rz}?world_path=${encodeURIComponent(worldPath)}`
   )
-  if (!res.ok) throw new Error(`Failed to load region r.${rx}.${rz}: ${res.statusText}`)
+  if (!res.ok)
+    throw new Error(`Failed to load region r.${rx}.${rz}: ${res.statusText}`)
   return res.json() as Promise<RegionDetail>
 }
 

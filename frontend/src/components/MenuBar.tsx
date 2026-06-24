@@ -50,7 +50,9 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
         setError(result.error ?? 'Invalid world folder')
       }
     } catch (e) {
-      setError(`Backend unavailable: ${e instanceof Error ? e.message : String(e)}`)
+      setError(
+        `Backend unavailable: ${e instanceof Error ? e.message : String(e)}`
+      )
     }
   }
 
@@ -80,7 +82,8 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
                   Recent
                 </p>
                 {recentWorlds.map((p) => {
-                  const name = p.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? p
+                  const name =
+                    p.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? p
                   return (
                     <Item key={p} onClick={() => void openWorld(p)} title={p}>
                       {name}
@@ -109,7 +112,9 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
 
       {/* App title */}
       <div className="flex items-center px-3">
-        <span className="text-sm font-semibold tracking-wide text-zinc-300">Atlas GTNH</span>
+        <span className="text-sm font-semibold tracking-wide text-zinc-300">
+          Atlas GTNH
+        </span>
       </div>
 
       {/* World path */}
