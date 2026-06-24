@@ -55,25 +55,30 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
   }
 
   return (
-    <header className="flex items-center border-b border-gray-700 bg-gray-900">
-      <div ref={menuRef} className="relative">
+    <header className="flex h-9 items-stretch border-b border-zinc-800 bg-zinc-950">
+      {/* File menu */}
+      <div ref={menuRef} className="relative flex items-stretch">
         <button
           onClick={() => setFileOpen((o) => !o)}
-          className={`px-3 py-2 text-sm ${
-            fileOpen ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'
+          className={`flex items-center px-4 text-sm transition-colors ${
+            fileOpen
+              ? 'bg-zinc-800 text-zinc-100'
+              : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
           }`}
         >
           File
         </button>
 
         {fileOpen && (
-          <div className="absolute left-0 top-full z-50 min-w-48 rounded-b border border-t-0 border-gray-600 bg-gray-800 py-1 shadow-lg">
+          <div className="absolute left-0 top-full z-50 min-w-52 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
             <Item onClick={() => void openWorld()}>Open World…</Item>
 
             {recentWorlds.length > 0 && (
               <>
                 <Separator />
-                <p className="px-3 py-1 text-xs font-medium text-gray-500">Recent</p>
+                <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+                  Recent
+                </p>
                 {recentWorlds.map((p) => {
                   const name = p.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? p
                   return (
@@ -86,25 +91,45 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
             )}
 
             <Separator />
-            <Item onClick={() => { setFileOpen(false); onCloseWorld() }} disabled={!worldPath}>
+            <Item
+              onClick={() => {
+                setFileOpen(false)
+                onCloseWorld()
+              }}
+              disabled={!worldPath}
+            >
               Close World
             </Item>
           </div>
         )}
       </div>
 
-      <span className="px-3 text-sm font-semibold text-white">Atlas GTNH</span>
+      {/* Divider */}
+      <div className="mx-1 my-2 w-px bg-zinc-800" />
 
+      {/* App title */}
+      <div className="flex items-center px-3">
+        <span className="text-sm font-semibold tracking-wide text-zinc-300">Atlas GTNH</span>
+      </div>
+
+      {/* World path */}
       {worldPath && (
-        <span className="flex-1 truncate px-1 text-sm text-gray-400">{worldPath}</span>
+        <>
+          <div className="mx-1 my-2 w-px bg-zinc-800" />
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-3">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+            <span className="truncate text-xs text-zinc-500">{worldPath}</span>
+          </div>
+        </>
       )}
 
+      {/* Error */}
       {error && (
-        <div className="ml-auto flex items-center gap-2 pr-3">
-          <p className="text-xs text-red-400">{error}</p>
+        <div className="ml-auto flex items-center gap-2 border-l border-zinc-800 bg-red-950/40 px-3">
+          <span className="text-xs text-red-400">{error}</span>
           <button
             onClick={() => setError(null)}
-            className="text-gray-500 hover:text-white"
+            className="text-zinc-600 transition-colors hover:text-zinc-300"
             aria-label="Dismiss"
           >
             ✕
@@ -131,8 +156,10 @@ function Item({
       onClick={onClick}
       disabled={disabled}
       title={title}
-      className={`w-full px-3 py-1.5 text-left text-sm ${
-        disabled ? 'cursor-default text-gray-600' : 'text-gray-200 hover:bg-gray-700'
+      className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+        disabled
+          ? 'cursor-default text-zinc-600'
+          : 'text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100'
       }`}
     >
       {children}
@@ -141,5 +168,5 @@ function Item({
 }
 
 function Separator() {
-  return <hr className="my-1 border-gray-700" />
+  return <hr className="my-1 border-zinc-800" />
 }
