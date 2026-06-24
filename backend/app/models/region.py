@@ -40,6 +40,7 @@ class ChunkData(BaseModel):
     chunk_x: int
     chunk_z: int
     sections: list[ChunkSection]
+    biomes: list[int] = []  # 256 biome IDs (x + z*16), empty when not stored
 
 
 class DimensionInfo(BaseModel):

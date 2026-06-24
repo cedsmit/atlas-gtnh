@@ -4,6 +4,7 @@ import { useBlockColors } from './api/blockColors'
 import { type DimensionInfo, useDimensions } from './api/dimensions'
 import { useRegions } from './api/regions'
 import { DimensionPicker } from './components/DimensionPicker'
+import { LoadingScreen } from './components/LoadingScreen'
 import { MenuBar } from './components/MenuBar'
 import { WorldMap } from './components/WorldMap'
 import { WorldPicker } from './components/WorldPicker'
@@ -12,15 +13,15 @@ export default function App() {
   const [worldPath, setWorldPath] = useState<string | null>(null)
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
 
+  const { data: blockColors, isLoading: isScanning } = useBlockColors(worldPath)
   const { data: dimensions } = useDimensions(worldPath)
   const { data: regionData } = useRegions(dimensionPath ?? '')
-  const { data: blockColors } = useBlockColors(worldPath)
 
   useEffect(() => {
-    if (dimensions?.length === 1 && !dimensionPath) {
+    if (!isScanning && dimensions?.length === 1 && !dimensionPath) {
       setDimensionPath(dimensions[0].path)
     }
-  }, [dimensions, dimensionPath])
+  }, [isScanning, dimensions, dimensionPath])
 
   function handleWorldSelected(path: string) {
     setWorldPath(path)
@@ -37,7 +38,7 @@ export default function App() {
   }
 
   const showDimensionPicker =
-    !!worldPath && !dimensionPath && dimensions && dimensions.length > 1
+    !!worldPath && !isScanning && !dimensionPath && dimensions && dimensions.length > 1
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-white">
@@ -52,6 +53,8 @@ export default function App() {
           <h1 className="text-2xl font-bold text-zinc-100">Atlas GTNH</h1>
           <WorldPicker onWorldSelected={handleWorldSelected} />
         </div>
+      ) : isScanning ? (
+        <LoadingScreen />
       ) : dimensionPath ? (
         <div className="flex-1 overflow-hidden">
           <WorldMap

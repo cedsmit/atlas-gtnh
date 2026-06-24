@@ -34,6 +34,7 @@ class RawChunkData:
     chunk_x: int
     chunk_z: int
     sections: list[ChunkSection]
+    biomes: list[int]  # 256 biome IDs, indexed x + z*16; empty = not stored
 
 
 def _parse_location_table(data: bytes) -> list[tuple[int, int, int, int]]:
@@ -115,11 +116,29 @@ def _parse_sections(level: Any) -> list[ChunkSection]:
 
     sections = []
     for section in sections_tag:
+        y = int(section.get("Y", nbtlib.Byte(0)))
+
+        # GTNH format: Blocks16/Data16 are ByteArrays of 8192 bytes (big-endian uint16 per entry)
+        blocks16_tag = section.get("Blocks16")
+        if blocks16_tag is not None and len(blocks16_tag) == 8192:
+            raw16 = bytes([int(b) & 0xFF for b in blocks16_tag])
+            blocks = list(struct.unpack(">4096H", raw16))
+
+            data16_tag = section.get("Data16")
+            if data16_tag is not None and len(data16_tag) == 8192:
+                raw_d16 = bytes([int(b) & 0xFF for b in data16_tag])
+                data = list(struct.unpack(">4096H", raw_d16))
+            else:
+                data = [0] * 4096
+
+            sections.append(ChunkSection(y=y, blocks=blocks, data=data))
+            continue
+
+        # Vanilla format: Blocks (4096 uint8) + optional Add (nibble array) + Data (nibble array)
         blocks_tag = section.get("Blocks")
         if blocks_tag is None or len(blocks_tag) != 4096:
             continue
 
-        y = int(section.get("Y", nbtlib.Byte(0)))
         blocks = [int(b) & 0xFF for b in blocks_tag]
 
         add_tag = section.get("Add")
@@ -158,8 +177,15 @@ def read_chunk_data(path: Path, local_x: int, local_z: int) -> RawChunkData:
     nbt_file = nbtlib.File.parse(io.BytesIO(raw_nbt))
     level = nbt_file["Level"]
 
+    biomes_tag = level.get("Biomes")
+    if biomes_tag is not None and len(biomes_tag) == 256:
+        biomes = [int(b) & 0xFF for b in biomes_tag]
+    else:
+        biomes = []
+
     return RawChunkData(
         chunk_x=int(level["xPos"]),  # pyright: ignore[reportArgumentType]
         chunk_z=int(level["zPos"]),  # pyright: ignore[reportArgumentType]
         sections=_parse_sections(level),
+        biomes=biomes,
     )

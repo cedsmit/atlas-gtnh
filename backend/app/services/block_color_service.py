@@ -1,7 +1,9 @@
+import time
 from pathlib import Path
 
+from app.services.color_cache import load_jar_colors, save_jar_colors
 from app.world.block_registry import read_block_id_map
-from app.world.texture_colors import collect_texture_colors
+from app.world.texture_colors import scan_jar
 
 # Vanilla blocks where the registry name doesn't match the texture filename
 _OVERRIDES: dict[str, str] = {
@@ -25,45 +27,42 @@ _OVERRIDES: dict[str, str] = {
     "minecraft:tallgrass": "minecraft:tallgrass",
 }
 
-# Suffixes to try when the registry name doesn't directly match a texture filename
 _FALLBACK_SUFFIXES = ["_top", "_side", "_0", "_front", "_normal"]
 
 
 def find_minecraft_dir(world_path: Path) -> Path | None:
-    """Walk up from the world path to find the directory containing mods/ or versions/."""
-    for candidate in [world_path.parent.parent, world_path.parent.parent.parent]:
+    for candidate in [world_path.parent, world_path.parent.parent, world_path.parent.parent.parent]:
         if (candidate / "mods").is_dir() or (candidate / "versions").is_dir():
             return candidate
     return None
 
 
-def build_block_color_map(world_path: str) -> dict[int, list[int]]:
-    """
-    Returns {block_id: [r, g, b]} by combining the world's Forge block registry
-    with average colors sampled from block texture PNGs in the game's JAR files.
-    """
-    path = Path(world_path)
-    id_map = read_block_id_map(path)
-    if not id_map:
-        return {}
+def _collect_jars(mc_dir: Path) -> list[Path]:
+    jars: list[Path] = []
+    mods_dir = mc_dir / "mods"
+    if mods_dir.is_dir():
+        jars.extend(mods_dir.glob("**/*.jar"))
+    versions_dir = mc_dir / "versions"
+    if versions_dir.is_dir():
+        jars.extend(versions_dir.glob("**/*.jar"))
+    return jars
 
-    mc_dir = find_minecraft_dir(path)
-    if mc_dir is None:
-        return {}
 
-    texture_colors = collect_texture_colors(mc_dir)
-    if not texture_colors:
-        return {}
-
+def _build_color_map(
+    id_map: dict[int, str],
+    texture_colors: dict[str, tuple[int, int, int]],
+) -> dict[int, list[int]]:
     result: dict[int, list[int]] = {}
     for block_id, registry_name in id_map.items():
-        resolved = _OVERRIDES.get(registry_name, registry_name)
+        norm_name = registry_name.lower()
+        resolved = _OVERRIDES.get(norm_name, norm_name)
         if resolved in texture_colors:
             r, g, b = texture_colors[resolved]
             result[block_id] = [r, g, b]
             continue
-
-        domain, name = registry_name.split(":", 1)
+        if ":" not in norm_name:
+            continue
+        domain, name = norm_name.split(":", 1)
         candidates = [name, *(name + s for s in _FALLBACK_SUFFIXES)]
         for variant in candidates:
             key = f"{domain}:{variant}"
@@ -71,5 +70,57 @@ def build_block_color_map(world_path: str) -> dict[int, list[int]]:
                 r, g, b = texture_colors[key]
                 result[block_id] = [r, g, b]
                 break
+    return result
 
+
+# In-process cache: populated on first call, fast on every subsequent call.
+_color_cache: dict[str, dict[int, list[int]]] = {}
+
+_MAX_JAR_BYTES = 150 * 1024 * 1024
+
+
+def build_block_color_map(world_path: str) -> dict[int, list[int]]:
+    """
+    Build (or return cached) block-id → RGB color map.
+
+    On first call: scans JARs for textures, caching results to SQLite so
+    subsequent startups skip the scan entirely.
+    """
+    if world_path in _color_cache:
+        return _color_cache[world_path]
+
+    path = Path(world_path)
+    id_map = read_block_id_map(path)
+    mc_dir = find_minecraft_dir(path)
+
+    if not id_map or mc_dir is None:
+        _color_cache[world_path] = {}
+        return {}
+
+    jars = _collect_jars(mc_dir)
+    all_texture_colors: dict[str, tuple[int, int, int]] = {}
+
+    for jar in jars:
+        try:
+            if jar.stat().st_size > _MAX_JAR_BYTES:
+                continue
+
+            # Try SQLite cache first
+            cached = load_jar_colors(jar)
+            if cached is not None:
+                all_texture_colors.update(cached)
+                continue
+
+            # Cache miss — scan the JAR
+            fresh = scan_jar(jar)
+            save_jar_colors(jar, fresh)
+            for name, (avg, _dom) in fresh.items():
+                all_texture_colors[name] = avg
+
+            time.sleep(0)  # yield OS scheduler between JAR scans
+        except Exception:
+            pass
+
+    result = _build_color_map(id_map, all_texture_colors)
+    _color_cache[world_path] = result
     return result

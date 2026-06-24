@@ -2,7 +2,14 @@
 export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
-    extend: {},
+    extend: {
+      keyframes: {
+        slide: {
+          '0%': { transform: 'translateX(-150%)' },
+          '100%': { transform: 'translateX(450%)' },
+        },
+      },
+    },
   },
   plugins: [],
 }

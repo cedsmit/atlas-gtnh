@@ -88,10 +88,13 @@ def get_chunk_data(world_path: str, cx: int, cz: int) -> ChunkData:
         raise FileNotFoundError(f"Region file not found for chunk ({cx}, {cz})")
 
     raw = read_chunk_data(region_file, lx, lz)
+    if not raw.sections:
+        raise FileNotFoundError(f"Chunk ({cx}, {cz}) has no terrain data yet")
     return ChunkData(
         chunk_x=raw.chunk_x,
         chunk_z=raw.chunk_z,
         sections=[ChunkSection(y=s.y, blocks=s.blocks, data=s.data) for s in raw.sections],
+        biomes=raw.biomes,
     )
 
 
