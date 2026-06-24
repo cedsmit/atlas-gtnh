@@ -26,7 +26,7 @@ export function DimensionPicker({
     worldPath.replace(/\\/g, '/').split('/').filter(Boolean).pop() ?? worldPath
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div className="flex flex-1 items-center justify-center bg-zinc-950">
       <div className="w-full max-w-md rounded border border-zinc-700 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="border-b border-zinc-800 px-5 py-4">
