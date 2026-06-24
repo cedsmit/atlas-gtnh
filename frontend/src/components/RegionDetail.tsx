@@ -4,9 +4,10 @@ interface Props {
   worldPath: string
   rx: number
   rz: number
+  onSelectChunk: (cx: number, cz: number) => void
 }
 
-export function RegionDetail({ worldPath, rx, rz }: Props) {
+export function RegionDetail({ worldPath, rx, rz, onSelectChunk }: Props) {
   const { data, isLoading, error } = useRegionDetail(worldPath, rx, rz)
 
   if (isLoading) return <p className="text-sm text-gray-400">Loading chunks…</p>
@@ -39,7 +40,8 @@ export function RegionDetail({ worldPath, rx, rz }: Props) {
             {data.chunks.map((c) => (
               <tr
                 key={`${c.chunk_x},${c.chunk_z}`}
-                className="border-t border-gray-700 hover:bg-gray-800"
+                className="cursor-pointer border-t border-gray-700 hover:bg-gray-800"
+                onClick={() => onSelectChunk(c.chunk_x, c.chunk_z)}
               >
                 <td className="px-3 py-1 font-mono">{c.chunk_x}</td>
                 <td className="px-3 py-1 font-mono">{c.chunk_z}</td>
