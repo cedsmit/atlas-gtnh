@@ -112,6 +112,14 @@ def _make_world(tmp: Path, region_data: bytes | None = None) -> Path:
     return world
 
 
+def _make_world_with_dims(tmp: Path) -> Path:
+    world = _make_world(tmp)
+    nether = world / "DIM-1" / "region"
+    nether.mkdir(parents=True)
+    (nether / "r.0.0.mca").write_bytes(_make_region_file())
+    return world
+
+
 def test_list_regions(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.get("/worlds/regions", params={"world_path": str(world)})
@@ -206,4 +214,31 @@ def test_get_chunk_data_missing_chunk(tmp_path: Path) -> None:
 def test_get_chunk_data_missing_region(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.get("/worlds/chunks/32/0", params={"world_path": str(world)})
+    assert response.status_code == 404
+
+
+def test_list_dimensions_overworld_only(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.get("/worlds/dimensions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    dims = response.json()
+    assert len(dims) == 1
+    assert dims[0]["id"] == ""
+    assert dims[0]["name"] == "Overworld"
+    assert dims[0]["region_count"] == 1
+
+
+def test_list_dimensions_with_nether(tmp_path: Path) -> None:
+    world = _make_world_with_dims(tmp_path)
+    response = client.get("/worlds/dimensions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    dims = response.json()
+    assert len(dims) == 2
+    names = [d["name"] for d in dims]
+    assert "Overworld" in names
+    assert "Nether" in names
+
+
+def test_list_dimensions_missing_world(tmp_path: Path) -> None:
+    response = client.get("/worlds/dimensions", params={"world_path": str(tmp_path / "nope")})
     assert response.status_code == 404

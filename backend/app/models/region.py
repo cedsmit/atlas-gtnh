@@ -40,3 +40,10 @@ class ChunkData(BaseModel):
     chunk_x: int
     chunk_z: int
     sections: list[ChunkSection]
+
+
+class DimensionInfo(BaseModel):
+    id: str        # e.g. "", "DIM-1", "DIM1", "DIM42"
+    name: str      # e.g. "Overworld", "Nether", "The End"
+    path: str      # absolute path to the dimension folder
+    region_count: int

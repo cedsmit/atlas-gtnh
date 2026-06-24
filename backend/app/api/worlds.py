@@ -1,8 +1,13 @@
 from fastapi import APIRouter, HTTPException, Query
 
-from app.models.region import ChunkData, RegionDetail, RegionListResponse
+from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
-from app.services.region_service import get_chunk_data, get_region_detail, list_regions
+from app.services.region_service import (
+    get_chunk_data,
+    get_region_detail,
+    list_dimensions,
+    list_regions,
+)
 from app.services.world_validator import validate_world_path
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
@@ -12,6 +17,14 @@ router = APIRouter(prefix="/worlds", tags=["worlds"])
 async def validate_world(request: WorldValidateRequest) -> WorldValidateResponse:
     valid, error = validate_world_path(request.path)
     return WorldValidateResponse(valid=valid, error=error)
+
+
+@router.get("/dimensions", response_model=list[DimensionInfo])
+async def get_world_dimensions(world_path: str = Query(...)) -> list[DimensionInfo]:
+    try:
+        return list_dimensions(world_path)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @router.get("/regions", response_model=RegionListResponse)
