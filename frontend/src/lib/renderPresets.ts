@@ -1,7 +1,9 @@
 import type { ResolvedDefinition } from './blockRenderRegistry'
 
-export type FoliageMode = 'hidden' | 'simplified' | 'full'
-export type WaterMode   = 'simple' | 'textured'
+export type FoliageMode   = 'hidden' | 'simplified' | 'full'
+export type WaterMode     = 'simple' | 'textured'
+export type ElevationMode = 'off' | 'subtle' | 'strong' | 'debug-heightmap'
+export type ContourMode   = 'off' | 'subtle' | 'normal' | 'strong'
 
 /**
  * User-facing preset that configures the entire rendering pipeline.
@@ -25,10 +27,13 @@ export interface RenderPreset {
   showCables:    boolean
 
   // Rendering style
-  foliageMode:   FoliageMode
-  waterMode:     WaterMode
+  foliageMode:       FoliageMode
+  waterMode:         WaterMode
+  elevationMode:     ElevationMode
+  elevationStrength: number       // multiplier on height differences; 1.0 = neutral
+  contourMode:       ContourMode
+  colorSaturation:   number       // 0 = greyscale, 1 = full color
   terrainTextures:     boolean
-  slopeShading:        boolean
   biomeTint:           boolean
   showFallbackMagenta: boolean
 }
@@ -51,7 +56,10 @@ export interface RenderConfig {
 
   // Pipeline flags
   terrainTextures:     boolean      // false = no drawImage (flat colour only)
-  slopeShading:        boolean
+  elevationMode:       ElevationMode
+  elevationStrength:   number
+  contourMode:         ContourMode
+  colorSaturation:     number
   biomeTint:           boolean
   useMarkers:          boolean      // blocks with mapRenderMode:'marker' render as tiny dots
   showFallbackMagenta: boolean
@@ -73,10 +81,13 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  true,
     showPipes:     true,
     showCables:    true,
-    foliageMode:   'full',
-    waterMode:     'simple',
+    foliageMode:       'full',
+    waterMode:         'simple',
+    elevationMode:     'subtle',
+    elevationStrength: 0.8,
+    contourMode:       'off',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
     biomeTint:           true,
     showFallbackMagenta: false,
   },
@@ -93,10 +104,13 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  true,
     showPipes:     true,
     showCables:    true,
-    foliageMode:   'full',
-    waterMode:     'textured',
+    foliageMode:       'full',
+    waterMode:         'textured',
+    elevationMode:     'subtle',
+    elevationStrength: 1.0,
+    contourMode:       'off',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
     biomeTint:           true,
     showFallbackMagenta: false,
   },
@@ -113,10 +127,13 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  true,
     showPipes:     true,
     showCables:    true,
-    foliageMode:   'hidden',
-    waterMode:     'simple',
+    foliageMode:       'hidden',
+    waterMode:         'simple',
+    elevationMode:     'subtle',
+    elevationStrength: 1.0,
+    contourMode:       'off',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
     biomeTint:           true,
     showFallbackMagenta: false,
   },
@@ -133,10 +150,13 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  true,
     showPipes:     true,
     showCables:    true,
-    foliageMode:   'hidden',
-    waterMode:     'simple',
+    foliageMode:       'hidden',
+    waterMode:         'simple',
+    elevationMode:     'subtle',
+    elevationStrength: 0.6,
+    contourMode:       'off',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
     biomeTint:           true,
     showFallbackMagenta: false,
   },
@@ -153,10 +173,59 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  false,
     showPipes:     false,
     showCables:    false,
-    foliageMode:   'full',
-    waterMode:     'simple',
+    foliageMode:       'full',
+    waterMode:         'simple',
+    elevationMode:     'strong',
+    elevationStrength: 1.5,
+    contourMode:       'subtle',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
+    biomeTint:           true,
+    showFallbackMagenta: false,
+  },
+  {
+    id:          'relief',
+    name:        'Relief',
+    description: 'Terrain-focused — strong hillshade, contour lines, simplified vegetation.',
+    showOverlays:  true,
+    showTorches:   false,
+    showFlowers:   false,
+    showTallgrass: false,
+    showRails:     true,
+    showRedstone:  false,
+    showMachines:  true,
+    showPipes:     true,
+    showCables:    true,
+    foliageMode:       'simplified',
+    waterMode:         'simple',
+    elevationMode:     'strong',
+    elevationStrength: 1.5,
+    contourMode:       'normal',
+    colorSaturation:   1.0,
+    terrainTextures:     true,
+    biomeTint:           true,
+    showFallbackMagenta: false,
+  },
+  {
+    id:          'topo',
+    name:        'Topo',
+    description: 'Topographic — maximum relief shading, dense contours, muted colors.',
+    showOverlays:  true,
+    showTorches:   false,
+    showFlowers:   false,
+    showTallgrass: false,
+    showRails:     true,
+    showRedstone:  false,
+    showMachines:  true,
+    showPipes:     false,
+    showCables:    false,
+    foliageMode:       'hidden',
+    waterMode:         'simple',
+    elevationMode:     'strong',
+    elevationStrength: 2.5,
+    contourMode:       'strong',
+    colorSaturation:   0.25,
+    terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
   },
@@ -173,10 +242,13 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     showMachines:  true,
     showPipes:     true,
     showCables:    true,
-    foliageMode:   'full',
-    waterMode:     'textured',
+    foliageMode:       'full',
+    waterMode:         'textured',
+    elevationMode:     'debug-heightmap',
+    elevationStrength: 2.0,
+    contourMode:       'normal',
+    colorSaturation:   1.0,
     terrainTextures:     true,
-    slopeShading:        true,
     biomeTint:           true,
     showFallbackMagenta: true,
   },
@@ -212,9 +284,12 @@ export function presetToConfig(
     foliageMode:         preset.foliageMode,
     waterMode:           preset.waterMode,
     terrainTextures:     preset.terrainTextures,
-    slopeShading:        preset.slopeShading,
+    elevationMode:       preset.elevationMode,
+    elevationStrength:   preset.elevationStrength,
+    contourMode:         preset.contourMode,
+    colorSaturation:     preset.colorSaturation,
     biomeTint:           overrides.biomeTint        ?? preset.biomeTint,
-    useMarkers:          false,   // no current preset uses markers; reserved for future
+    useMarkers:          false,
     showFallbackMagenta: overrides.showFallbackMagenta ?? preset.showFallbackMagenta,
   }
 }

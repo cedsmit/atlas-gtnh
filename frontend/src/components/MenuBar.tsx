@@ -5,12 +5,16 @@ import { validateWorld } from '../api/worlds'
 import { BUILT_IN_PRESETS } from '../lib/renderPresets'
 import { addRecentWorld, getRecentWorlds } from '../lib/recentWorlds'
 
+type ElevOverride = 'preset' | 'off' | 'subtle' | 'strong' | 'relief' | 'heightmap' | 'contours'
+
 interface Props {
   worldPath: string | null
   onWorldSelected: (path: string) => void
   onCloseWorld: () => void
   selectedPresetId?: string
   onSetPreset?: (id: string) => void
+  elevOverride?: ElevOverride
+  onSetElevOverride?: (v: ElevOverride) => void
   inspectOpen?: boolean
   onToggleInspect?: () => void
   debugOpen?: boolean
@@ -27,6 +31,8 @@ export function MenuBar({
   onCloseWorld,
   selectedPresetId,
   onSetPreset,
+  elevOverride,
+  onSetElevOverride,
   inspectOpen,
   onToggleInspect,
   debugOpen,
@@ -167,6 +173,26 @@ export function MenuBar({
                 {BUILT_IN_PRESETS.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
+              </select>
+            </div>
+          )}
+          {onSetElevOverride && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <select
+                value={elevOverride ?? 'preset'}
+                onChange={(e) => onSetElevOverride(e.target.value as ElevOverride)}
+                title="Elevation mode override (overrides preset setting)"
+                className={`bg-zinc-900 px-2 font-mono text-xs focus:outline-none hover:bg-zinc-800 cursor-pointer ${
+                  elevOverride && elevOverride !== 'preset' ? 'text-amber-300' : 'text-zinc-300'
+                }`}
+              >
+                <option value="preset">Elev: preset</option>
+                <option value="off">Elev: off</option>
+                <option value="subtle">Elev: subtle</option>
+                <option value="strong">Elev: strong</option>
+                <option value="relief">Elev: relief</option>
+                <option value="heightmap">Elev: heightmap</option>
+                <option value="contours">Contours only</option>
               </select>
             </div>
           )}

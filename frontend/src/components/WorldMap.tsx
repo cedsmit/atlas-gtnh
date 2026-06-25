@@ -176,15 +176,20 @@ function renderChunkImage(
         }
       }
 
-      // ── Slope shading (based on OPAQUE base height, not overlays) ─
-      let shade = 0
-      if (z < 15) {
-        const sY = baseY[(z + 1) * 16 + x]
-        if (sY >= 0) shade = Math.max(-60, Math.min(60, (blockY - sY) * 5))
-      }
-      if (x < 15) {
-        const eY = baseY[z * 16 + (x + 1)]
-        if (eY >= 0) shade += Math.max(-20, Math.min(20, (blockY - eY) * 2))
+      // ── Neighbor heights for elevation shading + contours ─────────
+      // Edge columns stay -1; cross-chunk shading is a future improvement.
+      const nY = z > 0  ? baseY[(z - 1) * 16 + x] : -1
+      const sY = z < 15 ? baseY[(z + 1) * 16 + x] : -1
+      const wY = x > 0  ? baseY[z * 16 + (x - 1)] : -1
+      const eY = x < 15 ? baseY[z * 16 + (x + 1)] : -1
+
+      // Color desaturation (Topo preset and any preset with colorSaturation < 1)
+      const sat = config.colorSaturation
+      if (sat < 1.0) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b
+        r = Math.round(lum + (r - lum) * sat)
+        g = Math.round(lum + (g - lum) * sat)
+        b = Math.round(lum + (b - lum) * sat)
       }
 
       const texKey = !isWater ? (textureKeys?.[id] ?? null) : null
@@ -207,14 +212,19 @@ function renderChunkImage(
       //           pixels with alpha=0 → biome_rgb (background bleeds through)
       //
       // Non-biome base: fill block color, source-over texture.
+      // Saturation filter string — set on ctx around texture draws to mute texture colours.
+      const satFilter = sat < 1.0 ? `saturate(${Math.round(sat * 100)}%)` : ''
+
       if (isBiome) {
         ctx.fillStyle = `rgb(${r},${g},${b})`
         ctx.fillRect(px, pz, CELL, CELL)
         if (texImg) {
           drawImage++
+          if (satFilter) ctx.filter = satFilter
           ctx.globalCompositeOperation = 'multiply'
           ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
           ctx.globalCompositeOperation = 'source-over'
+          if (satFilter) ctx.filter = 'none'
         } else {
           fillRect++
         }
@@ -227,7 +237,9 @@ function renderChunkImage(
         ctx.fillRect(px, pz, CELL, CELL)
         if (texImg) {
           drawImage++
+          if (satFilter) ctx.filter = satFilter
           ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+          if (satFilter) ctx.filter = 'none'
         } else if (!isWater) {
           fillRect++
         }
@@ -309,12 +321,86 @@ function renderChunkImage(
         }
       }
 
-      // ── Step 5: slope shading ──────────────────────────────────────
-      if (config.slopeShading && shade !== 0) {
-        const alpha = Math.min(Math.abs(shade) / 100, 0.65)
-        ctx.fillStyle =
-          shade < 0 ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha * 0.7})`
-        ctx.fillRect(px, pz, CELL, CELL)
+      // ── Step 5: elevation shading ────────────────────────────────
+      // Directional hillshade with NW light: N and W faces are lit, S and E are in shadow.
+      // Separate bright/dark channels are accumulated then clamped independently.
+      // Ambient occlusion adds uniform darkening near steep height drops.
+      const elevMode = config.elevationMode
+      if (elevMode !== 'off') {
+        const str = config.elevationStrength
+        if (elevMode === 'debug-heightmap') {
+          const [hr, hg, hb] = elevColor(blockY)
+          ctx.fillStyle = `rgba(${hr},${hg},${hb},0.55)`
+          ctx.fillRect(px, pz, CELL, CELL)
+        } else {
+          // N/W contribute bright (facing NW light); S/E contribute dark (in shadow).
+          // Each direction also adds a lesser counter-contribution for smooth transitions.
+          let bright = 0, dark = 0
+          if (nY >= 0) {
+            const d = blockY - nY
+            if (d > 0) bright += d          // N-face: lit by NW sun
+            else       dark   += (-d) * 0.3  // below N cliff: partial shadow
+          }
+          if (wY >= 0) {
+            const d = blockY - wY
+            if (d > 0) bright += d * 0.65   // W-face: secondary lit direction
+            else       dark   += (-d) * 0.2
+          }
+          if (sY >= 0) {
+            const d = sY - blockY
+            if (d > 0) dark   += d           // S-slope above: full shadow
+            else       bright += (-d) * 0.15  // S below: minor bright
+          }
+          if (eY >= 0) {
+            const d = eY - blockY
+            if (d > 0) dark   += d * 0.65   // E-slope: secondary shadow
+            else       bright += (-d) * 0.1
+          }
+
+          // Ambient occlusion: extra darkening at cliff edges (steep drops in any direction)
+          const steep = Math.max(
+            nY >= 0 ? Math.abs(blockY - nY) : 0,
+            sY >= 0 ? Math.abs(blockY - sY) : 0,
+            wY >= 0 ? Math.abs(blockY - wY) : 0,
+            eY >= 0 ? Math.abs(blockY - eY) : 0,
+          )
+          const ao = Math.max(0, (steep - 2) * str / 80)
+
+          // Normalize and clamp. NORM=9: a 3-block cliff → ~33% shade at str=1.
+          // maxD 0.78 lets Topo (str=2.5) reach near-black on cliffs.
+          const NORM   = 9
+          const maxB   = elevMode === 'strong' ? 0.48 : 0.28
+          const maxD   = elevMode === 'strong' ? 0.78 : 0.42
+          const brightA = Math.min(bright * str / NORM, maxB)
+          const darkA   = Math.min(dark   * str / NORM + ao, maxD)
+          if (brightA > 0.01) {
+            ctx.fillStyle = `rgba(255,255,255,${brightA})`
+            ctx.fillRect(px, pz, CELL, CELL)
+          }
+          if (darkA > 0.01) {
+            ctx.fillStyle = `rgba(0,0,0,${darkA})`
+            ctx.fillRect(px, pz, CELL, CELL)
+          }
+        }
+      }
+
+      // ── Step 6: contour lines ─────────────────────────────────────
+      // Marks every Nth Y-level transition between neighboring columns.
+      const cMode = config.contourMode
+      if (cMode !== 'off') {
+        // 'strong' uses 4-Y interval; others use 8-Y
+        const shift = cMode === 'strong' ? 2 : 3   // bit-shift = log2(interval)
+        const band  = blockY >> shift
+        const atContour =
+          (sY >= 0 && (sY >> shift) !== band) ||
+          (nY >= 0 && (nY >> shift) !== band) ||
+          (eY >= 0 && (eY >> shift) !== band) ||
+          (wY >= 0 && (wY >> shift) !== band)
+        if (atContour) {
+          const cAlpha = cMode === 'subtle' ? 0.18 : cMode === 'normal' ? 0.32 : 0.50
+          ctx.fillStyle = `rgba(0,0,0,${cAlpha})`
+          ctx.fillRect(px, pz, CELL, CELL)
+        }
       }
 
       // ── Debug store recording (first render only) ──────────────────
@@ -330,12 +416,31 @@ function renderChunkImage(
   }
 }
 
+// 5-stop height→RGB gradient used by the debug-heightmap elevation mode.
+// Stops: dark-blue (0) → blue (60) → green (80) → yellow (128) → white (220+)
+function elevColor(y: number): [number, number, number] {
+  if (y < 60) {
+    const t = y / 60
+    return [Math.round(t * 30), Math.round(t * 80), Math.round(80 + t * 80)]
+  }
+  if (y < 80) {
+    const t = (y - 60) / 20
+    return [Math.round(30 + t * 30), Math.round(80 + t * 100), Math.round(160 - t * 60)]
+  }
+  if (y < 128) {
+    const t = (y - 80) / 48
+    return [Math.round(60 + t * 160), Math.round(180 + t * 50), Math.round(100 - t * 80)]
+  }
+  const t = Math.min((y - 128) / 100, 1)
+  return [Math.round(220 + t * 35), Math.round(230 + t * 25), Math.round(20 + t * 235)]
+}
+
 function makeChunkTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.magFilter  = THREE.NearestFilter
-  tex.minFilter  = THREE.NearestFilter
-  tex.generateMipmaps = false
+  tex.minFilter  = THREE.LinearMipMapLinearFilter  // smooth downsampling at far zoom
+  tex.generateMipmaps = true
   return tex
 }
 
@@ -930,17 +1035,58 @@ export function WorldMap({
         inspector.style.display = 'block'; return
       }
       const secs = [...data.sections].sort((a, bv) => bv.y - a.y)
+
+      // Top block: first non-ignore (may be overlay)
       let topId = 0, topMeta = 0, topYv = -1
-      for (const sec of secs) {
-        if (topYv >= 0) break
+      topScan: for (const sec of secs) {
         for (let y = 15; y >= 0; y--) {
           const idx = (y << 8) | (lz << 4) | lx
           const id  = sec.blocks[idx]
           if (id !== 0 && registryRef.current.lookup(id).category !== 'ignore') {
-            topId = id; topMeta = sec.data[idx]; topYv = sec.y * 16 + y; break
+            topId = id; topMeta = sec.data[idx]; topYv = sec.y * 16 + y; break topScan
           }
         }
       }
+
+      // Terrain block: first non-ignore, non-overlay (the surface height)
+      let terrainYv = -1
+      terrainScan: for (const sec of secs) {
+        for (let y = 15; y >= 0; y--) {
+          const idx = (y << 8) | (lz << 4) | lx
+          const id  = sec.blocks[idx]
+          if (id === 0) continue
+          const cat = registryRef.current.lookup(id).category
+          if (cat !== 'ignore' && cat !== 'overlay') { terrainYv = sec.y * 16 + y; break terrainScan }
+        }
+      }
+
+      // Slope: scan 4 neighboring columns within this chunk, compute shade value
+      function scanTerrainY(nx: number, nz: number): number {
+        for (const sec of secs) {
+          for (let y = 15; y >= 0; y--) {
+            const idx = (y << 8) | (nz << 4) | nx
+            const id  = sec.blocks[idx]
+            if (id === 0) continue
+            const cat = registryRef.current.lookup(id).category
+            if (cat !== 'ignore' && cat !== 'overlay') return sec.y * 16 + y
+          }
+        }
+        return -1
+      }
+      const inY = terrainYv
+      const inNY = lz > 0  ? scanTerrainY(lx, lz - 1) : -1
+      const inSY = lz < 15 ? scanTerrainY(lx, lz + 1) : -1
+      const inWY = lx > 0  ? scanTerrainY(lx - 1, lz) : -1
+      const inEY = lx < 15 ? scanTerrainY(lx + 1, lz) : -1
+      let shade = 0
+      if (inSY >= 0) shade += Math.max(-40, Math.min(40, (inY - inSY) * 4))
+      if (inNY >= 0) shade += Math.max(-20, Math.min(20, (inY - inNY) * 2))
+      if (inEY >= 0) shade += Math.max(-15, Math.min(15, (inY - inEY) * 1.5))
+      if (inWY >= 0) shade += Math.max(-10, Math.min(10, (inY - inWY) * 1.0))
+      const slopeStr = (lx === 0 || lx === 15 || lz === 0 || lz === 15)
+        ? 'edge (partial)'
+        : shade > 0 ? `+${shade} (lit)` : shade < 0 ? `${shade} (shadow)` : '0 (flat)'
+
       const biomeId    = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
       const texKey     = textureKeysRef.current?.[topId] ?? null
       const texImg     = texKey ? getTexture(texKey) : null
@@ -969,10 +1115,14 @@ export function WorldMap({
         (topDef.tint                                        ? ` · tint:${topDef.tint}`        : '') +
         (topDef.alphaMode && topDef.alphaMode !== 'opaque' ? ` · alpha:${topDef.alphaMode}`  : '') +
         ` · src:${topDef.resolverSource}`
+      const yLine = terrainYv >= 0 && terrainYv !== topYv
+        ? `Y ${topYv}  terrain ${terrainYv}`
+        : `Y ${topYv}`
       inspector.innerHTML =
-        `<b>X ${worldX}  Z ${worldZ}  Y ${topYv}</b><br>` +
+        `<b>X ${worldX}  Z ${worldZ}  ${yLine}</b><br>` +
         `${name}<br>` +
         `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}<br>` +
+        `slope: <span style="opacity:.75">${slopeStr}</span><br>` +
         `render: <span style="opacity:.75">${renderInfo}</span><br>` +
         `tex: ${texKey ?? 'none'} — ${texStatus}<br>` +
         `color: <span style="display:inline-block;width:10px;height:10px;background:${hex};border:1px solid #888"></span> ${hex}` +
@@ -982,9 +1132,10 @@ export function WorldMap({
       if (copyBtn) {
         copyBtn.addEventListener('click', async () => {
           const lines = [
-            `X ${worldX}  Z ${worldZ}  Y ${topYv}`,
+            `X ${worldX}  Z ${worldZ}  ${yLine}`,
             name,
             `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}`,
+            `slope: ${slopeStr}`,
             `tex: ${texKey ?? 'none'} — ${texStatus}`,
             `color: ${hex} (${colorSrc})`,
           ]

@@ -14,7 +14,7 @@ import { WorldMap } from './components/WorldMap'
 import { WorldPicker } from './components/WorldPicker'
 import { useTexturePreloader } from './hooks/useTexturePreloader'
 import { createResolvedRegistry } from './lib/blockRenderRegistry'
-import { BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
+import { type ElevationMode, type ContourMode, BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
 import { getTextureState } from './lib/textureLoader'
 import { textureDebugStore } from './lib/textureDebugStore'
 
@@ -32,6 +32,7 @@ export default function App() {
   const [disableTint,         setDisableTint]         = useState(false)
   const [vanillaJarFound,     setVanillaJarFound]     = useState<boolean | null>(null)
   const [selectedPresetId,    setSelectedPresetId]    = useState('journeymap')
+  const [elevOverride,        setElevOverride]        = useState<'preset'|'off'|'subtle'|'strong'|'relief'|'heightmap'|'contours'>('preset')
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const { data: blockColors, isLoading: isScanning, isError: worldError } = useBlockColors(worldPath)
@@ -52,12 +53,30 @@ export default function App() {
   const preset = BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId) ?? BUILT_IN_PRESETS[0]
   const config = useMemo(() => {
     const base = presetToConfig(preset)
+    let elevationMode     = base.elevationMode
+    let elevationStrength = base.elevationStrength
+    let contourMode       = base.contourMode
+    if (elevOverride !== 'preset') {
+      const overrides: Record<string, [ElevationMode, number, ContourMode]> = {
+        'off':       ['off',              base.elevationStrength, 'off'],
+        'subtle':    ['subtle',           base.elevationStrength, 'off'],
+        'strong':    ['strong',           base.elevationStrength, 'off'],
+        'relief':    ['strong',           1.5,                    'normal'],
+        'heightmap': ['debug-heightmap',  base.elevationStrength, 'off'],
+        'contours':  ['off',              base.elevationStrength, 'strong'],
+      }
+      const ov = overrides[elevOverride]
+      if (ov) { elevationMode = ov[0]; elevationStrength = ov[1]; contourMode = ov[2] }
+    }
     return {
       ...base,
       biomeTint:           disableTint ? false : base.biomeTint,
       showFallbackMagenta: showFallbackMagenta || base.showFallbackMagenta,
+      elevationMode,
+      elevationStrength,
+      contourMode,
     }
-  }, [preset, disableTint, showFallbackMagenta])
+  }, [preset, disableTint, showFallbackMagenta, elevOverride])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
@@ -176,6 +195,8 @@ export default function App() {
         onCloseWorld={handleCloseWorld}
         selectedPresetId={selectedPresetId}
         onSetPreset={worldPath ? setSelectedPresetId : undefined}
+        elevOverride={elevOverride}
+        onSetElevOverride={worldPath ? setElevOverride : undefined}
         inspectOpen={inspectOpen}
         onToggleInspect={worldPath ? handleToggleInspect : undefined}
         debugOpen={debugOpen}
