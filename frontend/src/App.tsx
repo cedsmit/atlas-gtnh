@@ -13,6 +13,8 @@ import { TextureDebugPanel } from './components/TextureDebugPanel'
 import { WorldMap } from './components/WorldMap'
 import { WorldPicker } from './components/WorldPicker'
 import { useTexturePreloader } from './hooks/useTexturePreloader'
+import { createResolvedRegistry } from './lib/blockRenderRegistry'
+import { BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
 import { getTextureState } from './lib/textureLoader'
 import { textureDebugStore } from './lib/textureDebugStore'
 
@@ -27,7 +29,9 @@ export default function App() {
   const [inspectOpen,         setInspectOpen]         = useState(false)
   const [debugOpen,           setDebugOpen]           = useState(false)
   const [showFallbackMagenta, setShowFallbackMagenta] = useState(false)
+  const [disableTint,         setDisableTint]         = useState(false)
   const [vanillaJarFound,     setVanillaJarFound]     = useState<boolean | null>(null)
+  const [selectedPresetId,    setSelectedPresetId]    = useState('journeymap')
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const { data: blockColors, isLoading: isScanning, isError: worldError } = useBlockColors(worldPath)
@@ -35,6 +39,25 @@ export default function App() {
   const { data: textureKeys } = useTextureKeys(worldPath)
   const { data: dimensions }  = useDimensions(worldPath)
   const { data: regionData }  = useRegions(dimensionPath ?? '')
+
+  // ── Render registry ────────────────────────────────────────────────────
+  // Rebuilt when blockNames changes (new world = new FML ID mapping).
+  const registry = useMemo(
+    () => createResolvedRegistry(blockNames),
+    [blockNames],
+  )
+
+  // ── Render config ───────────────────────────────────────────────────────
+  // Derived from the active preset plus per-session overrides (RAW / FB toggles).
+  const preset = BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId) ?? BUILT_IN_PRESETS[0]
+  const config = useMemo(() => {
+    const base = presetToConfig(preset)
+    return {
+      ...base,
+      biomeTint:           disableTint ? false : base.biomeTint,
+      showFallbackMagenta: showFallbackMagenta || base.showFallbackMagenta,
+    }
+  }, [preset, disableTint, showFallbackMagenta])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
@@ -151,12 +174,16 @@ export default function App() {
         worldPath={worldPath}
         onWorldSelected={handleWorldSelected}
         onCloseWorld={handleCloseWorld}
+        selectedPresetId={selectedPresetId}
+        onSetPreset={worldPath ? setSelectedPresetId : undefined}
         inspectOpen={inspectOpen}
         onToggleInspect={worldPath ? handleToggleInspect : undefined}
         debugOpen={debugOpen}
         onToggleDebug={worldPath ? handleToggleDebug : undefined}
         showFallbackMagenta={showFallbackMagenta}
         onToggleFallbackMagenta={worldPath ? () => setShowFallbackMagenta((v) => !v) : undefined}
+        disableTint={disableTint}
+        onToggleDisableTint={worldPath ? () => setDisableTint((v) => !v) : undefined}
       />
 
       {!worldPath ? (
@@ -197,8 +224,9 @@ export default function App() {
               textureKeys={textureKeys}
               worldPath={worldPath ?? undefined}
               blockNames={blockNames}
+              registry={registry}
+              config={config}
               debugMode={debugOpen}
-              showFallbackMagenta={showFallbackMagenta}
             />
           </div>
 
@@ -220,7 +248,11 @@ export default function App() {
 
           {/* Texture debug panel */}
           {debugOpen && (
-            <TextureDebugPanel worldPath={worldPath ?? undefined} onClose={() => setDebugOpen(false)} />
+            <TextureDebugPanel
+              worldPath={worldPath ?? undefined}
+              registry={registry}
+              onClose={() => setDebugOpen(false)}
+            />
           )}
         </div>
       )}

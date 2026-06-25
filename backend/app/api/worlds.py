@@ -2,11 +2,14 @@ import asyncio
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import HTMLResponse, Response
 
 from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
 from app.services.block_color_service import (
     build_block_color_map,
+    build_block_texture_map,
+    debug_texture_resolution,
     find_minecraft_dir,
 )
 from app.services.region_service import (
@@ -136,12 +139,107 @@ async def debug_colors(world_path: str = Query(...)) -> dict[str, object]:
 
 
 
+@router.get("/block-names")
+async def get_block_names(world_path: str = Query(...)) -> dict[int, str]:
+    from app.world.block_registry import read_block_id_map
+    return read_block_id_map(Path(world_path))
+
+
 @router.get("/block-colors")
 async def get_block_colors(world_path: str = Query(...)) -> dict[int, list[int]]:
     try:
         return await asyncio.to_thread(build_block_color_map, world_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/debug-color-stats")
+async def debug_color_stats(
+    world_path: str = Query(...),
+    rx: int = Query(0),
+    rz: int = Query(0),
+) -> dict[str, object]:
+    """Scan one region and report how many top blocks resolve to texture colors vs fallback.
+
+    Use this to identify which block IDs are causing the most fallback (hash) colors
+    so they can be fixed with manual overrides or improved texture mapping.
+    """
+    from collections import Counter
+
+    from app.world.block_registry import read_block_id_map
+    from app.world.region_reader import read_chunk_data, read_region
+
+    GRASS_TINTED: set[int] = {2, 31, 175}
+    FOLIAGE_TINTED: set[int] = {18, 106, 111, 161, 1375, 1376}
+
+    path = Path(world_path)
+    region_file = path / "region" / f"r.{rx}.{rz}.mca"
+    if not region_file.exists():
+        return {"error": f"Region r.{rx}.{rz}.mca not found"}
+
+    id_map = read_block_id_map(path)
+    color_map = build_block_color_map(world_path)
+
+    total = 0
+    biome_tinted_count = 0
+    texture_count = 0
+    fallback_ids: Counter[int] = Counter()
+
+    raw_chunks, _ = read_region(region_file)
+    for chunk_meta in raw_chunks:
+        try:
+            raw = read_chunk_data(region_file, chunk_meta.local_x, chunk_meta.local_z)
+            if not raw.sections:
+                continue
+            sections = sorted(raw.sections, key=lambda s: s.y, reverse=True)
+            for z in range(16):
+                for x in range(16):
+                    top_id: int | None = None
+                    for sec in sections:
+                        if top_id is not None:
+                            break
+                        for y in range(15, -1, -1):
+                            bid = sec.blocks[(y << 8) | (z << 4) | x]
+                            if bid != 0:
+                                top_id = bid
+                                break
+                    if top_id is None:
+                        continue
+                    total += 1
+                    if top_id in GRASS_TINTED or top_id in FOLIAGE_TINTED:
+                        biome_tinted_count += 1
+                    elif top_id in color_map:
+                        texture_count += 1
+                    else:
+                        fallback_ids[top_id] += 1
+        except Exception:
+            continue
+
+    fallback_total = sum(fallback_ids.values())
+    top_fallbacks = [
+        {
+            "id": bid,
+            "count": cnt,
+            "pct": round(cnt * 100 / total, 1) if total else 0,
+            "registry_name": id_map.get(bid, "unknown"),
+            "in_color_map": bid in color_map,
+        }
+        for bid, cnt in fallback_ids.most_common(30)
+    ]
+
+    return {
+        "region": f"r.{rx}.{rz}",
+        "total_columns": total,
+        "resolved": biome_tinted_count + texture_count,
+        "resolved_pct": round((biome_tinted_count + texture_count) * 100 / total, 1)
+        if total
+        else 0,
+        "biome_tinted": biome_tinted_count,
+        "texture_resolved": texture_count,
+        "fallback": fallback_total,
+        "fallback_pct": round(fallback_total * 100 / total, 1) if total else 0,
+        "top_fallback_blocks": top_fallbacks,
+    }
 
 
 @router.get("/debug-top-blocks")
@@ -270,6 +368,166 @@ async def debug_chunk_nbt(cx: int, cz: int, world_path: str = Query(...)) -> dic
         result["data16_tag_type"] = type(data16_tag).__name__ if data16_tag is not None else None
         result["data16_len"] = len(data16_tag) if data16_tag is not None else None
     return result
+
+
+@router.get("/debug-texture-grid", response_class=HTMLResponse)
+async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
+    """Visual HTML page showing every block's resolved color swatch.
+
+    Open in a browser to verify that texture colors look correct.
+    Blocks with a texture-derived color get a green badge; fallbacks get orange.
+    """
+    from app.world.block_registry import read_block_id_map
+
+    id_map = read_block_id_map(Path(world_path))
+    color_map = build_block_color_map(world_path)
+
+    # Build rows: resolved blocks first, then fallbacks, both sorted by ID
+    resolved_rows: list[tuple[int, str, tuple[int, int, int], bool]] = []
+    fallback_rows: list[tuple[int, str, tuple[int, int, int], bool]] = []
+
+    for bid, name in sorted(id_map.items()):
+        if bid in color_map:
+            rgb = tuple(color_map[bid])  # type: ignore[arg-type]
+            resolved_rows.append((bid, name, rgb, True))  # type: ignore[arg-type]
+        else:
+            # Simple hash fallback — same formula as frontend blockColorRGB
+            hue = ((bid * 137) % 360 + 360) % 360
+            # Convert HSL(hue, 0.55, 0.45) to approximate RGB for preview
+            h = hue / 60
+            c = (1 - abs(2 * 0.45 - 1)) * 0.55
+            x = c * (1 - abs(h % 2 - 1))
+            m = 0.45 - c / 2
+            if h < 1:
+                r, g, b = c, x, 0
+            elif h < 2:
+                r, g, b = x, c, 0
+            elif h < 3:
+                r, g, b = 0, c, x
+            elif h < 4:
+                r, g, b = 0, x, c
+            elif h < 5:
+                r, g, b = x, 0, c
+            else:
+                r, g, b = c, 0, x
+            rgb_fb = (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
+            fallback_rows.append((bid, name, rgb_fb, False))
+
+    def swatch(bid: int, name: str, rgb: tuple[int, int, int], has_texture: bool) -> str:
+        hex_col = "#{:02x}{:02x}{:02x}".format(*rgb)
+        _bs = "padding:1px 5px;border-radius:3px;font-size:10px"
+        badge_style_ok = f"background:#2a6;color:#fff;{_bs}"
+        badge_style_fb = f"background:#a62;color:#fff;{_bs}"
+        badge = (
+            f'<span style="{badge_style_ok}">texture</span>'
+            if has_texture
+            else f'<span style="{badge_style_fb}">fallback</span>'
+        )
+        return (
+            f'<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;'
+            f'border-bottom:1px solid #222">'
+            f'<div style="width:24px;height:24px;background:{hex_col};'
+            f'border:1px solid #444;flex-shrink:0"></div>'
+            f'<span style="color:#aaa;width:50px;flex-shrink:0">{bid}</span>'
+            f'<span style="color:#ddd;flex:1;font-size:11px">{name}</span>'
+            f'<span style="color:#888;width:60px;font-size:11px">{hex_col}</span>'
+            f'{badge}'
+            f"</div>"
+        )
+
+    rows_html = "\n".join(
+        swatch(bid, name, rgb, tex) for bid, name, rgb, tex in resolved_rows + fallback_rows
+    )
+    texture_count = len(resolved_rows)
+    fallback_count = len(fallback_rows)
+    total = texture_count + fallback_count
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Atlas GTNH — Block Color Grid</title>
+  <style>
+    body {{ background:#111; color:#ccc; font-family:monospace; margin:0; padding:12px; }}
+    h1 {{ color:#fff; margin:0 0 4px }}
+    .stats {{ color:#888; margin-bottom:12px; font-size:13px }}
+    .filter {{ margin-bottom:8px }}
+    input {{ background:#222; color:#ccc; border:1px solid #444; padding:4px 8px;
+             border-radius:4px; font-family:monospace; width:300px }}
+    #grid {{ max-width:700px }}
+  </style>
+</head>
+<body>
+  <h1>Block Color Grid</h1>
+  <div class="stats">
+    {total} blocks &nbsp;|&nbsp;
+    <span style="color:#4c4">{texture_count} texture-resolved</span> &nbsp;|&nbsp;
+    <span style="color:#c84">{fallback_count} fallback</span> &nbsp;|&nbsp;
+    {round(texture_count * 100 / total, 1) if total else 0}% resolved
+  </div>
+  <div class="filter">
+    <input id="q" type="text" placeholder="filter by name or id..." oninput="filterRows()">
+  </div>
+  <div id="grid">{rows_html}</div>
+  <script>
+    const rows = document.querySelectorAll('#grid > div');
+    function filterRows() {{
+      const q = document.getElementById('q').value.toLowerCase();
+      rows.forEach(r => {{
+        r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
+      }});
+    }}
+  </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
+@router.get("/block-texture-map")
+async def get_block_texture_map(world_path: str = Query(...)) -> dict[int, str]:
+    """Return block_id → texture_key for every block that has a matched texture.
+
+    The texture_key is passed to /worlds/textures to fetch the PNG.
+    Blocks without a texture are omitted; the frontend falls back to its own
+    color table for those.
+    """
+    try:
+        return await asyncio.to_thread(build_block_texture_map, world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/debug-texture-resolution")
+async def debug_texture_resolution_endpoint(world_path: str = Query(...)) -> dict[str, object]:
+    """Trace the full texture-resolution chain for every block in this world.
+
+    Returns which JARs were found, which texture keys are present in scanned colors,
+    and per-block resolution status (jar / fallback / none).  Open in the browser
+    or call from the debug panel to diagnose 'no-mapping' blocks.
+    """
+    try:
+        return await asyncio.to_thread(debug_texture_resolution, world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/textures")
+async def get_texture(key: str = Query(...)) -> Response:
+    """Serve the raw PNG bytes for a texture key such as 'minecraft:stone'.
+
+    The PNG is read directly from the scanned mod JAR; results are cached
+    in-process.  Returns 404 when the texture was not found during scanning.
+    """
+    from app.services.texture_service import get_texture_png
+
+    png = await asyncio.to_thread(get_texture_png, key)
+    if png is None:
+        raise HTTPException(status_code=404, detail=f"Texture not found: {key}")
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/chunks/{cx}/{cz}", response_model=ChunkData)

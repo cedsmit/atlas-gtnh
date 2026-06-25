@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "source": "biomesoplenty.json",
+  "blocks": {
+    "BiomesOPlenty:colorizedLeaves1":  { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:colorizedLeaves2":  { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:leaves1":           { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:leaves2":           { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:leaves3":           { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:leaves4":           { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "BiomesOPlenty:sapling":           { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:sapling2":          { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:flower1":           { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:flower2":           { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:flower3":           { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:mushroom":          { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:foliage":           { "category": "overlay", "tint": "grass",   "blockTags": ["tallgrass"] },
+    "BiomesOPlenty:plant1":            { "category": "overlay", "blockTags": ["flower"] },
+    "BiomesOPlenty:plant2":            { "category": "overlay", "blockTags": ["flower"] }
+  }
+}

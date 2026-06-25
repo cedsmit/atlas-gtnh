@@ -12,6 +12,9 @@ from pathlib import Path
 
 _DB_PATH = Path.home() / ".atlas_gtnh" / "colors.db"
 
+# Bump this when the scan format changes to force a full rescan on next startup.
+_SCAN_VERSION = 3  # bumped: texture keys now normalized to lowercase
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS texture_colors (
     registry_name TEXT NOT NULL,
@@ -25,6 +28,7 @@ CREATE TABLE IF NOT EXISTS texture_colors (
     dominant_b    INTEGER,
     PRIMARY KEY (registry_name, source_jar)
 );
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX IF NOT EXISTS idx_jar ON texture_colors (source_jar, jar_mtime);
 """
 
@@ -39,24 +43,53 @@ def _connect() -> sqlite3.Connection:
         if s:
             conn.execute(s)
     conn.commit()
+    # If the scan format changed, wipe cached results so JARs are rescanned.
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key='scan_version'").fetchone()
+        stored = int(row[0]) if row else 0
+        if stored < _SCAN_VERSION:
+            conn.execute("DELETE FROM texture_colors")
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('scan_version', ?)",
+                (str(_SCAN_VERSION),),
+            )
+            conn.commit()
+    except Exception:
+        pass
     return conn
 
 
 def load_jar_colors(
     jar_path: Path,
 ) -> dict[str, tuple[int, int, int]] | None:
-    """Return cached avg colors for *jar_path* if mtime matches, else None."""
+    """Return cached dominant (avg as fallback) colors for *jar_path* if mtime matches."""
     try:
         mtime = jar_path.stat().st_mtime
         with _connect() as conn:
             rows = conn.execute(
-                "SELECT registry_name, avg_r, avg_g, avg_b "
+                "SELECT registry_name,"
+                "  COALESCE(dominant_r, avg_r),"
+                "  COALESCE(dominant_g, avg_g),"
+                "  COALESCE(dominant_b, avg_b) "
                 "FROM texture_colors WHERE source_jar = ? AND jar_mtime = ?",
                 (str(jar_path), mtime),
             ).fetchall()
         if not rows:
             return None
         return {row[0]: (row[1], row[2], row[3]) for row in rows}
+    except Exception:
+        return None
+
+
+def get_texture_source_jar(texture_key: str) -> str | None:
+    """Return the source JAR path for *texture_key*, or None if not in cache."""
+    try:
+        with _connect() as conn:
+            row = conn.execute(
+                "SELECT source_jar FROM texture_colors WHERE registry_name = ? LIMIT 1",
+                (texture_key,),
+            ).fetchone()
+        return row[0] if row else None
     except Exception:
         return None
 

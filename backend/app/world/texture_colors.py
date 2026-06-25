@@ -85,15 +85,17 @@ def scan_jar(jar_path: Path) -> JarColors:
         with zipfile.ZipFile(jar_path, "r") as zf:
             for entry in zf.namelist():
                 parts = entry.split("/")
+                # Match assets/{domain}/textures/blocks/{name...}.png at any depth
                 if (
-                    len(parts) == 5
+                    len(parts) >= 5
                     and parts[0] == "assets"
                     and parts[2] == "textures"
                     and parts[3] == "blocks"
-                    and parts[4].endswith(".png")
+                    and parts[-1].endswith(".png")
+                    and parts[-1]  # skip bare directory entries
                 ):
                     domain = parts[1]
-                    name = parts[4][:-4]
+                    filename = parts[-1][:-4]
                     try:
                         png = zf.read(entry)
                     except Exception:
@@ -102,7 +104,13 @@ def scan_jar(jar_path: Path) -> JarColors:
                     if avg is None:
                         continue
                     dom = dominant_color(png)
-                    colors[f"{domain}:{name}"] = (avg, dom)
+                    # Normalize to lowercase so the resolver can find camelCase filenames
+                    # (IC2 uses blockOreCopper.png, BuildCraft uses similar conventions).
+                    colors[f"{domain}:{filename.lower()}"] = (avg, dom)
+                    # Also store with subdirectory path for mods that use subdirs
+                    if len(parts) > 5:
+                        full_name = "/".join(parts[4:])[:-4]
+                        colors[f"{domain}:{full_name.lower()}"] = (avg, dom)
     except Exception:
         pass
     return colors

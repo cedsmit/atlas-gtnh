@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "source": "misc.json",
+  "blocks": {
+    "ExtraUtilities:block.extrautils.ender_marker": { "category": "ignore" },
+    "BuildCraft|Factory:markerBlock":               { "category": "ignore" },
+    "witchery:witchsapling":                        { "category": "ignore" },
+
+    "Botania:flower":                               { "category": "overlay", "blockTags": ["flower"] },
+    "Botania:specialFlower":                        { "category": "overlay", "blockTags": ["flower"] },
+    "Botania:mushroom":                             { "category": "overlay", "blockTags": ["flower"] },
+    "Botania:tinyPlanet":                           { "category": "overlay", "blockTags": ["flower"] },
+
+    "harvestcraft:pamaquaferntall":                 { "category": "overlay", "blockTags": ["tallgrass"] },
+    "harvestcraft:pamRosmary":                      { "category": "overlay", "blockTags": ["flower"] },
+
+    "Witchery:witchsapling":                        { "category": "overlay", "blockTags": ["flower"] }
+  }
+}

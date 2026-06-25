@@ -5,116 +5,169 @@ import type { BlockColorMap } from '../api/blockColors'
 import type { ChunkData } from '../api/chunks'
 import type { RegionSummary } from '../api/regions'
 import { API_BASE } from '../lib/api'
-import { biomeTints, blockColorRGB, FOLIAGE_TINTED_IDS, GRASS_TINTED_IDS } from '../lib/blockColors'
+import { biomeTints, blockColorRGB } from '../lib/blockColors'
+import { textureDebugStore } from '../lib/textureDebugStore'
+import {
+  type BlockRenderRegistry,
+  createResolvedRegistry,
+} from '../lib/blockRenderRegistry'
+import { type RenderConfig, presetToConfig, shouldShowOverlay, BUILT_IN_PRESETS } from '../lib/renderPresets'
 
-const WATER_IDS = new Set([8, 9])
+const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
+import { getTexture, onTextureLoad } from '../lib/textureLoader'
 
-// ── Chunk pixel renderer ───────────────────────────────────────────────
+const CELL = 16         // pixels per block column in chunk canvas
+const CANVAS_SIZE = 256 // 16 blocks × 16 px
+
+// ── Render counters ────────────────────────────────────────────────────────
+export interface ChunkRenderStats {
+  /** ctx.drawImage calls — textures actually rendered */
+  drawImage: number
+  /** ctx.fillRect calls as primary block paint (flat color / water / biome) */
+  fillRect: number
+  /** non-water blocks with no entry in textureKeys map */
+  missingTexKey: number
+  /** non-water blocks whose key is in textureKeys but image not yet loaded */
+  failedTexLoad: number
+}
+
+// ── Chunk pixel renderer ───────────────────────────────────────────────────
 function renderChunkImage(
   data: ChunkData,
-  colorMap?: BlockColorMap
-): HTMLCanvasElement {
-  // Pre-compute biome tints for all 256 columns (x + z*16)
-  const grassTints: Array<readonly [number, number, number]> = new Array(256)
-  const foliageTints: Array<readonly [number, number, number]> = new Array(256)
-  for (let i = 0; i < 256; i++) {
-    const biomeId = data.biomes.length === 256 ? data.biomes[i] : 1 // default: Plains
-    const t = biomeTints(biomeId)
-    grassTints[i] = t.grass
-    foliageTints[i] = t.foliage
-  }
-
+  colorMap: BlockColorMap | undefined,
+  textureKeys: Record<number, string> | undefined,
+  registry: BlockRenderRegistry,
+  config: RenderConfig,
+  recordDebug: boolean, // only true on first render to avoid double-counting
+  debugMode: boolean,   // controls textureDebugStore recording
+  blockNames: Record<number, string> | undefined,
+): { canvas: HTMLCanvasElement; stats: ChunkRenderStats } {
+  let drawImage = 0, fillRect = 0, missingTexKey = 0, failedTexLoad = 0
   const sections = [...data.sections].sort((a, b) => b.y - a.y)
 
-  // ── Pass 1: find top block at every (x,z) ─────────────────────────
-  // topY   = absolute world Y of the top solid block (-1 = void)
-  // topId  = block ID at that position
-  // topMeta = block metadata at that position
-  // For water: topFloorY = Y of the first non-water block below the surface
-  const topY    = new Int16Array(256).fill(-1)
-  const topId   = new Uint16Array(256)
-  const topMeta = new Uint8Array(256)
-  const floorY  = new Int16Array(256).fill(-1) // only set when top is water
+  // ── Pass 1: classify every (x,z) column ─────────────────────────────
+  // baseY/baseId/baseMeta: highest OPAQUE block — defines terrain height.
+  // overlayLists: OVERLAY blocks above the base, bottom-to-top draw order.
+  // floorY: first solid block below a water surface (for depth shading).
+  const baseY    = new Int16Array(256).fill(-1)
+  const baseId   = new Uint16Array(256)
+  const baseMeta = new Uint8Array(256)
+  const floorY   = new Int16Array(256).fill(-1)
+  // Each entry is [id, meta] pairs accumulated top-down then reversed.
+  const overlayLists: ([number, number][] | null)[] = new Array(256).fill(null)
 
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
       const i = z * 16 + x
-      let foundSurface = false
-      let inWater = false
+      let foundBase = false
+      let inWater   = false
+      let colOverlays: [number, number][] | null = null
 
       outer: for (const section of sections) {
         for (let y = 15; y >= 0; y--) {
           const idx = (y << 8) | (z << 4) | x
-          const id = section.blocks[idx]
+          const id  = section.blocks[idx]
           if (id === 0) continue
-
+          const def = registry.lookup(id)
+          if (def.category === 'ignore') continue
           const absY = section.y * 16 + y
 
-          if (!foundSurface) {
-            topY[i] = absY
-            topId[i] = id
-            topMeta[i] = section.data[idx]
-            foundSurface = true
-            inWater = WATER_IDS.has(id)
-            if (!inWater) break outer
-            // water surface found — keep scanning for the floor block
-          } else if (inWater && !WATER_IDS.has(id)) {
+          if (!foundBase) {
+            if (def.category === 'overlay') {
+              if (shouldShowOverlay(def, config)) {
+                ;(colOverlays ??= []).push([id, section.data[idx]])
+              }
+            } else {
+              // solid / fluid / transparent / partial: defines terrain height.
+              // In foliage 'hidden' mode, skip foliage-tinted solids (leaves)
+              // so the structure underneath is revealed.
+              if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
+              baseY[i]    = absY
+              baseId[i]   = id
+              baseMeta[i] = section.data[idx]
+              foundBase   = true
+              inWater     = def.category === 'fluid' && def.tint === 'water'
+              if (!inWater) break outer
+            }
+          } else if (inWater && !(def.category === 'fluid' && def.tint === 'water')) {
             floorY[i] = absY
             break outer
           }
         }
       }
+
+      // Store overlays in bottom-to-top draw order.
+      if (colOverlays) overlayLists[i] = colOverlays.reverse()
     }
   }
 
-  // ── Pass 2: paint pixels with slope-based hill shading ────────────
+  // ── Pass 2: draw 256×256 canvas ──────────────────────────────────────
   const offscreen = document.createElement('canvas')
-  offscreen.width = 16
-  offscreen.height = 16
+  offscreen.width = CANVAS_SIZE
+  offscreen.height = CANVAS_SIZE
   const ctx = offscreen.getContext('2d')!
-  const imageData = ctx.createImageData(16, 16)
-  const pixels = imageData.data
+  ctx.imageSmoothingEnabled = false
+
+  // Pre-compute biome tints per column
+  const grassTints: Array<readonly [number, number, number]> = new Array(256)
+  const foliageTints: Array<readonly [number, number, number]> = new Array(256)
+  for (let i = 0; i < 256; i++) {
+    const biomeId = data.biomes.length === 256 ? data.biomes[i] : 1
+    const t = biomeTints(biomeId)
+    grassTints[i] = t.grass
+    foliageTints[i] = t.foliage
+  }
+
+  // Reusable 16×16 scratch canvas for compositing biome-tinted overlay sprites.
+  // Each tinted overlay is built here then source-over'd onto the chunk canvas.
+  const mini = document.createElement('canvas')
+  mini.width = 16; mini.height = 16
+  const miniCtx = mini.getContext('2d')!
+  miniCtx.imageSmoothingEnabled = false
 
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
-      const i = z * 16 + x
-      const p = i * 4
+      const i  = z * 16 + x
+      const px = x * CELL
+      const pz = z * CELL
 
-      const blockY = topY[i]
-      if (blockY < 0) {
-        pixels[p] = 10; pixels[p+1] = 10; pixels[p+2] = 10; pixels[p+3] = 255
+      // No base block found — void cell
+      if (baseY[i] < 0) {
+        ctx.fillStyle = '#0a0a0a'
+        ctx.fillRect(px, pz, CELL, CELL)
         continue
       }
 
-      const id = topId[i]
-      const meta = topMeta[i]
-      let r: number, g: number, b: number
+      const id        = baseId[i]
+      const meta      = baseMeta[i]
+      const blockY    = baseY[i]
+      const baseDef   = registry.lookup(id)
+      const isWater   = baseDef.category === 'fluid' && baseDef.tint === 'water'
+      const isGrass   = baseDef.tint === 'grass'
+      const isFoliage = baseDef.tint === 'foliage'
+      const isBiome   = (isGrass || isFoliage) && config.biomeTint
+      const tintType  = baseDef.tint ?? (isWater ? 'water' : 'none')
 
-      // Biome-tinted blocks: grass and foliage colors come straight from the
-      // biome tint table rather than the block color lookup.
-      if (GRASS_TINTED_IDS.has(id)) {
+      // ── Base color: biome tint or block color ──────────────────────
+      let r: number, g: number, b: number
+      if (isGrass) {
         ;[r, g, b] = grassTints[i]
-      } else if (FOLIAGE_TINTED_IDS.has(id)) {
+      } else if (isFoliage) {
         ;[r, g, b] = foliageTints[i]
-      } else if (WATER_IDS.has(id)) {
-        // Render water: floor color tinted blue, darkened by depth
+      } else if (isWater) {
         const floor = floorY[i]
         const depth = floor >= 0 ? Math.min(blockY - floor, 20) : 10
-        // start from a medium blue and fade toward a deep navy with depth
         r = Math.max(10, 40 - depth * 1.5)
         g = Math.max(30, 80 - depth * 2)
         b = Math.min(255, 160 + depth * 3)
       } else {
         const mapped = colorMap?.[id]
-        const raw = mapped ?? blockColorRGB(id, meta)
+        const raw    = mapped ?? blockColorRGB(id, meta)
         r = raw[0]; g = raw[1]; b = raw[2]
-
-        // Ensure texture-derived colors are visible (not pitch black)
         if (mapped) {
           const maxCh = Math.max(r, g, b)
-          if (maxCh === 0) {
-            r = g = b = 130
-          } else if (maxCh < 80) {
+          if (maxCh === 0) { r = g = b = 130 }
+          else if (maxCh < 80) {
             const boost = 80 / maxCh
             r = Math.min(255, Math.round(r * boost))
             g = Math.min(255, Math.round(g * boost))
@@ -123,90 +176,297 @@ function renderChunkImage(
         }
       }
 
-      // Slope shading: compare Y to the south neighbor (z+1).
-      // Positive diff = this block is higher → north-facing slope → brighter.
-      // Negative diff = lower → south-facing slope → darker.
+      // ── Slope shading (based on OPAQUE base height, not overlays) ─
       let shade = 0
       if (z < 15) {
-        const southY = topY[(z + 1) * 16 + x]
-        if (southY >= 0) {
-          shade = Math.max(-60, Math.min(60, (blockY - southY) * 5))
-        }
+        const sY = baseY[(z + 1) * 16 + x]
+        if (sY >= 0) shade = Math.max(-60, Math.min(60, (blockY - sY) * 5))
       }
-      // Subtle east–west component for extra depth
       if (x < 15) {
-        const eastY = topY[z * 16 + (x + 1)]
-        if (eastY >= 0) {
-          shade += Math.max(-20, Math.min(20, (blockY - eastY) * 2))
+        const eY = baseY[z * 16 + (x + 1)]
+        if (eY >= 0) shade += Math.max(-20, Math.min(20, (blockY - eY) * 2))
+      }
+
+      const texKey = !isWater ? (textureKeys?.[id] ?? null) : null
+      // For 'simplified' foliage mode, skip the texture so only the biome fill renders.
+      const skipTex = config.foliageMode === 'simplified' && isFoliage
+      const texImg  = config.terrainTextures && !skipTex && texKey ? getTexture(texKey) : null
+
+      // Counters
+      if (!isWater) {
+        if (!texKey)      missingTexKey++
+        else if (!texImg) failedTexLoad++
+      }
+
+      // ── Step 1 + 2: background fill + base block ───────────────────
+      //
+      // Biome-tinted base (grass, leaves, …):
+      //   Fill the biome color first so transparent texture pixels adopt it,
+      //   then multiply-draw the texture to tint opaque pixels.
+      //   Result: pixels with alpha>0 → texture_rgb × biome_rgb
+      //           pixels with alpha=0 → biome_rgb (background bleeds through)
+      //
+      // Non-biome base: fill block color, source-over texture.
+      if (isBiome) {
+        ctx.fillStyle = `rgb(${r},${g},${b})`
+        ctx.fillRect(px, pz, CELL, CELL)
+        if (texImg) {
+          drawImage++
+          ctx.globalCompositeOperation = 'multiply'
+          ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+          ctx.globalCompositeOperation = 'source-over'
+        } else {
+          fillRect++
+        }
+      } else {
+        if (config.showFallbackMagenta && !isWater && !isBiome && !texImg) {
+          ctx.fillStyle = '#FF00FF'
+        } else {
+          ctx.fillStyle = `rgb(${r},${g},${b})`
+        }
+        ctx.fillRect(px, pz, CELL, CELL)
+        if (texImg) {
+          drawImage++
+          ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+        } else if (!isWater) {
+          fillRect++
+        }
+        // Textured water mode: draw water texture at reduced opacity over depth fill.
+        if (isWater && config.waterMode === 'textured') {
+          const wKey = textureKeys?.[id] ?? null
+          if (wKey) {
+            const wImg = getTexture(wKey)
+            if (wImg) {
+              ctx.globalAlpha = 0.35
+              ctx.drawImage(wImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+              ctx.globalAlpha = 1.0
+              drawImage++
+            }
+          }
         }
       }
 
-      pixels[p]   = Math.max(0, Math.min(255, r + shade))
-      pixels[p+1] = Math.max(0, Math.min(255, g + shade))
-      pixels[p+2] = Math.max(0, Math.min(255, b + shade))
-      pixels[p+3] = 255
+      // ── Step 3: overlay textures (bottom to top) ───────────────────
+      // Each overlay is tinted individually so non-biome overlays (torch,
+      // rail, redstone, flowers) keep their original colors, while
+      // biome-tinted overlays (tallgrass, vine, lily pad) get the correct
+      // grass/foliage tint without contaminating their transparent areas.
+      const overlays = overlayLists[i]
+      if (overlays) {
+        for (const [ovId] of overlays) {
+          const ovKey = textureKeys?.[ovId] ?? null
+          const ovImg = ovKey ? getTexture(ovKey) : null
+          if (!ovImg) continue
+
+          const ovDef = registry.lookup(ovId)
+
+          // Only use mapRenderMode:'marker' when useMarkers is enabled (no preset enables this yet).
+          const effectiveRenderMode = config.useMarkers ? (ovDef.mapRenderMode ?? 'overlay') : 'overlay'
+
+          if (effectiveRenderMode === 'marker') {
+            // Tiny solid-colour dot at the centre of the cell (e.g. torch in Detailed mode).
+            const markerSz = Math.max(2, Math.ceil(CELL * 0.3125)) // 5 px at CELL=16
+            ctx.fillStyle  = ovDef.mapColor ?? '#ffffff'
+            ctx.fillRect(
+              px + Math.floor((CELL - markerSz) / 2),
+              pz + Math.floor((CELL - markerSz) / 2),
+              markerSz, markerSz,
+            )
+            drawImage++
+            continue
+          }
+
+          const ovIsGrass   = config.biomeTint && ovDef.tint === 'grass'
+          const ovIsFoliage = config.biomeTint && ovDef.tint === 'foliage'
+
+          if (ovIsGrass || ovIsFoliage) {
+            // Build a tinted sprite on the mini canvas and composite it.
+            //
+            // Why 4 steps? "multiply" blend extends the fill color into
+            // transparent regions, so a plain fill+multiply leaves biome-
+            // colored halos in the transparent areas.  The destination-in
+            // pass re-masks the result back to the texture's own alpha.
+            //
+            //   1. fill biome color (opaque)
+            //   2. multiply-draw texture  → opaque pixels tinted, transparent areas biome-colored
+            //   3. destination-in texture → mask alpha back to texture shape
+            //   → result: tinted pixels where texture is opaque, transparent elsewhere
+            const [tr, tg, tb] = ovIsGrass ? grassTints[i] : foliageTints[i]
+            miniCtx.clearRect(0, 0, 16, 16)
+            miniCtx.fillStyle = `rgb(${tr},${tg},${tb})`
+            miniCtx.fillRect(0, 0, 16, 16)
+            miniCtx.globalCompositeOperation = 'multiply'
+            miniCtx.drawImage(ovImg, 0, 0, 16, 16)
+            miniCtx.globalCompositeOperation = 'destination-in'
+            miniCtx.drawImage(ovImg, 0, 0, 16, 16)
+            miniCtx.globalCompositeOperation = 'source-over'
+            ctx.drawImage(mini, 0, 0, 16, 16, px, pz, CELL, CELL)
+          } else {
+            // Non-biome overlay: source-over preserves the sprite's original colors.
+            ctx.drawImage(ovImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+          }
+          drawImage++
+        }
+      }
+
+      // ── Step 5: slope shading ──────────────────────────────────────
+      if (config.slopeShading && shade !== 0) {
+        const alpha = Math.min(Math.abs(shade) / 100, 0.65)
+        ctx.fillStyle =
+          shade < 0 ? `rgba(0,0,0,${alpha})` : `rgba(255,255,255,${alpha * 0.7})`
+        ctx.fillRect(px, pz, CELL, CELL)
+      }
+
+      // ── Debug store recording (first render only) ──────────────────
+      if (recordDebug && debugMode) {
+        textureDebugStore.record(id, blockNames?.[id], texKey, tintType)
+      }
     }
   }
 
-  ctx.putImageData(imageData, 0, 0)
-  return offscreen
+  return {
+    canvas: offscreen,
+    stats: { drawImage, fillRect, missingTexKey, failedTexLoad },
+  }
 }
 
-// ── Constants ──────────────────────────────────────────────────────────
-const MIN_SCALE = 0.04
-const MAX_SCALE = 32
+function makeChunkTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.magFilter  = THREE.NearestFilter
+  tex.minFilter  = THREE.NearestFilter
+  tex.generateMipmaps = false
+  return tex
+}
+
+// ── Canvas diagnostics ─────────────────────────────────────────────────────
+// Returns the number of non-black/non-transparent pixels in the canvas.
+// Returns -1 when getImageData() throws (cross-origin taint = WebGL upload blocked).
+function canvasDiagnostics(canvas: HTMLCanvasElement): number {
+  try {
+    const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    let n = 0
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] | d[i + 1] | d[i + 2] | d[i + 3]) n++
+    }
+    return n
+  } catch {
+    return -1  // SecurityError: canvas tainted by cross-origin drawImage
+  }
+}
+
+// ── Chunk debug outline overlay ────────────────────────────────────────────
+type ChunkOutlineState = 'queued' | 'rendering' | 'loaded' | 'empty' | 'tainted' | 'error'
+
+const _outlineUnitGeo = new THREE.BufferGeometry()
+_outlineUnitGeo.setAttribute(
+  'position',
+  new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]), 3),
+)
+
+const _outlineMats: Record<ChunkOutlineState, THREE.LineBasicMaterial> = {
+  queued:    new THREE.LineBasicMaterial({ color: 0x3399ff, depthTest: false }),
+  rendering: new THREE.LineBasicMaterial({ color: 0xffcc00, depthTest: false }),
+  loaded:    new THREE.LineBasicMaterial({ color: 0x33ee33, depthTest: false }),
+  empty:     new THREE.LineBasicMaterial({ color: 0x888888, depthTest: false }),
+  tainted:   new THREE.LineBasicMaterial({ color: 0xcc44ff, depthTest: false }),
+  error:     new THREE.LineBasicMaterial({ color: 0xff3333, depthTest: false }),
+}
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const MIN_SCALE       = 0.04
+const MAX_SCALE       = 32
 const FETCH_MIN_SCALE = 0.25
-const MAX_CONCURRENT = 128
-// Three.js coordinate convention used here:
-//   Three.js X = Minecraft X
-//   Three.js Y = -Minecraft Z   (so north/–Z is visual up)
-//   Camera at (cx, -cz, 500) looking toward -Z
+const MAX_CONCURRENT  = 128
 
 interface Props {
   dimensionPath: string
   regions: RegionSummary[]
   blockColors?: BlockColorMap
+  textureKeys?: Record<number, string>
+  worldPath?: string
+  blockNames?: Record<number, string>
+  registry?: BlockRenderRegistry
+  config?: RenderConfig
+  debugMode?: boolean
 }
 
-export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const hudRef = useRef<HTMLDivElement>(null)
+export function WorldMap({
+  dimensionPath,
+  regions,
+  blockColors,
+  textureKeys,
+  worldPath: _worldPath,
+  blockNames,
+  registry: registryProp,
+  config: configProp,
+  debugMode = false,
+}: Props) {
+  const containerRef  = useRef<HTMLDivElement>(null)
+  const hudRef        = useRef<HTMLDivElement>(null)
+  const inspectorRef  = useRef<HTMLDivElement>(null)
 
-  const blockColorsRef = useRef(blockColors)
-  blockColorsRef.current = blockColors
-  const bcCountRef = useRef(0)
-  bcCountRef.current = Object.keys(blockColors ?? {}).length
-  const regionsRef = useRef(regions)
-  regionsRef.current = regions
+  const blockColorsRef = useRef(blockColors);  blockColorsRef.current = blockColors
+  const textureKeysRef = useRef(textureKeys);  textureKeysRef.current = textureKeys
+  const blockNamesRef  = useRef(blockNames);   blockNamesRef.current  = blockNames
+  const configRef      = useRef(configProp ?? DEFAULT_CONFIG)
+  configRef.current    = configProp ?? DEFAULT_CONFIG
+  const debugModeRef   = useRef(debugMode);    debugModeRef.current   = debugMode
+  const bcCountRef     = useRef(0);            bcCountRef.current     = Object.keys(blockColors ?? {}).length
 
-  // Expose a callback so the regions effect can update the live scene
+  // Registry: use prop if provided (App.tsx owns it), otherwise create locally.
+  const registryRef       = useRef<BlockRenderRegistry>(registryProp ?? createResolvedRegistry())
+  const prevRegistryProp  = useRef<typeof registryProp>(undefined)
+  if (registryProp !== prevRegistryProp.current) {
+    prevRegistryProp.current = registryProp
+    registryRef.current      = registryProp ?? createResolvedRegistry(blockNames)
+  }
+
+  const regionsRef     = useRef(regions); regionsRef.current = regions
   const syncRegionsRef = useRef<(() => void) | null>(null)
+  const fitCameraRef   = useRef<(() => void) | null>(null)
 
-  // ── Main Three.js effect (runs once per dimensionPath) ─────────────
+  // Enable/disable debug store when prop changes
+  useEffect(() => {
+    if (debugMode) textureDebugStore.enable()
+    else textureDebugStore.disable()
+  }, [debugMode])
+
+  // ── Main Three.js effect ────────────────────────────────────────────────
   useEffect(() => {
     const container = containerRef.current!
-    const hud = hudRef.current!
+    const hud       = hudRef.current!
+    const inspector = inspectorRef.current!
+    inspector.addEventListener('mousedown', (e) => e.stopPropagation())
 
-    let W = container.clientWidth || 800
+    let W = container.clientWidth  || 800
     let H = container.clientHeight || 600
 
-    // ── Scene state ──
     const st = {
-      cam: { cx: 0, cz: 0, scale: 1 },
-      cache: new Map<string, 'empty' | 'error' | THREE.Mesh>(),
-      resolving: new Set<string>(), // actually in-flight HTTP requests
-      pendingSet: new Set<string>(), // queued but not yet fetching
-      pending: [] as Array<[number, number, string]>,
-      sorted: [] as [number, number][],
-      sortBounds: null as { L: number; R: number; T: number; B: number } | null,
-      activeFetches: 0,
-      regionSet: new Set<string>(),
-      isDragging: false,
-      lastMouse: null as { x: number; y: number } | null,
-      firstChunkLogged: false,
+      cam:                { cx: 0, cz: 0, scale: 1 },
+      cache:              new Map<string, 'empty' | 'error' | THREE.Mesh>(),
+      dataCache:          new Map<string, ChunkData>(),
+      texVersion:         0,
+      texVersionAtRender: new Map<string, number>(),
+      lastBcCount:        0,
+      lastConfig:         null as RenderConfig | null,
+      lastDebugMode:      false,
+      chunkPixels:        new Map<string, number>(),
+      outlineMap:         new Map<string, THREE.LineLoop>(),
+      resolving:          new Set<string>(),
+      pendingSet:         new Set<string>(),
+      pending:            [] as Array<[number, number, string]>,
+      sorted:             [] as [number, number][],
+      sortBounds:         null as { L: number; R: number; T: number; B: number } | null,
+      activeFetches:      0,
+      regionSet:          new Set<string>(),
+      isDragging:         false,
+      lastMouse:          null as { x: number; y: number } | null,
+      firstChunkLogged:   false,
     }
 
-    // ── Three.js renderer ──
+    const unsubTextures = onTextureLoad(() => { st.texVersion++ })
+
     const renderer = new THREE.WebGLRenderer({ antialias: false })
     renderer.setSize(W, H)
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -214,40 +474,24 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
     container.appendChild(renderer.domElement)
     renderer.domElement.style.cursor = 'grab'
 
-    const scene = new THREE.Scene()
+    const scene   = new THREE.Scene()
     scene.background = new THREE.Color(0x0f0f0f)
 
-    // OrthographicCamera frustum is set relative to world blocks; updated by updateCam()
-    const cam = new THREE.OrthographicCamera(
-      -W / 2,
-      W / 2,
-      H / 2,
-      -H / 2,
-      0.1,
-      2000
-    )
-
-    // Shared chunk geometry (all chunk tiles reuse this)
+    const cam      = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 2000)
     const chunkGeo = new THREE.PlaneGeometry(16, 16)
 
-    // ── Camera helper ──
     function updateCam() {
       const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale)
-      const halfH = H / (2 * scale)
-      cam.left = -halfW
-      cam.right = halfW
-      cam.top = halfH
-      cam.bottom = -halfH
+      const halfW = W / (2 * scale), halfH = H / (2 * scale)
+      cam.left = -halfW; cam.right = halfW; cam.top = halfH; cam.bottom = -halfH
       cam.position.set(cx, -cz, 500)
       cam.lookAt(cx, -cz, 0)
       cam.updateProjectionMatrix()
     }
 
-    // ── Region meshes ──
     const regionMeshes = new Map<string, THREE.Mesh>()
-    const regionGeo = new THREE.PlaneGeometry(512, 512)
-    const regionMat = new THREE.MeshBasicMaterial({ color: 0x1a1a24 })
+    const regionGeo    = new THREE.PlaneGeometry(512, 512)
+    const regionMat    = new THREE.MeshBasicMaterial({ color: 0x1a1a24 })
 
     function clearChunkCache() {
       for (const entry of st.cache.values()) {
@@ -257,196 +501,238 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
           ;(entry.material as THREE.MeshBasicMaterial).dispose()
         }
       }
+      for (const line of st.outlineMap.values()) scene.remove(line)
+      st.outlineMap.clear()
+      st.chunkPixels.clear()
       st.cache.clear()
+      st.texVersionAtRender.clear()
       st.resolving.clear()
       st.pendingSet.clear()
       st.pending.length = 0
-      st.activeFetches = 0
+      st.activeFetches  = 0
+    }
+
+    function setOutlineState(key: string, mcx: number, mcz: number, state: ChunkOutlineState) {
+      const old = st.outlineMap.get(key)
+      if (old) scene.remove(old)
+      if (!debugModeRef.current) { st.outlineMap.delete(key); return }
+      const line = new THREE.LineLoop(_outlineUnitGeo, _outlineMats[state])
+      line.position.set(mcx * 16, -(mcz * 16), 1)
+      line.scale.set(16, 16, 1)
+      scene.add(line)
+      st.outlineMap.set(key, line)
+    }
+
+    function fitCamera() {
+      const regs = regionsRef.current
+      if (regs.length === 0) return
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+      for (const r of regs) {
+        if (r.region_x < minX) minX = r.region_x
+        if (r.region_x > maxX) maxX = r.region_x
+        if (r.region_z < minZ) minZ = r.region_z
+        if (r.region_z > maxZ) maxZ = r.region_z
+      }
+      st.cam.cx    = ((minX + maxX) / 2) * 512 + 256
+      st.cam.cz    = ((minZ + maxZ) / 2) * 512 + 256
+      const worldW = (maxX - minX + 1) * 512
+      const worldH = (maxZ - minZ + 1) * 512
+      st.cam.scale = Math.max(FETCH_MIN_SCALE, Math.min(W / worldW, H / worldH, 2))
+      updateCam()
     }
 
     function syncRegions() {
-      // Remove old region meshes
       for (const m of regionMeshes.values()) scene.remove(m)
       regionMeshes.clear()
       st.regionSet.clear()
       clearChunkCache()
 
-      const regs = regionsRef.current // always up-to-date via ref
-      for (const r of regs) {
+      for (const r of regionsRef.current) {
         const key = `${r.region_x},${r.region_z}`
         st.regionSet.add(key)
         const mesh = new THREE.Mesh(regionGeo, regionMat)
-        // Three.js position: (Minecraft X center, -Minecraft Z center, -1)
         mesh.position.set(r.region_x * 512 + 256, -(r.region_z * 512 + 256), -1)
         scene.add(mesh)
         regionMeshes.set(key, mesh)
       }
-
-      // Auto-fit camera to all regions
-      if (regs.length > 0) {
-        let minX = Infinity,
-          maxX = -Infinity,
-          minZ = Infinity,
-          maxZ = -Infinity
-        for (const r of regs) {
-          if (r.region_x < minX) minX = r.region_x
-          if (r.region_x > maxX) maxX = r.region_x
-          if (r.region_z < minZ) minZ = r.region_z
-          if (r.region_z > maxZ) maxZ = r.region_z
-        }
-        st.cam.cx = ((minX + maxX) / 2) * 512 + 256
-        st.cam.cz = ((minZ + maxZ) / 2) * 512 + 256
-        const worldW = (maxX - minX + 1) * 512
-        const worldH = (maxZ - minZ + 1) * 512
-        st.cam.scale = Math.max(
-          FETCH_MIN_SCALE,
-          Math.min(W / worldW, H / worldH, 2)
-        )
-        updateCam()
-      }
+      fitCamera()
     }
 
-    // Store callback so the regions useEffect can call it
     syncRegionsRef.current = syncRegions
+    fitCameraRef.current   = fitCamera
     syncRegions()
 
-    // ── Grid lines (updated each frame) ──
-    const MAX_GRID_VERTS = 8000
-    const gridBuf = new Float32Array(MAX_GRID_VERTS * 3)
-    const gridAttr = new THREE.BufferAttribute(gridBuf, 3)
+    // ── Grid lines ──
+    const MAX_GV = 8000
+    const gridBuf  = new Float32Array(MAX_GV * 3); const gridAttr = new THREE.BufferAttribute(gridBuf,  3)
     gridAttr.setUsage(THREE.DynamicDrawUsage)
-    const gridGeo = new THREE.BufferGeometry()
-    gridGeo.setAttribute('position', gridAttr)
+    const gridGeo  = new THREE.BufferGeometry(); gridGeo.setAttribute('position', gridAttr)
+    const regionGridLines = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0x2e2e48 }))
+    regionGridLines.frustumCulled = false; scene.add(regionGridLines)
 
-    // Region grid (always visible)
-    const regionGridLines = new THREE.LineSegments(
-      gridGeo,
-      new THREE.LineBasicMaterial({ color: 0x2e2e48 })
-    )
-    regionGridLines.frustumCulled = false
-    scene.add(regionGridLines)
-
-    // Chunk grid (high zoom only) — separate geometry so it can be hidden
-    const chunkGridBuf = new Float32Array(MAX_GRID_VERTS * 3)
-    const chunkGridAttr = new THREE.BufferAttribute(chunkGridBuf, 3)
+    const chunkGridBuf  = new Float32Array(MAX_GV * 3); const chunkGridAttr = new THREE.BufferAttribute(chunkGridBuf, 3)
     chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
-    const chunkGridGeo = new THREE.BufferGeometry()
-    chunkGridGeo.setAttribute('position', chunkGridAttr)
-    const chunkGridLines = new THREE.LineSegments(
-      chunkGridGeo,
-      new THREE.LineBasicMaterial({ color: 0x1c1c2e })
-    )
-    chunkGridLines.frustumCulled = false
-    scene.add(chunkGridLines)
+    const chunkGridGeo  = new THREE.BufferGeometry(); chunkGridGeo.setAttribute('position', chunkGridAttr)
+    const chunkGridLines = new THREE.LineSegments(chunkGridGeo, new THREE.LineBasicMaterial({ color: 0x1c1c2e }))
+    chunkGridLines.frustumCulled = false; scene.add(chunkGridLines)
 
     function updateGrid() {
       const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale)
-      const halfH = H / (2 * scale)
-
-      const rL = Math.floor((cx - halfW) / 512) - 1
-      const rR = Math.ceil((cx + halfW) / 512) + 1
-      const rT = Math.floor((cz - halfH) / 512) - 1
-      const rB = Math.ceil((cz + halfH) / 512) + 1
-      const yTop = -(rT * 512 - 512)
-      const yBot = -(rB * 512 + 512)
-      const xL = rL * 512 - 512
-      const xR = rR * 512 + 512
+      const halfW = W / (2 * scale), halfH = H / (2 * scale)
+      const rL = Math.floor((cx - halfW) / 512) - 1, rR = Math.ceil((cx + halfW) / 512) + 1
+      const rT = Math.floor((cz - halfH) / 512) - 1, rB = Math.ceil((cz + halfH) / 512) + 1
 
       let vi = 0
-      for (let rx = rL; rx <= rR && vi < MAX_GRID_VERTS - 6; rx++) {
+      for (let rx = rL; rx <= rR && vi < MAX_GV - 6; rx++) {
         const x = rx * 512
-        gridBuf[vi++] = x
-        gridBuf[vi++] = yTop
-        gridBuf[vi++] = 0.5
-        gridBuf[vi++] = x
-        gridBuf[vi++] = yBot
-        gridBuf[vi++] = 0.5
+        gridBuf[vi++]=x; gridBuf[vi++]=-(rT*512-512); gridBuf[vi++]=0.5
+        gridBuf[vi++]=x; gridBuf[vi++]=-(rB*512+512); gridBuf[vi++]=0.5
       }
-      for (let rz = rT; rz <= rB && vi < MAX_GRID_VERTS - 6; rz++) {
+      for (let rz = rT; rz <= rB && vi < MAX_GV - 6; rz++) {
         const y = -(rz * 512)
-        gridBuf[vi++] = xL
-        gridBuf[vi++] = y
-        gridBuf[vi++] = 0.5
-        gridBuf[vi++] = xR
-        gridBuf[vi++] = y
-        gridBuf[vi++] = 0.5
+        gridBuf[vi++]=(rL*512-512); gridBuf[vi++]=y; gridBuf[vi++]=0.5
+        gridBuf[vi++]=(rR*512+512); gridBuf[vi++]=y; gridBuf[vi++]=0.5
       }
-      gridAttr.needsUpdate = true
-      gridGeo.setDrawRange(0, vi / 3)
+      gridAttr.needsUpdate = true; gridGeo.setDrawRange(0, vi / 3)
 
-      // Chunk grid
       let ci = 0
       if (scale >= 3) {
-        const cL = Math.floor((cx - halfW) / 16) - 1
-        const cR = Math.ceil((cx + halfW) / 16) + 1
-        const cT = Math.floor((cz - halfH) / 16) - 1
-        const cB = Math.ceil((cz + halfH) / 16) + 1
-        const cyTop = -(cT * 16 - 16)
-        const cyBot = -(cB * 16 + 16)
-        const cxL = cL * 16 - 16
-        const cxR = cR * 16 + 16
-        for (let chx = cL; chx <= cR && ci < MAX_GRID_VERTS - 6; chx++) {
+        const cL = Math.floor((cx - halfW) / 16) - 1, cR = Math.ceil((cx + halfW) / 16) + 1
+        const cT = Math.floor((cz - halfH) / 16) - 1, cB = Math.ceil((cz + halfH) / 16) + 1
+        for (let chx = cL; chx <= cR && ci < MAX_GV - 6; chx++) {
           const x = chx * 16
-          chunkGridBuf[ci++] = x
-          chunkGridBuf[ci++] = cyTop
-          chunkGridBuf[ci++] = 0.5
-          chunkGridBuf[ci++] = x
-          chunkGridBuf[ci++] = cyBot
-          chunkGridBuf[ci++] = 0.5
+          chunkGridBuf[ci++]=x; chunkGridBuf[ci++]=-(cT*16-16); chunkGridBuf[ci++]=0.5
+          chunkGridBuf[ci++]=x; chunkGridBuf[ci++]=-(cB*16+16); chunkGridBuf[ci++]=0.5
         }
-        for (let chz = cT; chz <= cB && ci < MAX_GRID_VERTS - 6; chz++) {
+        for (let chz = cT; chz <= cB && ci < MAX_GV - 6; chz++) {
           const y = -(chz * 16)
-          chunkGridBuf[ci++] = cxL
-          chunkGridBuf[ci++] = y
-          chunkGridBuf[ci++] = 0.5
-          chunkGridBuf[ci++] = cxR
-          chunkGridBuf[ci++] = y
-          chunkGridBuf[ci++] = 0.5
+          chunkGridBuf[ci++]=(cL*16-16); chunkGridBuf[ci++]=y; chunkGridBuf[ci++]=0.5
+          chunkGridBuf[ci++]=(cR*16+16); chunkGridBuf[ci++]=y; chunkGridBuf[ci++]=0.5
         }
       }
-      chunkGridAttr.needsUpdate = true
-      chunkGridGeo.setDrawRange(0, ci / 3)
+      chunkGridAttr.needsUpdate = true; chunkGridGeo.setDrawRange(0, ci / 3)
     }
 
     // ── Chunk loading ──
     async function fetchChunk(mcx: number, mcz: number, key: string) {
-      const colors = blockColorsRef.current
+      const dbg = debugModeRef.current
+      if (dbg) {
+        console.log(`[atlas:chunk] fetching  ${mcx},${mcz}`)
+        setOutlineState(key, mcx, mcz, 'rendering')
+      }
       try {
         const res = await fetch(
-          `${API_BASE}/worlds/chunks/${mcx}/${mcz}?world_path=${encodeURIComponent(dimensionPath)}`
+          `${API_BASE}/worlds/chunks/${mcx}/${mcz}?world_path=${encodeURIComponent(dimensionPath)}`,
         )
         if (res.status === 404) {
           st.cache.set(key, 'empty')
+          if (dbg) {
+            console.log(`[atlas:chunk] empty     ${mcx},${mcz} — 404`)
+            setOutlineState(key, mcx, mcz, 'empty')
+          }
         } else if (!res.ok) {
           st.cache.set(key, 'error')
+          if (dbg) {
+            console.log(`[atlas:chunk] error     ${mcx},${mcz} — HTTP ${res.status}`)
+            setOutlineState(key, mcx, mcz, 'error')
+          }
         } else {
           const data = (await res.json()) as ChunkData
+
           if (!st.firstChunkLogged) {
             st.firstChunkLogged = true
-            const s0 = data.sections[0]
+            const s0      = data.sections[0]
             const nonzero = s0 ? s0.blocks.filter((b) => b !== 0).length : 0
             console.log(
               `[atlas] first chunk ${mcx},${mcz}: ${data.sections.length} sections, ` +
-                `section[0].y=${s0?.y}, nonzero blocks=${nonzero}, ` +
-                `sample=${s0?.blocks.slice(0, 8).join(',')}`
+                `section[0].y=${s0?.y}, nonzero=${nonzero}`,
             )
           }
-          const image = renderChunkImage(data, colors)
-          const texture = new THREE.CanvasTexture(image)
-          texture.colorSpace = THREE.SRGBColorSpace
-          texture.magFilter = THREE.NearestFilter
-          texture.minFilter = THREE.NearestFilter
-          texture.generateMipmaps = false
-          const mat = new THREE.MeshBasicMaterial({ map: texture })
+          if (dbg) {
+            const s0 = data.sections[0]
+            console.log(
+              `[atlas:chunk] parsed    ${mcx},${mcz}` +
+              ` — ${data.sections.length} sections` +
+              ` biomes=${data.biomes.length}` +
+              ` s0.y=${s0?.y ?? 'none'}`,
+            )
+          }
+
+          // ── Render canvas ──
+          const t0 = performance.now()
+          const { canvas: image, stats } = renderChunkImage(
+            data,
+            blockColorsRef.current,
+            textureKeysRef.current,
+            registryRef.current,
+            configRef.current,
+            true,
+            debugModeRef.current,
+            blockNamesRef.current,
+          )
+          textureDebugStore.addChunkStats(stats)
+
+          // ── Canvas pixel diagnostic ──
+          let pixels = -2  // -2 = not checked
+          if (dbg) {
+            const ms  = (performance.now() - t0).toFixed(1)
+            const pct = stats.drawImage + stats.fillRect > 0
+              ? ((stats.drawImage / (stats.drawImage + stats.fillRect)) * 100).toFixed(0)
+              : '0'
+            pixels = canvasDiagnostics(image)
+            const pixStr =
+              pixels === -1 ? '⚠ TAINTED (cross-origin — WebGL upload blocked)' :
+              pixels === 0  ? '⚠ EMPTY (drawImage ran but canvas has no pixels)' :
+              `${pixels} non-black pixels`
+            console.log(
+              `[atlas:chunk] canvas    ${mcx},${mcz}` +
+              ` | ${ms}ms` +
+              ` | drawImage=${stats.drawImage} (${pct}%) fillRect=${stats.fillRect}` +
+              ` | pixels=${pixStr}`,
+            )
+            st.chunkPixels.set(key, pixels)
+          }
+
+          // ── Upload to GPU ──
+          st.dataCache.set(key, data)
+          const chunkTex = makeChunkTexture(image)
+          if (dbg) {
+            console.log(
+              `[atlas:chunk] texture   ${mcx},${mcz}` +
+              ` — needsUpdate=${chunkTex.needsUpdate}` +
+              ` uuid=${chunkTex.uuid}`,
+            )
+          }
+
+          const mat  = new THREE.MeshBasicMaterial({ map: chunkTex })
           const mesh = new THREE.Mesh(chunkGeo, mat)
-          // Three.js position: center of chunk tile
           mesh.position.set(mcx * 16 + 8, -(mcz * 16 + 8), 0)
           scene.add(mesh)
+
+          if (dbg) {
+            const outlineState: ChunkOutlineState =
+              pixels === -1 ? 'tainted' :
+              pixels ===  0 ? 'empty'   :
+              'loaded'
+            console.log(
+              `[atlas:chunk] mesh      ${mcx},${mcz}` +
+              ` — visible=${mesh.visible}` +
+              ` pos=(${mesh.position.x},${mesh.position.y},${mesh.position.z})` +
+              ` tex=${chunkTex.uuid}` +
+              ` → outline=${outlineState}`,
+            )
+            setOutlineState(key, mcx, mcz, outlineState)
+          }
+
           st.cache.set(key, mesh)
+          st.texVersionAtRender.set(key, st.texVersion)
         }
-      } catch {
+      } catch (err) {
         st.cache.set(key, 'error')
+        if (dbg) {
+          console.error(`[atlas:chunk] exception ${mcx},${mcz}`, err)
+          setOutlineState(key, mcx, mcz, 'error')
+        }
       } finally {
         st.resolving.delete(key)
         st.activeFetches--
@@ -457,7 +743,7 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
     function drainQueue() {
       while (st.activeFetches < MAX_CONCURRENT && st.pending.length > 0) {
         const item = st.pending.shift()!
-        const key = item[2]
+        const key  = item[2]
         st.pendingSet.delete(key)
         st.resolving.add(key)
         st.activeFetches++
@@ -467,16 +753,15 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
 
     function maybeQueue(mcx: number, mcz: number) {
       const key = `${mcx},${mcz}`
-      if (st.cache.has(key) || st.resolving.has(key) || st.pendingSet.has(key))
-        return
-      const rx = mcx >> 5
-      const rz = mcz >> 5
-      if (!st.regionSet.has(`${rx},${rz}`)) {
-        st.cache.set(key, 'empty')
-        return
-      }
+      if (st.cache.has(key) || st.resolving.has(key) || st.pendingSet.has(key)) return
+      const rx = mcx >> 5, rz = mcz >> 5
+      if (!st.regionSet.has(`${rx},${rz}`)) { st.cache.set(key, 'empty'); return }
       st.pendingSet.add(key)
       st.pending.push([mcx, mcz, key])
+      if (debugModeRef.current) {
+        console.log(`[atlas:chunk] queued   ${mcx},${mcz}`)
+        setOutlineState(key, mcx, mcz, 'queued')
+      }
       drainQueue()
     }
 
@@ -485,59 +770,125 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
 
     function loop() {
       const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale)
-      const halfH = H / (2 * scale)
+      const halfW = W / (2 * scale), halfH = H / (2 * scale)
 
-      if (scale >= FETCH_MIN_SCALE) {
-        const cL = Math.floor((cx - halfW) / 16)
-        const cR = Math.floor((cx + halfW) / 16)
-        const cT = Math.floor((cz - halfH) / 16)
-        const cB = Math.floor((cz + halfH) / 16)
+      // Detect color-map or render-config changes and trigger re-render
+      const bcCount = bcCountRef.current
+      if (bcCount !== st.lastBcCount) {
+        st.lastBcCount = bcCount
+        st.texVersion++
+      }
+      const cfg = configRef.current
+      if (cfg !== st.lastConfig) {
+        st.lastConfig = cfg
+        st.texVersion++
+      }
 
-        const b = st.sortBounds
-        if (!b || b.L !== cL || b.R !== cR || b.T !== cT || b.B !== cB) {
-          const cCx = Math.round(cx / 16)
-          const cCz = Math.round(cz / 16)
-          st.sorted.length = 0
-          for (let z2 = cT; z2 <= cB; z2++) {
-            for (let x2 = cL; x2 <= cR; x2++) {
-              st.sorted.push([x2, z2])
+      // Detect debug mode toggle — add/remove outlines for existing chunks
+      const dbgNow = debugModeRef.current
+      if (dbgNow !== st.lastDebugMode) {
+        st.lastDebugMode = dbgNow
+        if (dbgNow) {
+          for (const [key, entry] of st.cache) {
+            const [mxs, mzs] = key.split(',')
+            const mcx = parseInt(mxs), mcz = parseInt(mzs)
+            if (entry instanceof THREE.Mesh) {
+              const px = st.chunkPixels.get(key) ?? -2
+              const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
+              setOutlineState(key, mcx, mcz, s)
+            } else if (entry === 'error') {
+              setOutlineState(key, mcx, mcz, 'error')
             }
           }
+        } else {
+          for (const line of st.outlineMap.values()) scene.remove(line)
+          st.outlineMap.clear()
+        }
+      }
+
+      // Re-render stale chunks (max 4 per frame) when textures or colors changed
+      if (st.texVersion > 0) {
+        let rerendered = 0
+        for (const [key, entry] of st.cache) {
+          if (rerendered >= 4) break
+          if (!(entry instanceof THREE.Mesh)) continue
+          if ((st.texVersionAtRender.get(key) ?? 0) >= st.texVersion) continue
+          const chunkData = st.dataCache.get(key)
+          if (chunkData) {
+            const { canvas: newImg, stats: reStats } = renderChunkImage(
+              chunkData,
+              blockColorsRef.current,
+              textureKeysRef.current,
+              registryRef.current,
+              configRef.current,
+              false,
+              debugModeRef.current,
+              blockNamesRef.current,
+            )
+            textureDebugStore.addChunkStats(reStats)
+            if (debugModeRef.current) {
+              const px = canvasDiagnostics(newImg)
+              st.chunkPixels.set(key, px)
+              const [mxs, mzs] = key.split(',')
+              const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
+              setOutlineState(key, parseInt(mxs), parseInt(mzs), s)
+            }
+            const mat = entry.material as THREE.MeshBasicMaterial
+            mat.map?.dispose()
+            mat.map = makeChunkTexture(newImg)
+            mat.needsUpdate = true
+            st.texVersionAtRender.set(key, st.texVersion)
+            rerendered++
+          }
+        }
+      }
+
+      if (scale >= FETCH_MIN_SCALE) {
+        const cL = Math.floor((cx - halfW) / 16), cR = Math.floor((cx + halfW) / 16)
+        const cT = Math.floor((cz - halfH) / 16), cB = Math.floor((cz + halfH) / 16)
+
+        const bv = st.sortBounds
+        if (!bv || bv.L !== cL || bv.R !== cR || bv.T !== cT || bv.B !== cB) {
+          const cCx = Math.round(cx / 16), cCz = Math.round(cz / 16)
+          st.sorted.length = 0
+          for (let z2 = cT; z2 <= cB; z2++)
+            for (let x2 = cL; x2 <= cR; x2++)
+              st.sorted.push([x2, z2])
           st.sorted.sort(
-            (a, b) =>
-              (a[0] - cCx) ** 2 +
-              (a[1] - cCz) ** 2 -
-              ((b[0] - cCx) ** 2 + (b[1] - cCz) ** 2)
+            (a, bsv) =>
+              (a[0]-cCx)**2+(a[1]-cCz)**2 - ((bsv[0]-cCx)**2+(bsv[1]-cCz)**2),
           )
           st.sortBounds = { L: cL, R: cR, T: cT, B: cB }
         }
 
-        for (const [cx2, cz2] of st.sorted) {
-          maybeQueue(cx2, cz2)
-        }
+        for (const [cx2, cz2] of st.sorted) maybeQueue(cx2, cz2)
       }
 
       updateGrid()
       renderer.render(scene, cam)
 
-      // HUD (direct DOM write — no React re-render)
-      const bcCount = bcCountRef.current
-      const loaded = [...st.cache.values()].filter(
-        (e) => e instanceof THREE.Mesh
-      ).length
-      hud.textContent = `X ${Math.round(cx)}  Z ${Math.round(cz)}  ×${scale.toFixed(2)}  |  ${loaded} loaded${bcCount > 0 ? `  |  ${bcCount} block colors` : ''}`
+      const loaded   = [...st.cache.values()].filter((e) => e instanceof THREE.Mesh).length
+      const texCount = Object.keys(textureKeysRef.current ?? {}).length
+      const rt       = debugModeRef.current ? textureDebugStore.getRenderTotals() : null
+      hud.textContent =
+        `X ${Math.round(st.cam.cx)}  Z ${Math.round(st.cam.cz)}  ×${scale.toFixed(2)}` +
+        `  |  ${loaded} chunks` +
+        (bcCountRef.current > 0 ? `  |  ${bcCountRef.current} colors` : '') +
+        (texCount > 0 ? `  |  ${texCount} tex-keys` : '') +
+        (rt
+          ? `  |  drawImage=${rt.drawImage} fillRect=${rt.fillRect}` +
+            ` miss=${rt.missingTexKey} fail=${rt.failedTexLoad}`
+          : '')
 
       rafId = requestAnimationFrame(loop)
     }
     rafId = requestAnimationFrame(loop)
 
-    // ── Mouse / wheel ──
+    // ── Input ──
     const el = renderer.domElement
 
     function onMouseDown(e: MouseEvent) {
-      st.isDragging = true
-      st.lastMouse = { x: e.clientX, y: e.clientY }
+      st.isDragging = true; st.lastMouse = { x: e.clientX, y: e.clientY }
       el.style.cursor = 'grabbing'
     }
     function onMouseMove(e: MouseEvent) {
@@ -545,13 +896,11 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
       st.cam.cx -= (e.clientX - st.lastMouse.x) / st.cam.scale
       st.cam.cz -= (e.clientY - st.lastMouse.y) / st.cam.scale
       st.lastMouse = { x: e.clientX, y: e.clientY }
-      st.pending.length = 0
-      st.pendingSet.clear()
+      st.pending.length = 0; st.pendingSet.clear()
       updateCam()
     }
     function onMouseUp() {
-      st.isDragging = false
-      st.lastMouse = null
+      st.isDragging = false; st.lastMouse = null
       el.style.cursor = 'grab'
     }
     function onDblClick(e: MouseEvent) {
@@ -560,79 +909,172 @@ export function WorldMap({ dimensionPath, regions, blockColors }: Props) {
       if (!input) return
       const parts = input.split(',').map((p) => parseFloat(p.trim()))
       if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        st.cam.cx = parts[0]
-        st.cam.cz = parts[1]
+        st.cam.cx = parts[0]; st.cam.cz = parts[1]
         st.cam.scale = Math.max(st.cam.scale, FETCH_MIN_SCALE)
         updateCam()
       }
     }
+
+    function onContextMenu(e: MouseEvent) {
+      e.preventDefault()
+      const rect  = el.getBoundingClientRect()
+      const mx    = e.clientX - rect.left, my = e.clientY - rect.top
+      const worldX = Math.floor(st.cam.cx + (mx - W/2) / st.cam.scale)
+      const worldZ = Math.floor(st.cam.cz + (my - H/2) / st.cam.scale)
+      const cx    = Math.floor(worldX / 16), cz = Math.floor(worldZ / 16)
+      const lx    = ((worldX % 16) + 16) % 16, lz = ((worldZ % 16) + 16) % 16
+      const key   = `${cx},${cz}`
+      const data  = st.dataCache.get(key)
+      if (!data) {
+        inspector.textContent = `X ${worldX}  Z ${worldZ} — chunk not loaded`
+        inspector.style.display = 'block'; return
+      }
+      const secs = [...data.sections].sort((a, bv) => bv.y - a.y)
+      let topId = 0, topMeta = 0, topYv = -1
+      for (const sec of secs) {
+        if (topYv >= 0) break
+        for (let y = 15; y >= 0; y--) {
+          const idx = (y << 8) | (lz << 4) | lx
+          const id  = sec.blocks[idx]
+          if (id !== 0 && registryRef.current.lookup(id).category !== 'ignore') {
+            topId = id; topMeta = sec.data[idx]; topYv = sec.y * 16 + y; break
+          }
+        }
+      }
+      const biomeId    = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
+      const texKey     = textureKeysRef.current?.[topId] ?? null
+      const texImg     = texKey ? getTexture(texKey) : null
+      const hasTexture = !!texImg
+      const name       = blockNamesRef.current?.[topId] ?? `block:${topId}`
+
+      const topDef  = registryRef.current.lookup(topId)
+      let raw: readonly [number, number, number]
+      let colorSrc: string
+      if (topDef.tint === 'grass') {
+        raw = biomeTints(biomeId >= 0 ? biomeId : 1).grass
+        colorSrc = hasTexture ? 'texture + grass tint' : 'biome grass'
+      } else if (topDef.tint === 'foliage') {
+        raw = biomeTints(biomeId >= 0 ? biomeId : 1).foliage
+        colorSrc = hasTexture ? 'texture + foliage tint' : 'biome foliage'
+      } else {
+        const mapped = blockColorsRef.current?.[topId]
+        raw = mapped ?? blockColorRGB(topId, topMeta)
+        colorSrc = hasTexture ? 'texture' : (mapped ? 'color' : 'fallback')
+      }
+
+      const hex = '#' + Array.from(raw).map((v) => v.toString(16).padStart(2, '0')).join('')
+      const texStatus = hasTexture ? '✓ loaded' : texKey ? '⏳ loading…' : '✗ no mapping'
+      const renderInfo =
+        topDef.category +
+        (topDef.tint                                        ? ` · tint:${topDef.tint}`        : '') +
+        (topDef.alphaMode && topDef.alphaMode !== 'opaque' ? ` · alpha:${topDef.alphaMode}`  : '') +
+        ` · src:${topDef.resolverSource}`
+      inspector.innerHTML =
+        `<b>X ${worldX}  Z ${worldZ}  Y ${topYv}</b><br>` +
+        `${name}<br>` +
+        `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}<br>` +
+        `render: <span style="opacity:.75">${renderInfo}</span><br>` +
+        `tex: ${texKey ?? 'none'} — ${texStatus}<br>` +
+        `color: <span style="display:inline-block;width:10px;height:10px;background:${hex};border:1px solid #888"></span> ${hex}` +
+        `  <span style="opacity:.6">(${colorSrc})</span>` +
+        `<br><button id="atlas-copy-block" style="margin-top:4px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;color:#ccc">copy</button>`
+      const copyBtn = inspector.querySelector<HTMLButtonElement>('#atlas-copy-block')
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const lines = [
+            `X ${worldX}  Z ${worldZ}  Y ${topYv}`,
+            name,
+            `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}`,
+            `tex: ${texKey ?? 'none'} — ${texStatus}`,
+            `color: ${hex} (${colorSrc})`,
+          ]
+          await navigator.clipboard.writeText(lines.join('\n'))
+          copyBtn.textContent = 'copied!'
+          setTimeout(() => { copyBtn.textContent = 'copy' }, 1500)
+        })
+      }
+      inspector.style.display = 'block'
+      inspector.style.left = `${e.clientX - rect.left + 8}px`
+      inspector.style.top  = `${e.clientY - rect.top  + 8}px`
+    }
+
+    function hideInspector() { inspector.style.display = 'none' }
+
     function onWheel(e: WheelEvent) {
       e.preventDefault()
-      const rect = el.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const worldX = st.cam.cx + (mx - W / 2) / st.cam.scale
-      const worldZ = st.cam.cz + (my - H / 2) / st.cam.scale
+      const rect   = el.getBoundingClientRect()
+      const mx     = e.clientX - rect.left, my = e.clientY - rect.top
+      const worldX = st.cam.cx + (mx - W/2) / st.cam.scale
+      const worldZ = st.cam.cz + (my - H/2) / st.cam.scale
       const factor = e.deltaY < 0 ? 1.25 : 1 / 1.25
-      st.cam.scale = Math.max(
-        MIN_SCALE,
-        Math.min(MAX_SCALE, st.cam.scale * factor)
-      )
-      st.cam.cx = worldX - (mx - W / 2) / st.cam.scale
-      st.cam.cz = worldZ - (my - H / 2) / st.cam.scale
-      st.pending.length = 0
-      st.pendingSet.clear()
+      st.cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, st.cam.scale * factor))
+      st.cam.cx    = worldX - (mx - W/2) / st.cam.scale
+      st.cam.cz    = worldZ - (my - H/2) / st.cam.scale
+      st.pending.length = 0; st.pendingSet.clear()
       updateCam()
     }
 
     const resizeObs = new ResizeObserver(() => {
-      W = container.clientWidth || 800
-      H = container.clientHeight || 600
-      renderer.setSize(W, H)
-      updateCam()
+      W = container.clientWidth || 800; H = container.clientHeight || 600
+      renderer.setSize(W, H); updateCam()
     })
     resizeObs.observe(container)
     updateCam()
 
-    el.addEventListener('mousedown', onMouseDown)
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'f' || e.key === 'F' || e.key === 'Home') fitCamera()
+    }
+
+    el.addEventListener('mousedown',     onMouseDown)
     window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup', onMouseUp)
-    el.addEventListener('wheel', onWheel, { passive: false })
-    el.addEventListener('dblclick', onDblClick)
+    window.addEventListener('mouseup',   onMouseUp)
+    el.addEventListener('wheel',         onWheel,       { passive: false })
+    el.addEventListener('dblclick',      onDblClick)
+    el.addEventListener('contextmenu',   onContextMenu)
+    window.addEventListener('mousedown', hideInspector)
+    window.addEventListener('keydown',   onKeyDown)
 
     return () => {
+      unsubTextures()
       syncRegionsRef.current = null
+      fitCameraRef.current   = null
       cancelAnimationFrame(rafId)
       resizeObs.disconnect()
-      el.removeEventListener('mousedown', onMouseDown)
+      el.removeEventListener('mousedown',     onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup', onMouseUp)
-      el.removeEventListener('wheel', onWheel)
-      el.removeEventListener('dblclick', onDblClick)
-      clearChunkCache()
-      chunkGeo.dispose()
-      regionGeo.dispose()
-      gridGeo.dispose()
-      chunkGridGeo.dispose()
+      window.removeEventListener('mouseup',   onMouseUp)
+      el.removeEventListener('wheel',         onWheel)
+      el.removeEventListener('dblclick',      onDblClick)
+      el.removeEventListener('contextmenu',   onContextMenu)
+      window.removeEventListener('mousedown', hideInspector)
+      window.removeEventListener('keydown',   onKeyDown)
+      clearChunkCache()   // also removes outlines and clears chunkPixels
+      chunkGeo.dispose(); regionGeo.dispose()
+      gridGeo.dispose();  chunkGridGeo.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     }
   }, [dimensionPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Update regions without tearing down the renderer ──────────────
-  useEffect(() => {
-    syncRegionsRef.current?.()
-  }, [regions])
+  useEffect(() => { syncRegionsRef.current?.() }, [regions])
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-full w-full"
-      style={{ touchAction: 'none' }}
-    >
+    <div ref={containerRef} className="relative h-full w-full" style={{ touchAction: 'none' }}>
       <div
         ref={hudRef}
         className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/50 px-2 py-1 font-mono text-xs text-zinc-400"
+      />
+      <button
+        onClick={() => fitCameraRef.current?.()}
+        className="absolute right-2 top-2 rounded bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300 hover:bg-black/80"
+        title="Fit camera to world (F / Home)"
+      >
+        ⌖ fit
+      </button>
+      <div
+        ref={inspectorRef}
+        className="pointer-events-auto absolute hidden rounded border border-zinc-600 bg-black/80 px-2 py-1 font-mono text-xs text-zinc-200"
+        style={{ maxWidth: 280 }}
       />
     </div>
   )

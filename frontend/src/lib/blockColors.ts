@@ -186,12 +186,12 @@ const COLORS: Record<number, readonly [number, number, number]> = {
 
 // Modded block color overrides keyed by numeric block ID.
 // Add entries here when a block's color is identified via debug-top-blocks.
+// Modded block color overrides for blocks that have no texture scan result
+// and are NOT biome-tinted. Add entries here when debug-top-blocks identifies
+// an unknown block that should have a stable color.
 const MODDED_COLORS: Record<number, readonly [number, number, number]> = {
-  // ── BiomesOPlenty ─────────────────────────────────────────────────────────
-  // colorizedLeaves1 / colorizedLeaves2 — BOP's magical canopy leaves.
-  // Mystic Grove uses deep blue-purple (intentional biome colour).
-  1375: [105,  70, 165],  // BiomesOPlenty:colorizedLeaves1 (Mystic Grove canopy)
-  1376: [ 95,  60, 155],  // BiomesOPlenty:colorizedLeaves2 (Mystic Grove canopy)
+  // (BiomesOPlenty colorizedLeaves 1375/1376 are now in FOLIAGE_TINTED_IDS
+  //  so they pick up the correct biome foliage color automatically.)
 }
 
 // ── Biome tint tables ──────────────────────────────────────────────────────
@@ -248,16 +248,15 @@ const BIOME_GRASS: Record<number, RGB> = {
    56: [ 75, 178,  75],  // BOP Lush Swamp
    57: [145, 192,  97],  // BOP Meadow
    60: [ 85, 165,  75],  // BOP Woodland
-   61: [110, 175,  80],  // BOP Highland
    65: [120, 155,  75],  // BOP Fungi Forest
    66: [139, 189, 100],  // BOP Prairie
    67: [145, 191,  89],  // BOP Orchard
    68: [110, 178,  90],  // BOP Shrubland
    70: [ 95, 175,  80],  // BOP Temperate Rainforest
+   71: [133, 175, 117],  // BOP Highland (temp=0.5, rain=0.6)
    87: [130, 100, 180],  // BOP Mystic Grove   ← deep violet grass
    89: [ 68,  72,  50],  // BOP Ominous Woods  ← dark murky
    90: [115, 185, 105],  // BOP Boreal Forest
-   91: [185, 155,  70],  // BOP Outback
 }
 
 const BIOME_FOLIAGE: Record<number, RGB> = {
@@ -305,6 +304,7 @@ const BIOME_FOLIAGE: Record<number, RGB> = {
    55: [ 60, 180,  40],  // BOP Tropical Rainforest
    56: [ 60, 150,  60],  // BOP Lush Swamp
    65: [ 90, 135,  65],  // BOP Fungi Forest
+   71: [105, 158,  95],  // BOP Highland foliage (temp=0.5, rain=0.6)
    87: [110,  75, 170],  // BOP Mystic Grove foliage ← deep violet
    89: [ 55,  68,  40],  // BOP Ominous Woods foliage
 }
@@ -315,8 +315,12 @@ const DEFAULT_FOLIAGE: RGB  = [119, 171,  47]
 // Blocks whose color is replaced by the biome GRASS tint
 export const GRASS_TINTED_IDS = new Set([2, 31, 175])
 
-// Blocks whose color is replaced by the biome FOLIAGE tint
-export const FOLIAGE_TINTED_IDS = new Set([18, 106, 111, 161])
+// Blocks whose color is replaced by the biome FOLIAGE tint.
+// Includes modded leaf blocks that follow the same biome-tint convention.
+export const FOLIAGE_TINTED_IDS = new Set([
+  18, 106, 111, 161,           // vanilla leaves, vine, lily pad, acacia/dark oak leaves
+  1375, 1376,                  // BiomesOPlenty:colorizedLeaves1/2 — biome-tinted canopy
+])
 
 export function biomeTints(biomeId: number): { grass: RGB; foliage: RGB } {
   // Mutated biomes (128+) use the same tints as their base variant
@@ -334,6 +338,12 @@ function hslToRgb(h: number, s: number, l: number): readonly [number, number, nu
     return Math.round((l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255)
   }
   return [f(0), f(8), f(4)]
+}
+
+export function hardcodedBlockColor(
+  id: number,
+): readonly [number, number, number] | null {
+  return COLORS[id] ?? MODDED_COLORS[id] ?? null
 }
 
 export function blockColorRGB(

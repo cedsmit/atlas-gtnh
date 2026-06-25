@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "source": "ic2.json",
+  "blocks": {
+    "IC2:blockRubSapling":             { "category": "overlay" },
+    "IC2:blockRubLeaves":              { "category": "solid",  "tint": "foliage", "alphaMode": "cutout" },
+    "IC2:blockCrop":                   { "category": "overlay" }
+  }
+}

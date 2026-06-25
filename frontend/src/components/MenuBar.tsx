@@ -2,15 +2,40 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useEffect, useRef, useState } from 'react'
 
 import { validateWorld } from '../api/worlds'
+import { BUILT_IN_PRESETS } from '../lib/renderPresets'
 import { addRecentWorld, getRecentWorlds } from '../lib/recentWorlds'
 
 interface Props {
   worldPath: string | null
   onWorldSelected: (path: string) => void
   onCloseWorld: () => void
+  selectedPresetId?: string
+  onSetPreset?: (id: string) => void
+  inspectOpen?: boolean
+  onToggleInspect?: () => void
+  debugOpen?: boolean
+  onToggleDebug?: () => void
+  showFallbackMagenta?: boolean
+  onToggleFallbackMagenta?: () => void
+  disableTint?: boolean
+  onToggleDisableTint?: () => void
 }
 
-export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
+export function MenuBar({
+  worldPath,
+  onWorldSelected,
+  onCloseWorld,
+  selectedPresetId,
+  onSetPreset,
+  inspectOpen,
+  onToggleInspect,
+  debugOpen,
+  onToggleDebug,
+  showFallbackMagenta,
+  onToggleFallbackMagenta,
+  disableTint,
+  onToggleDisableTint,
+}: Props) {
   const [fileOpen, setFileOpen] = useState(false)
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -128,9 +153,87 @@ export function MenuBar({ worldPath, onWorldSelected, onCloseWorld }: Props) {
         </>
       )}
 
+      {/* Right-side toggles */}
+      {worldPath && (
+        <div className="ml-auto flex items-stretch">
+          {onSetPreset && selectedPresetId && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <select
+                value={selectedPresetId}
+                onChange={(e) => onSetPreset(e.target.value)}
+                title={BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId)?.description}
+                className="bg-zinc-900 px-2 font-mono text-xs text-zinc-300 focus:outline-none hover:bg-zinc-800 cursor-pointer"
+              >
+                {BUILT_IN_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {onToggleDisableTint && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleDisableTint}
+                title={disableTint ? 'Biome tint disabled — showing raw textures' : 'Disable biome tint (show raw texture)'}
+                className={`flex items-center gap-1.5 px-3 text-xs transition-colors ${
+                  disableTint
+                    ? 'bg-yellow-950 text-yellow-300'
+                    : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                <span className="font-mono">RAW</span>
+              </button>
+            </div>
+          )}
+          {onToggleFallbackMagenta && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleFallbackMagenta}
+                title="Highlight blocks with no texture (magenta)"
+                className={`flex items-center gap-1.5 px-3 text-xs transition-colors ${
+                  showFallbackMagenta
+                    ? 'bg-pink-950 text-pink-300'
+                    : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
+                }`}
+              >
+                <span className="font-mono">FB</span>
+              </button>
+            </div>
+          )}
+          {onToggleDebug && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleDebug}
+                className={`flex items-center px-4 text-sm transition-colors ${
+                  debugOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                Debug
+              </button>
+            </div>
+          )}
+          {onToggleInspect && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleInspect}
+                className={`flex items-center px-4 text-sm transition-colors ${
+                  inspectOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                Inspect
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Error */}
       {error && (
-        <div className="ml-auto flex items-center gap-2 border-l border-zinc-800 bg-red-950/40 px-3">
+        <div className="flex items-center gap-2 border-l border-zinc-800 bg-red-950/40 px-3">
           <span className="text-xs text-red-400">{error}</span>
           <button
             onClick={() => setError(null)}
