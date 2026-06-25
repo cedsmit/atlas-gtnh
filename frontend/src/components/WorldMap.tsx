@@ -567,6 +567,8 @@ export function WorldMap({
       regionSet:          new Set<string>(),
       isDragging:         false,
       lastMouse:          null as { x: number; y: number } | null,
+      mouseWorldX:        null as number | null,
+      mouseWorldZ:        null as number | null,
       firstChunkLogged:   false,
     }
 
@@ -631,8 +633,25 @@ export function WorldMap({
     function fitCamera() {
       const regs = regionsRef.current
       if (regs.length === 0) return
+
+      // Compute median X and Z so a single distant outlier region (e.g. a mod dimension
+      // that wrote chunks at extreme coordinates) cannot pull the initial view off into space.
+      const xs = regs.map(r => r.region_x).sort((a, b) => a - b)
+      const zs = regs.map(r => r.region_z).sort((a, b) => a - b)
+      const mid = Math.floor(xs.length / 2)
+      const medX = xs.length % 2 === 0 ? (xs[mid - 1] + xs[mid]) / 2 : xs[mid]
+      const medZ = zs.length % 2 === 0 ? (zs[mid - 1] + zs[mid]) / 2 : zs[mid]
+
+      // Drop regions more than 200 region-units (~100 km) from the median.
+      // This removes genuine outliers while preserving any legitimately large world.
+      const MAX_DIST = 200
+      const core = regs.filter(
+        r => Math.abs(r.region_x - medX) <= MAX_DIST && Math.abs(r.region_z - medZ) <= MAX_DIST
+      )
+      const active = core.length > 0 ? core : regs
+
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
-      for (const r of regs) {
+      for (const r of active) {
         if (r.region_x < minX) minX = r.region_x
         if (r.region_x > maxX) maxX = r.region_x
         if (r.region_z < minZ) minZ = r.region_z
@@ -975,8 +994,10 @@ export function WorldMap({
       const loaded   = [...st.cache.values()].filter((e) => e instanceof THREE.Mesh).length
       const texCount = Object.keys(textureKeysRef.current ?? {}).length
       const rt       = debugModeRef.current ? textureDebugStore.getRenderTotals() : null
+      const hudX = st.mouseWorldX !== null ? Math.round(st.mouseWorldX) : Math.round(st.cam.cx)
+      const hudZ = st.mouseWorldZ !== null ? Math.round(st.mouseWorldZ) : Math.round(st.cam.cz)
       hud.textContent =
-        `X ${Math.round(st.cam.cx)}  Z ${Math.round(st.cam.cz)}  ×${scale.toFixed(2)}` +
+        `X ${hudX}  Z ${hudZ}  ×${scale.toFixed(2)}` +
         `  |  ${loaded} chunks` +
         (bcCountRef.current > 0 ? `  |  ${bcCountRef.current} colors` : '') +
         (texCount > 0 ? `  |  ${texCount} tex-keys` : '') +
@@ -997,12 +1018,22 @@ export function WorldMap({
       el.style.cursor = 'grabbing'
     }
     function onMouseMove(e: MouseEvent) {
+      const rect = el.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      st.mouseWorldX = st.cam.cx + (mx - W / 2) / st.cam.scale
+      st.mouseWorldZ = st.cam.cz + (my - H / 2) / st.cam.scale
+
       if (!st.isDragging || !st.lastMouse) return
       st.cam.cx -= (e.clientX - st.lastMouse.x) / st.cam.scale
       st.cam.cz -= (e.clientY - st.lastMouse.y) / st.cam.scale
       st.lastMouse = { x: e.clientX, y: e.clientY }
       st.pending.length = 0; st.pendingSet.clear()
       updateCam()
+    }
+    function onMouseLeave() {
+      st.mouseWorldX = null
+      st.mouseWorldZ = null
     }
     function onMouseUp() {
       st.isDragging = false; st.lastMouse = null
@@ -1179,6 +1210,7 @@ export function WorldMap({
     el.addEventListener('mousedown',     onMouseDown)
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup',   onMouseUp)
+    el.addEventListener('mouseleave',    onMouseLeave)
     el.addEventListener('wheel',         onWheel,       { passive: false })
     el.addEventListener('dblclick',      onDblClick)
     el.addEventListener('contextmenu',   onContextMenu)
@@ -1194,6 +1226,7 @@ export function WorldMap({
       el.removeEventListener('mousedown',     onMouseDown)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup',   onMouseUp)
+      el.removeEventListener('mouseleave',    onMouseLeave)
       el.removeEventListener('wheel',         onWheel)
       el.removeEventListener('dblclick',      onDblClick)
       el.removeEventListener('contextmenu',   onContextMenu)
