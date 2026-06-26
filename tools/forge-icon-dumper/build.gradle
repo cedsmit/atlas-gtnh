@@ -1,0 +1,47 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://oss.sonatype.org/content/repositories/snapshots/' }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle.forge'
+
+version         = '1.0.0'
+group           = 'com.atlasgtnh.icondumper'
+archivesBaseName = 'atlas-icon-dumper'
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+minecraft {
+    // Forge version shipped with GTNH 2.7.x / 2.8.x
+    version = '1.7.10-10.13.4.1614-1.7.10'
+    runDir  = 'run'
+
+    // MCP stable_12 is the standard mapping set for Forge 1.7.10
+    mappings = 'stable_12'
+}
+
+processResources {
+    inputs.property 'version',   project.version
+    inputs.property 'mcversion', project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version': project.version, 'mcversion': project.minecraft.version
+    }
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+// Produce a fat JAR — no external runtime dependencies are added by this mod.
+jar {
+    manifest {
+        attributes 'FMLCorePluginContainsFMLMod': 'true'
+    }
+}

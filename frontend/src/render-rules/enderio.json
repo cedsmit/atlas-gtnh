@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "source": "enderio.json",
+  "blocks": {
+    "EnderIO:blockFusedQuartz":                { "category": "transparent", "alphaMode": "blend" },
+    "EnderIO:blockFusedQuartzFramed":          { "category": "transparent", "alphaMode": "blend" },
+
+    "EnderIO:blockAlloyEncoder":               { "category": "solid" },
+    "EnderIO:blockAlloySmelter":               { "category": "solid" },
+    "EnderIO:blockCombustionGenerator":        { "category": "solid" },
+    "EnderIO:blockConduitBundle":              { "category": "overlay" },
+    "EnderIO:blockDarkSteel":                  { "category": "solid" },
+    "EnderIO:blockElectricalSteel":            { "category": "solid" },
+    "EnderIO:blockElectricGlass":              { "category": "transparent", "alphaMode": "blend" },
+    "EnderIO:blockElectricalGlass":            { "category": "transparent", "alphaMode": "blend" },
+    "EnderIO:blockEnchanter":                  { "category": "solid" },
+    "EnderIO:blockFarmStation":                { "category": "solid" },
+    "EnderIO:blockFluidTank":                  { "category": "solid" },
+    "EnderIO:blockKillerJoe":                  { "category": "solid" },
+    "EnderIO:blockMachineBase":                { "category": "solid" },
+    "EnderIO:blockOmniBuffer":                 { "category": "solid" },
+    "EnderIO:blockPaintedGlowstone":           { "category": "solid" },
+    "EnderIO:blockPowerMonitor":               { "category": "solid" },
+    "EnderIO:blockPoweredSpawner":             { "category": "solid" },
+    "EnderIO:blockReservoir":                  { "category": "solid" },
+    "EnderIO:blockSagMill":                    { "category": "solid" },
+    "EnderIO:blockSoulBinder":                 { "category": "solid" },
+    "EnderIO:blockSoulBrokenSpawner":          { "category": "solid" },
+    "EnderIO:blockSoulCatcher":                { "category": "solid" },
+    "EnderIO:blockStirlingGenerator":          { "category": "solid" },
+    "EnderIO:blockTank":                       { "category": "solid" },
+    "EnderIO:blockTransceiver":                { "category": "solid" },
+    "EnderIO:blockVacuumChest":                { "category": "solid" },
+    "EnderIO:blockWirelessCharger":            { "category": "solid" }
+  }
+}

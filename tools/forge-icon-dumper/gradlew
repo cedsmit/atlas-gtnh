@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Standard Gradle wrapper shell script for Unix.
+# The wrapper JAR (gradle/wrapper/gradle-wrapper.jar) must exist.
+# Generate it once with: gradle wrapper --gradle-version=2.14.1
+
+DIRNAME="$(dirname "$0")"
+cd "$DIRNAME" || exit 1
+
+JAVA_OPTS="${JAVA_OPTS:-}"
+GRADLE_OPTS="${GRADLE_OPTS:-}"
+
+exec java $JAVA_OPTS -jar "$(pwd)/gradle/wrapper/gradle-wrapper.jar" \
+    -p "$(pwd)" "$@" $GRADLE_OPTS

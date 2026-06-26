@@ -4,6 +4,7 @@ export type FoliageMode   = 'hidden' | 'simplified' | 'full'
 export type WaterMode     = 'simple' | 'textured'
 export type ElevationMode = 'off' | 'subtle' | 'strong' | 'debug-heightmap'
 export type ContourMode   = 'off' | 'subtle' | 'normal' | 'strong'
+export type TextureFilter = 'pixel' | 'smooth' | 'journeymap'
 
 /**
  * User-facing preset that configures the entire rendering pipeline.
@@ -36,6 +37,7 @@ export interface RenderPreset {
   terrainTextures:     boolean
   biomeTint:           boolean
   showFallbackMagenta: boolean
+  textureFilter:       TextureFilter
 }
 
 /**
@@ -63,6 +65,7 @@ export interface RenderConfig {
   biomeTint:           boolean
   useMarkers:          boolean      // blocks with mapRenderMode:'marker' render as tiny dots
   showFallbackMagenta: boolean
+  textureFilter:       TextureFilter
 }
 
 // ── Built-in presets ──────────────────────────────────────────────────────────
@@ -90,6 +93,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'journeymap',
   },
   {
     id:          'vanilla',
@@ -113,6 +117,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'smooth',
   },
   {
     id:          'builder',
@@ -136,6 +141,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'smooth',
   },
   {
     id:          'technical',
@@ -159,6 +165,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'pixel',
   },
   {
     id:          'explorer',
@@ -182,6 +189,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'journeymap',
   },
   {
     id:          'relief',
@@ -205,6 +213,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'smooth',
   },
   {
     id:          'topo',
@@ -228,6 +237,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: false,
+    textureFilter:       'smooth',
   },
   {
     id:          'debug',
@@ -251,6 +261,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures:     true,
     biomeTint:           true,
     showFallbackMagenta: true,
+    textureFilter:       'pixel',
   },
 ]
 
@@ -275,7 +286,7 @@ function buildHiddenTags(p: RenderPreset): ReadonlySet<string> {
  */
 export function presetToConfig(
   preset: RenderPreset,
-  overrides: Partial<Pick<RenderConfig, 'biomeTint' | 'showFallbackMagenta'>> = {},
+  overrides: Partial<Pick<RenderConfig, 'biomeTint' | 'showFallbackMagenta' | 'textureFilter'>> = {},
 ): RenderConfig {
   return {
     hiddenTags:          buildHiddenTags(preset),
@@ -291,6 +302,7 @@ export function presetToConfig(
     biomeTint:           overrides.biomeTint        ?? preset.biomeTint,
     useMarkers:          false,
     showFallbackMagenta: overrides.showFallbackMagenta ?? preset.showFallbackMagenta,
+    textureFilter:       overrides.textureFilter ?? preset.textureFilter,
   }
 }
 

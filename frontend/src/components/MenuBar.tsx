@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { useEffect, useRef, useState } from 'react'
 
 import { validateWorld } from '../api/worlds'
-import { BUILT_IN_PRESETS } from '../lib/renderPresets'
+import { BUILT_IN_PRESETS, type TextureFilter } from '../lib/renderPresets'
 import { addRecentWorld, getRecentWorlds } from '../lib/recentWorlds'
 
 type ElevOverride = 'preset' | 'off' | 'subtle' | 'strong' | 'relief' | 'heightmap' | 'contours'
@@ -23,6 +23,8 @@ interface Props {
   onToggleFallbackMagenta?: () => void
   disableTint?: boolean
   onToggleDisableTint?: () => void
+  textureFilter?: 'preset' | TextureFilter
+  onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
 }
 
 export function MenuBar({
@@ -41,6 +43,8 @@ export function MenuBar({
   onToggleFallbackMagenta,
   disableTint,
   onToggleDisableTint,
+  textureFilter,
+  onSetTextureFilter,
 }: Props) {
   const [fileOpen, setFileOpen] = useState(false)
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
@@ -193,6 +197,23 @@ export function MenuBar({
                 <option value="relief">Elev: relief</option>
                 <option value="heightmap">Elev: heightmap</option>
                 <option value="contours">Contours only</option>
+              </select>
+            </div>
+          )}
+          {onSetTextureFilter && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <select
+                value={textureFilter ?? 'preset'}
+                onChange={(e) => onSetTextureFilter(e.target.value as 'preset' | TextureFilter)}
+                title="Texture filtering mode (overrides preset default)"
+                className={`bg-zinc-900 px-2 font-mono text-xs focus:outline-none hover:bg-zinc-800 cursor-pointer ${
+                  textureFilter && textureFilter !== 'preset' ? 'text-amber-300' : 'text-zinc-300'
+                }`}
+              >
+                <option value="preset">Filter: preset</option>
+                <option value="pixel">Filter: pixel</option>
+                <option value="smooth">Filter: smooth</option>
+                <option value="journeymap">Filter: JM</option>
               </select>
             </div>
           )}

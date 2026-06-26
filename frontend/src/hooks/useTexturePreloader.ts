@@ -25,16 +25,19 @@ const EMPTY: TexturePreloadStats = {
 export function useTexturePreloader(
   textureKeys: Record<number, string> | undefined,
   worldPath: string | null,
+  metaTextureKeys?: Record<string, string>,
 ): TexturePreloadStats {
   const [tick, setTick] = useState(0)
   const startRef = useRef<number | null>(null)
   const finishedRef = useRef<number | null>(null)
 
-  // Stable key list — only changes when textureKeys object changes
-  const keys = useMemo(
-    () => (textureKeys ? Object.values(textureKeys) : []),
-    [textureKeys],
-  )
+  // Deduplicated union of regular + meta texture keys.
+  // Recalculated only when either map reference changes.
+  const keys = useMemo(() => {
+    const regular = textureKeys ? Object.values(textureKeys) : []
+    const meta    = metaTextureKeys ? Object.values(metaTextureKeys) : []
+    return meta.length === 0 ? regular : [...new Set([...regular, ...meta])]
+  }, [textureKeys, metaTextureKeys])
 
   useEffect(() => {
     if (keys.length === 0 || !worldPath) return

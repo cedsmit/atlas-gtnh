@@ -90,16 +90,30 @@ class TextureDebugStore {
     pending: number
     noMapping: number
     total: number
+    /** Occurrence-weighted counts (each block × how many times it appeared). */
+    occLoaded: number
+    occMissing: number
+    occPending: number
+    occNoMapping: number
   } {
     let loaded = 0, missing = 0, pending = 0, noMapping = 0
+    let occLoaded = 0, occMissing = 0, occPending = 0, occNoMapping = 0
     for (const b of this._blocks.values()) {
-      if (!b.texKey) { noMapping++; continue }
+      if (!b.texKey) {
+        noMapping++
+        occNoMapping += b.occurrences
+        continue
+      }
       const s = getTextureState(b.texKey)
-      if (s === 'loaded') loaded++
-      else if (s === 'missing') missing++
-      else pending++
+      if (s === 'loaded')       { loaded++;   occLoaded   += b.occurrences }
+      else if (s === 'missing') { missing++;  occMissing  += b.occurrences }
+      else                      { pending++;  occPending  += b.occurrences }
     }
-    return { loaded, missing, pending, noMapping, total: this._blocks.size }
+    return {
+      loaded, missing, pending, noMapping,
+      total: this._blocks.size,
+      occLoaded, occMissing, occPending, occNoMapping,
+    }
   }
 
   subscribe(cb: () => void): () => void {

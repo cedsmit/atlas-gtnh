@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useBlockColors } from './api/blockColors'
 import { useBlockNames } from './api/blockNames'
 import { type DimensionInfo, useDimensions } from './api/dimensions'
+import { useMetaTextureKeys } from './api/metaTextureKeys'
 import { useRegions } from './api/regions'
 import { useTextureKeys } from './api/textureKeys'
 import { DimensionPicker } from './components/DimensionPicker'
@@ -14,7 +15,7 @@ import { WorldMap } from './components/WorldMap'
 import { WorldPicker } from './components/WorldPicker'
 import { useTexturePreloader } from './hooks/useTexturePreloader'
 import { createResolvedRegistry } from './lib/blockRenderRegistry'
-import { type ElevationMode, type ContourMode, BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
+import { type ElevationMode, type ContourMode, type TextureFilter, BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
 import { getTextureState } from './lib/textureLoader'
 import { textureDebugStore } from './lib/textureDebugStore'
 
@@ -33,13 +34,15 @@ export default function App() {
   const [vanillaJarFound,     setVanillaJarFound]     = useState<boolean | null>(null)
   const [selectedPresetId,    setSelectedPresetId]    = useState('journeymap')
   const [elevOverride,        setElevOverride]        = useState<'preset'|'off'|'subtle'|'strong'|'relief'|'heightmap'|'contours'>('preset')
+  const [textureFilterOverride, setTextureFilterOverride] = useState<'preset' | TextureFilter>('preset')
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const { data: blockColors, isLoading: isScanning, isError: worldError } = useBlockColors(worldPath)
-  const { data: blockNames }  = useBlockNames(worldPath)
-  const { data: textureKeys } = useTextureKeys(worldPath)
-  const { data: dimensions }  = useDimensions(worldPath)
-  const { data: regionData }  = useRegions(dimensionPath ?? '')
+  const { data: blockNames }    = useBlockNames(worldPath)
+  const { data: textureKeys }   = useTextureKeys(worldPath)
+  const { data: metaTextureKeys } = useMetaTextureKeys(worldPath)
+  const { data: dimensions }    = useDimensions(worldPath)
+  const { data: regionData }    = useRegions(dimensionPath ?? '')
 
   // ── Render registry ────────────────────────────────────────────────────
   // Rebuilt when blockNames changes (new world = new FML ID mapping).
@@ -75,14 +78,15 @@ export default function App() {
       elevationMode,
       elevationStrength,
       contourMode,
+      textureFilter: textureFilterOverride === 'preset' ? preset.textureFilter : textureFilterOverride,
     }
-  }, [preset, disableTint, showFallbackMagenta, elevOverride])
+  }, [preset, disableTint, showFallbackMagenta, elevOverride, textureFilterOverride])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
   // `textureKeys` already contains only the blocks present in this world's FML registry,
   // so Object.values(textureKeys) is a bounded set (typically 200-600 keys for GTNH).
-  const tex = useTexturePreloader(textureKeys, worldPath)
+  const tex = useTexturePreloader(textureKeys, worldPath, metaTextureKeys)
 
   // ── Loading gate ───────────────────────────────────────────────────────
   // Determine which loading stage we are in so the loading screen can display
@@ -205,6 +209,8 @@ export default function App() {
         onToggleFallbackMagenta={worldPath ? () => setShowFallbackMagenta((v) => !v) : undefined}
         disableTint={disableTint}
         onToggleDisableTint={worldPath ? () => setDisableTint((v) => !v) : undefined}
+        textureFilter={textureFilterOverride}
+        onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
       />
 
       {!worldPath ? (
@@ -243,6 +249,7 @@ export default function App() {
               regions={regionData?.regions ?? []}
               blockColors={blockColors}
               textureKeys={textureKeys}
+              metaTextureKeys={metaTextureKeys}
               worldPath={worldPath ?? undefined}
               blockNames={blockNames}
               registry={registry}

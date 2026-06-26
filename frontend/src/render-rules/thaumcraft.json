@@ -4,11 +4,14 @@
   "blocks": {
     "Thaumcraft:blockAiry":            { "category": "ignore" },
     "Thaumcraft:blockCrystal":         { "category": "overlay", "alphaMode": "cutout" },
+    "Thaumcraft:blockMagicalLeaves":   { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
     "Thaumcraft:blockJar":             { "category": "overlay" },
     "Thaumcraft:blockCandle":          { "category": "overlay", "blockTags": ["torch"] },
     "Thaumcraft:blockArcaneLog":       { "category": "solid"   },
     "Thaumcraft:blockMagicalLog":      { "category": "solid"   },
     "Thaumcraft:blockTaintFibre":      { "category": "overlay", "tint": "foliage", "blockTags": ["tallgrass"] },
-    "Thaumcraft:blockFluxGoo":         { "category": "fluid"   }
+    "Thaumcraft:blockFluxGoo":         { "category": "fluid"   },
+    "Thaumcraft:blockCosmeticSolid":   { "category": "solid"   },
+    "Thaumcraft:blockCosmeticOpaque":  { "category": "solid"   }
   }
 }

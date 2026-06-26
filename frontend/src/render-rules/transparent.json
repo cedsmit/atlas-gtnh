@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "source": "transparent.json",
+  "blocks": {
+
+    "Ztones:tile.glaxx": {
+      "category": "transparent",
+      "mapRenderMode": "flat",
+      "mapOpacity": 0.5,
+      "textureTint": "metadata16",
+      "textureTintColors": [
+        "#ffffff",
+        "#c7c86a",
+        "#b8c86b",
+        "#97c86b",
+        "#6bc890",
+        "#6bc8b3",
+        "#6badc8",
+        "#6b7ac8",
+        "#906bc8",
+        "#ba6bc8",
+        "#c96b78",
+        "#c8786b",
+        "#c89d6b",
+        "#c8ba6b",
+        "#9a9a9a",
+        "#5a5a5a"
+      ],
+      "alphaMode": "blend"
+    },
+
+    "appliedenergistics2:tile.BlockQuartzGlass":           { "category": "transparent", "alphaMode": "blend" },
+    "appliedenergistics2:tile.BlockQuartzLamp":            { "category": "transparent", "alphaMode": "blend" },
+    "appliedenergistics2:tile.BlockFluixGlass":            { "category": "transparent", "alphaMode": "blend" },
+
+    "IC2:blockAlloyGlass":                                 { "category": "transparent", "alphaMode": "blend" },
+    "IC2:tile.blockAlloyGlass":                            { "category": "transparent", "alphaMode": "blend" },
+
+    "chisel:glass":                                        { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed0":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed1":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed2":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed3":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed4":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed5":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed6":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed7":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed8":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed9":                                   { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed10":                                  { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed11":                                  { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed12":                                  { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed13":                                  { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed14":                                  { "category": "transparent", "alphaMode": "blend" },
+    "chisel:glassDyed15":                                  { "category": "transparent", "alphaMode": "blend" },
+
+    "EnderIO:blockFusedQuartz":                            { "category": "transparent", "alphaMode": "blend" },
+    "EnderIO:blockFusedQuartzFramed":                      { "category": "transparent", "alphaMode": "blend" }
+  }
+}

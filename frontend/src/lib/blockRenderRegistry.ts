@@ -49,6 +49,7 @@ export interface BlockRenderDefinition {
   // ── 2-D map hints ──────────────────────────────────────────────────────
   mapRenderMode?:  MapRenderMode  // how to draw on the map (default: "texture")
   mapVisibility?:  MapVisibility  // minimum mode to appear (default: "clean")
+  mapOpacity?:     number         // 0.0–1.0; alpha for flat/transparent rendering (default: 0.40)
   mapIcon?:        string         // future: small SVG/PNG icon path
   mapColor?:       string         // CSS color for flat/marker rendering
 
@@ -56,6 +57,14 @@ export interface BlockRenderDefinition {
   // Strings matched against RenderConfig.hiddenTags to control preset visibility.
   // Well-known tags: torch, flower, tallgrass, rail, redstone, machine, pipe, cable
   blockTags?:      readonly string[]
+
+  // ── Texture alias + tinting ────────────────────────────────────────────
+  // For blocks that inherit another block's texture and/or apply a per-meta
+  // color tint at render time (e.g. Ztones glaxx uses vanilla glass + dye tint).
+  textureAlias?:      string                           // use this texture key instead of the block's own
+  textureTint?:       'none' | 'metadata16' | 'custom' // how to derive the block's color tint
+  textureTintColors?: readonly string[]                // hex colors indexed by metadata (for 'custom')
+  preserveAlpha?:     boolean                          // keep texture alpha through tint compositing
 }
 
 export interface ResolvedDefinition extends BlockRenderDefinition {

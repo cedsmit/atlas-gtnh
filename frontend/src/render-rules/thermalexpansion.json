@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "source": "thermalexpansion.json",
+  "blocks": {
+    "ThermalExpansion:blockMachine":           { "category": "solid" },
+    "ThermalExpansion:blockDevice":            { "category": "solid" },
+    "ThermalExpansion:blockCell":              { "category": "solid" },
+    "ThermalExpansion:blockTank":              { "category": "solid" },
+    "ThermalExpansion:blockDuct":              { "category": "solid" },
+    "ThermalExpansion:blockStrongbox":         { "category": "solid" },
+    "ThermalExpansion:blockSatchel":           { "category": "solid" },
+    "ThermalExpansion:blockGlassair":          { "category": "transparent", "alphaMode": "blend" },
+
+    "ThermalFoundation:blockOreCopper":        { "category": "solid" },
+    "ThermalFoundation:blockOreTin":           { "category": "solid" },
+    "ThermalFoundation:blockOreSilver":        { "category": "solid" },
+    "ThermalFoundation:blockOreLead":          { "category": "solid" },
+    "ThermalFoundation:blockOreFerrous":       { "category": "solid" },
+    "ThermalFoundation:blockOreNickel":        { "category": "solid" },
+    "ThermalFoundation:blockOrePlatinum":      { "category": "solid" },
+    "ThermalFoundation:blockOreMithril":       { "category": "solid" },
+    "ThermalFoundation:blockOreIridium":       { "category": "solid" },
+    "ThermalFoundation:blockIngotCopper":      { "category": "solid" },
+    "ThermalFoundation:blockIngotTin":         { "category": "solid" },
+    "ThermalFoundation:blockIngotSilver":      { "category": "solid" },
+    "ThermalFoundation:blockIngotLead":        { "category": "solid" },
+    "ThermalFoundation:blockIngotNickel":      { "category": "solid" },
+    "ThermalFoundation:blockIngotPlatinum":    { "category": "solid" },
+    "ThermalFoundation:blockIngotElectrum":    { "category": "solid" },
+    "ThermalFoundation:blockIngotInvar":       { "category": "solid" },
+    "ThermalFoundation:blockIngotBronze":      { "category": "solid" },
+    "ThermalFoundation:blockIngotSignalum":    { "category": "solid" },
+    "ThermalFoundation:blockIngotLumium":      { "category": "solid" },
+    "ThermalFoundation:blockIngotEnderium":    { "category": "solid" }
+  }
+}

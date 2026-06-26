@@ -37,7 +37,7 @@ const STATUS_LABEL: Record<TexDebugStatus, string> = {
   loaded: 'loaded',
   missing: 'failed',
   pending: 'pending',
-  'no-mapping': 'no mapping',
+  'no-mapping': 'no key',
 }
 
 const STATUS_CLASS: Record<TexDebugStatus, string> = {
@@ -47,11 +47,83 @@ const STATUS_CLASS: Record<TexDebugStatus, string> = {
   'no-mapping': 'text-amber-400',
 }
 
+interface PipelineCategory {
+  category: string
+  count: number
+  examples: string[]
+}
+
+interface PipelineReport {
+  total: number
+  pipeline_resolved: number
+  pipeline_unresolved: number
+  override_resolved: number
+  forge_dump_resolved: number
+  forge_dump_ambiguous: number
+  forge_dump_loaded: boolean
+  forge_dump_path: string | null
+  forge_dump_block_count: number
+  modern_resolved: number
+  legacy_resolved: number
+  legacy_high: number
+  legacy_medium: number
+  legacy_low: number
+  legacy_ambiguous: number
+  blockstate_count: number
+  model_count: number
+  texture_color_count: number
+  categories: Record<string, number>
+  examples: Record<string, string[]>
+  legacy_examples: Record<string, string[]>
+  block_methods: Record<string, string>
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  no_blockstate:               'No blockstate (legacy also failed)',
+  forge_builtin_renderer:      'Forge builtin renderer',
+  no_variant_for_meta:         'No variant for meta',
+  model_not_found:             'Model file not found',
+  texture_variable_unresolved: 'Texture var unresolved',
+  texture_not_in_db:           'Texture PNG not scanned',
+  bad_blockstate_format:       'Bad blockstate format',
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  override:                    'override',
+  forge_dump:                  'forge ✓',
+  forge_dump_ambiguous:        'forge ~',
+  modern:                      'modern',
+  legacy_high:                 'legacy ✓✓',
+  legacy_medium:               'legacy ✓',
+  legacy_low:                  'legacy ?',
+  legacy_high_ambiguous:       'legacy ~~',
+  legacy_medium_ambiguous:     'legacy ~?',
+  legacy_low_ambiguous:        'legacy ~',
+  none:                        'fallback',
+}
+
+const METHOD_CLASS: Record<string, string> = {
+  override:                    'bg-violet-900 text-violet-300',
+  forge_dump:                  'bg-sky-900 text-sky-300',
+  forge_dump_ambiguous:        'bg-sky-900 text-orange-300',
+  modern:                      'bg-blue-900 text-blue-300',
+  legacy_high:                 'bg-teal-900 text-teal-300',
+  legacy_medium:               'bg-emerald-900 text-emerald-300',
+  legacy_low:                  'bg-amber-900 text-amber-300',
+  legacy_high_ambiguous:       'bg-teal-900 text-orange-300',
+  legacy_medium_ambiguous:     'bg-emerald-900 text-orange-300',
+  legacy_low_ambiguous:        'bg-orange-950 text-orange-300',
+  none:                        'bg-zinc-800 text-zinc-500',
+}
+
 export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
   const [tick, setTick] = useState(0)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [tracing, setTracing] = useState(false)
+  const [pipelineReport, setPipelineReport] = useState<PipelineReport | null>(null)
+  const [pipelineLoading, setPipelineLoading] = useState(false)
+  const [showPipeline, setShowPipeline] = useState(false)
 
   // Re-render when debug store or texture states change
   useEffect(() => {
@@ -145,6 +217,23 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
     }
   }
 
+  async function fetchPipelineReport() {
+    if (!worldPath || pipelineLoading) return
+    setPipelineLoading(true)
+    try {
+      const url = `${API_BASE}/worlds/pipeline-report?world_path=${encodeURIComponent(worldPath)}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      const data = await res.json() as PipelineReport
+      setPipelineReport(data)
+      setShowPipeline(true)
+    } catch (err) {
+      console.error('[atlas:pipeline] Failed:', err)
+    } finally {
+      setPipelineLoading(false)
+    }
+  }
+
   return (
     <div className="flex h-full w-[480px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
@@ -159,14 +248,24 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
             console.log
           </button>
           {worldPath && (
-            <button
-              onClick={() => void traceResolution()}
-              disabled={tracing}
-              className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-40"
-              title="Trace texture resolution chain to console"
-            >
-              {tracing ? '…trace' : 'trace'}
-            </button>
+            <>
+              <button
+                onClick={() => void traceResolution()}
+                disabled={tracing}
+                className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-40"
+                title="Trace texture resolution chain to console"
+              >
+                {tracing ? '…trace' : 'trace'}
+              </button>
+              <button
+                onClick={() => void fetchPipelineReport()}
+                disabled={pipelineLoading}
+                className="rounded bg-indigo-900 px-2 py-0.5 font-mono text-[10px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
+                title="Run blockstate resolution pipeline and show failure category report"
+              >
+                {pipelineLoading ? '…pipeline' : 'pipeline'}
+              </button>
+            </>
           )}
           <button
             onClick={onClose}
@@ -182,13 +281,37 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
       <RenderProof rt={renderTotals} />
 
       {/* Block stats bar */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 border-b border-zinc-800 px-4 py-2 font-mono text-xs">
-        <span className="text-emerald-400">{stats.loaded} loaded</span>
-        <span className="text-red-400">{stats.missing} failed</span>
-        <span className="text-zinc-500">{stats.pending} pending</span>
-        <span className="text-amber-400">{stats.noMapping} no-mapping</span>
-        <span className="ml-auto text-zinc-600">{stats.total} unique blocks</span>
+      <div className="flex flex-col gap-1 border-b border-zinc-800 px-4 py-2 font-mono text-xs">
+        {/* Unique-block row */}
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          <span className="text-emerald-400">{stats.loaded} loaded</span>
+          <span className="text-red-400">{stats.missing} failed</span>
+          <span className="text-zinc-500">{stats.pending} pending</span>
+          <span className="text-amber-400">{stats.noMapping} no-key</span>
+          <span className="ml-auto text-zinc-600">{stats.total} unique block types</span>
+        </div>
+        {/* Occurrence-weighted row — only shown once chunks have rendered */}
+        {(stats.occLoaded + stats.occMissing + stats.occNoMapping) > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+            <span className="text-emerald-600">{stats.occLoaded.toLocaleString()} cols w/ tex</span>
+            <span className="text-red-700">{stats.occMissing.toLocaleString()} cols failed</span>
+            <span className="text-amber-700">{stats.occNoMapping.toLocaleString()} cols no-key</span>
+            {(() => {
+              const total = stats.occLoaded + stats.occMissing + stats.occNoMapping + stats.occPending
+              const pct = total > 0 ? Math.round((stats.occLoaded / total) * 100) : 0
+              return <span className="ml-auto text-zinc-600">{pct}% textured</span>
+            })()}
+          </div>
+        )}
       </div>
+
+      {/* Pipeline report — shown when fetched */}
+      {showPipeline && pipelineReport && (
+        <PipelineReportPanel
+          report={pipelineReport}
+          onClose={() => setShowPipeline(false)}
+        />
+      )}
 
       {/* Filters */}
       <div className="flex gap-2 border-b border-zinc-800 px-3 py-2">
@@ -208,7 +331,7 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
           <option value="loaded">Loaded</option>
           <option value="pending">Pending</option>
           <option value="missing">Failed</option>
-          <option value="no-mapping">No Mapping</option>
+          <option value="no-mapping">No Key</option>
           <option value="water">Water</option>
         </select>
       </div>
@@ -232,9 +355,163 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
               : `No blocks match current filter.`}
           </p>
         ) : (
-          filtered.map((b) => <DebugRow key={b.id} block={b} registry={registry} />)
+          filtered.map((b) => (
+            <DebugRow
+              key={b.id}
+              block={b}
+              registry={registry}
+              worldPath={worldPath}
+              blockMethod={pipelineReport?.block_methods?.[String(b.id)]}
+            />
+          ))
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Pipeline report panel ──────────────────────────────────────────────────
+function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onClose: () => void }) {
+  const categories: PipelineCategory[] = Object.entries(report.categories).map(([cat, count]) => ({
+    category: cat,
+    count,
+    examples: report.examples[cat] ?? [],
+  }))
+
+  const resolvedPct = report.total > 0
+    ? Math.round((report.pipeline_resolved / report.total) * 100)
+    : 0
+
+  return (
+    <div className="border-b border-indigo-900 bg-indigo-950/30 px-4 py-3 font-mono text-xs">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-semibold text-indigo-300">Pipeline Report</span>
+        <button
+          onClick={onClose}
+          className="text-indigo-600 hover:text-indigo-300"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Summary row */}
+      <div className="mb-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+        <span className="text-emerald-400">{report.pipeline_resolved} resolved</span>
+        <span className="text-amber-400">{report.pipeline_unresolved} unresolved</span>
+        <span className="ml-auto text-indigo-500">{resolvedPct}% of {report.total} blocks</span>
+      </div>
+      {/* Per-stage breakdown */}
+      <div className="mb-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+        {report.override_resolved > 0 && (
+          <span className="text-violet-400">{report.override_resolved} override</span>
+        )}
+        {(report.forge_dump_resolved + report.forge_dump_ambiguous) > 0 && (
+          <span className="text-sky-400">
+            {report.forge_dump_resolved + report.forge_dump_ambiguous} forge dump
+            {report.forge_dump_ambiguous > 0 && <span className="text-orange-400"> ({report.forge_dump_ambiguous} ~)</span>}
+          </span>
+        )}
+        {report.modern_resolved > 0 && (
+          <span className="text-blue-400">{report.modern_resolved} modern</span>
+        )}
+        {report.legacy_resolved > 0 && (
+          <span className="text-teal-400">{report.legacy_resolved} legacy</span>
+        )}
+      </div>
+
+      {/* Forge dump status */}
+      <div className="mb-2 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-[10px]">
+        {report.forge_dump_loaded ? (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            <span className="text-sky-400">✓ Forge dump loaded</span>
+            <span className="text-zinc-500">{report.forge_dump_block_count.toLocaleString()} blocks</span>
+            {report.forge_dump_path && (
+              <span className="truncate text-zinc-600" title={report.forge_dump_path}>
+                {report.forge_dump_path.split(/[/\\]/).pop()}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-amber-500">
+            ✗ Forge dump not loaded — build &amp; install AtlasDumper mod, run GTNH once
+          </span>
+        )}
+      </div>
+      {/* Legacy confidence breakdown */}
+      {report.legacy_resolved > 0 && (
+        <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 pl-2 text-[10px]">
+          {report.legacy_high > 0 && (
+            <span className="text-teal-300">{report.legacy_high} high</span>
+          )}
+          {report.legacy_medium > 0 && (
+            <span className="text-emerald-300">{report.legacy_medium} medium</span>
+          )}
+          {report.legacy_low > 0 && (
+            <span className="text-amber-300">{report.legacy_low} low</span>
+          )}
+          {report.legacy_ambiguous > 0 && (
+            <span className="text-orange-400">{report.legacy_ambiguous} ambiguous</span>
+          )}
+        </div>
+      )}
+      <div className="mb-2 flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] text-zinc-600">
+        <span>{report.blockstate_count} blockstates</span>
+        <span>{report.model_count} models</span>
+        <span>{report.texture_color_count} textures</span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+        <div
+          className="h-full rounded-full bg-emerald-600 transition-[width]"
+          style={{ width: `${resolvedPct}%` }}
+        />
+      </div>
+
+      {/* Failure category breakdown */}
+      <div className="flex flex-col gap-1">
+        {categories.map(({ category, count, examples }) => (
+          <details key={category} className="group">
+            <summary className="flex cursor-pointer items-baseline gap-2 list-none">
+              <span className="text-amber-400 tabular-nums">{count.toLocaleString()}</span>
+              <span className="text-zinc-300">{CATEGORY_LABELS[category] ?? category}</span>
+              <span className="ml-auto text-[10px] text-zinc-600 group-open:hidden">▶</span>
+              <span className="ml-auto text-[10px] text-zinc-600 hidden group-open:inline">▼</span>
+            </summary>
+            {examples.length > 0 && (
+              <div className="ml-4 mt-1 flex flex-col gap-0.5">
+                {examples.map((ex) => (
+                  <span key={ex} className="truncate text-[10px] text-zinc-500">{ex}</span>
+                ))}
+              </div>
+            )}
+          </details>
+        ))}
+      </div>
+
+      {/* Legacy resolution samples by confidence */}
+      {report.legacy_examples && Object.keys(report.legacy_examples).length > 0 && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-indigo-900 pt-2">
+          <span className="text-[10px] text-indigo-400">Legacy samples</span>
+          {Object.entries(report.legacy_examples).map(([tag, exs]) => (
+            <details key={tag} className="group">
+              <summary className="flex cursor-pointer items-baseline gap-2 list-none">
+                <span className={`rounded px-1 font-mono text-[9px] ${METHOD_CLASS[tag] ?? 'bg-zinc-800 text-zinc-400'}`}>
+                  {METHOD_LABEL[tag] ?? tag}
+                </span>
+                <span className="text-[10px] text-zinc-500">{exs.length} shown</span>
+                <span className="ml-auto text-[10px] text-zinc-600 group-open:hidden">▶</span>
+                <span className="ml-auto text-[10px] text-zinc-600 hidden group-open:inline">▼</span>
+              </summary>
+              <div className="ml-4 mt-1 flex flex-col gap-0.5">
+                {exs.map((ex) => (
+                  <span key={ex} className="truncate text-[10px] text-zinc-500">{ex}</span>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -302,8 +579,19 @@ function RenderProof({ rt }: { rt: RenderTotals }) {
   )
 }
 
-function DebugRow({ block: b, registry }: { block: DebugBlockView; registry?: BlockRenderRegistry }) {
+function DebugRow({
+  block: b,
+  registry,
+  worldPath,
+  blockMethod,
+}: {
+  block: DebugBlockView
+  registry?: BlockRenderRegistry
+  worldPath?: string
+  blockMethod?: string
+}) {
   const [copied, setCopied] = useState(false)
+  const [tracing, setTracing] = useState(false)
   const texImg    = b.texKey ? getTexture(b.texKey) : null
   const status    = b.texStatus
   const tintLabel = TINT_LABEL[b.tintType]
@@ -327,6 +615,50 @@ function DebugRow({ block: b, registry }: { block: DebugBlockView; registry?: Bl
     await navigator.clipboard.writeText(suggestedEntry)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  async function traceBlockPipeline() {
+    if (!worldPath || !b.name || tracing) return
+    setTracing(true)
+    try {
+      const url = `${API_BASE}/worlds/pipeline-trace?world_path=${encodeURIComponent(worldPath)}&registry_name=${encodeURIComponent(b.name)}&meta=0`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const data = await res.json() as Record<string, any>
+      console.group(`[atlas:pipeline] ${b.name}`)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const step of (data.trace ?? []) as { ok: boolean; step: string }[]) {
+        console.log(`${step.ok ? '✓' : '✗'} ${step.step}`)
+      }
+      if (data.resolved) {
+        const conf  = data.confidence  ? ` | confidence=${data.confidence}` : ''
+        const amb   = data.is_ambiguous ? ' | AMBIGUOUS' : ''
+        const side  = data.side_used !== undefined ? ` | side=${data.side_used}` : ''
+        const exact = data.meta_exact  === false ? ' | meta→0' : ''
+        console.log(
+          `%c→ Resolved: ${data.texture_key}  [method=${data.method}${side}${exact}${conf}${amb}]`,
+          'color:#34d399',
+        )
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const candidates = (data.top_candidates ?? []) as { key: string; score: number; notes: string }[]
+        if (candidates.length > 0) {
+          console.group('Top candidates:')
+          candidates.forEach((c, i) => {
+            const marker = i === 0 ? '← chosen' : ''
+            console.log(`  ${i + 1}. ${c.key}  score=${c.score}${c.notes ? `  ${c.notes}` : ''}  ${marker}`)
+          })
+          console.groupEnd()
+        }
+      } else {
+        console.log(`%c→ Failed: ${data.failure_reason}`, 'color:#f87171')
+      }
+      console.groupEnd()
+    } catch (err) {
+      console.error('[atlas:pipeline] Trace failed:', err)
+    } finally {
+      setTracing(false)
+    }
   }
 
   const isFallback = status === 'no-mapping' || status === 'missing'
@@ -365,13 +697,17 @@ function DebugRow({ block: b, registry }: { block: DebugBlockView; registry?: Bl
           <span className="truncate font-mono text-[10px] text-zinc-500">{renderMode}</span>
         </div>
 
-        {/* Tint badge */}
+        {/* Tint / method badge */}
         <span className="w-16 shrink-0">
-          {tintLabel && (
+          {tintLabel ? (
             <span className={`rounded px-1 py-0.5 font-mono text-[9px] ${tintClass}`}>
               {tintLabel}
             </span>
-          )}
+          ) : blockMethod ? (
+            <span className={`rounded px-1 py-0.5 font-mono text-[9px] ${METHOD_CLASS[blockMethod] ?? 'bg-zinc-800 text-zinc-500'}`}>
+              {METHOD_LABEL[blockMethod] ?? blockMethod}
+            </span>
+          ) : null}
         </span>
 
         {/* Status */}
@@ -404,13 +740,25 @@ function DebugRow({ block: b, registry }: { block: DebugBlockView; registry?: Bl
             )}
           </div>
           {isFallback && (
-            <button
-              onClick={() => void copyJson()}
-              className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
-              title="Copy suggested JSON rule to clipboard"
-            >
-              {copied ? 'copied!' : 'copy JSON'}
-            </button>
+            <div className="flex shrink-0 gap-1">
+              {worldPath && b.name && (
+                <button
+                  onClick={() => void traceBlockPipeline()}
+                  disabled={tracing}
+                  className="rounded bg-indigo-900 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
+                  title="Trace blockstate pipeline to console"
+                >
+                  {tracing ? '…' : 'trace'}
+                </button>
+              )}
+              <button
+                onClick={() => void copyJson()}
+                className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                title="Copy suggested JSON rule to clipboard"
+              >
+                {copied ? 'copied!' : 'copy JSON'}
+              </button>
+            </div>
           )}
         </div>
       )}

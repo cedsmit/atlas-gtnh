@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "atlas_dumper",
+    "name": "Atlas Icon Dumper",
+    "description": "Exports Forge block icon mappings to JSON for use by Atlas GTNH. Run GTNH client once to generate config/atlas/icon_dump.json.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["Atlas GTNH"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

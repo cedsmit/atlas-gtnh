@@ -5,13 +5,13 @@ import type { BlockColorMap } from '../api/blockColors'
 import type { ChunkData } from '../api/chunks'
 import type { RegionSummary } from '../api/regions'
 import { API_BASE } from '../lib/api'
-import { biomeTints, blockColorRGB } from '../lib/blockColors'
+import { biomeTints, blockColorRGB, metaBlockColorRGB, resolveMetadataTint } from '../lib/blockColors'
 import { textureDebugStore } from '../lib/textureDebugStore'
 import {
   type BlockRenderRegistry,
   createResolvedRegistry,
 } from '../lib/blockRenderRegistry'
-import { type RenderConfig, presetToConfig, shouldShowOverlay, BUILT_IN_PRESETS } from '../lib/renderPresets'
+import { type RenderConfig, type TextureFilter, presetToConfig, shouldShowOverlay, BUILT_IN_PRESETS } from '../lib/renderPresets'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
 import { getTexture, onTextureLoad } from '../lib/textureLoader'
@@ -36,6 +36,7 @@ function renderChunkImage(
   data: ChunkData,
   colorMap: BlockColorMap | undefined,
   textureKeys: Record<number, string> | undefined,
+  metaTextureKeys: Record<string, string> | undefined,
   registry: BlockRenderRegistry,
   config: RenderConfig,
   recordDebug: boolean, // only true on first render to avoid double-counting
@@ -46,21 +47,26 @@ function renderChunkImage(
   const sections = [...data.sections].sort((a, b) => b.y - a.y)
 
   // ── Pass 1: classify every (x,z) column ─────────────────────────────
-  // baseY/baseId/baseMeta: highest OPAQUE block — defines terrain height.
+  // baseY/baseId/baseMeta: highest surface block (may be transparent).
+  // underY/underId/underMeta: first solid block beneath a transparent surface.
   // overlayLists: OVERLAY blocks above the base, bottom-to-top draw order.
   // floorY: first solid block below a water surface (for depth shading).
   const baseY    = new Int16Array(256).fill(-1)
   const baseId   = new Uint16Array(256)
   const baseMeta = new Uint8Array(256)
   const floorY   = new Int16Array(256).fill(-1)
+  const underY   = new Int16Array(256).fill(-1)  // block below a transparent surface
+  const underId  = new Uint16Array(256)
+  const underMeta = new Uint8Array(256)
   // Each entry is [id, meta] pairs accumulated top-down then reversed.
   const overlayLists: ([number, number][] | null)[] = new Array(256).fill(null)
 
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
       const i = z * 16 + x
-      let foundBase = false
-      let inWater   = false
+      let foundBase  = false
+      let inWater    = false
+      let needUnder  = false  // scanning for block below a transparent surface
       let colOverlays: [number, number][] | null = null
 
       outer: for (const section of sections) {
@@ -87,7 +93,16 @@ function renderChunkImage(
               baseMeta[i] = section.data[idx]
               foundBase   = true
               inWater     = def.category === 'fluid' && def.tint === 'water'
-              if (!inWater) break outer
+              needUnder   = def.category === 'transparent'
+              if (!inWater && !needUnder) break outer
+            }
+          } else if (needUnder) {
+            // Continue scanning below a transparent block to find the terrain.
+            if (def.category !== 'overlay') {
+              underY[i]    = absY
+              underId[i]   = id
+              underMeta[i] = section.data[idx]
+              break outer
             }
           } else if (inWater && !(def.category === 'fluid' && def.tint === 'water')) {
             floorY[i] = absY
@@ -142,7 +157,8 @@ function renderChunkImage(
       const meta      = baseMeta[i]
       const blockY    = baseY[i]
       const baseDef   = registry.lookup(id)
-      const isWater   = baseDef.category === 'fluid' && baseDef.tint === 'water'
+      const isWater       = baseDef.category === 'fluid' && baseDef.tint === 'water'
+      const isTransparent = baseDef.category === 'transparent'
       const isGrass   = baseDef.tint === 'grass'
       const isFoliage = baseDef.tint === 'foliage'
       const isBiome   = (isGrass || isFoliage) && config.biomeTint
@@ -160,18 +176,26 @@ function renderChunkImage(
         r = Math.max(10, 40 - depth * 1.5)
         g = Math.max(30, 80 - depth * 2)
         b = Math.min(255, 160 + depth * 3)
+      } else if (baseDef.textureTint === 'metadata16' || baseDef.textureTint === 'custom') {
+        ;[r, g, b] = resolveMetadataTint(meta, baseDef.textureTintColors)
       } else {
-        const mapped = colorMap?.[id]
-        const raw    = mapped ?? blockColorRGB(id, meta)
-        r = raw[0]; g = raw[1]; b = raw[2]
-        if (mapped) {
-          const maxCh = Math.max(r, g, b)
-          if (maxCh === 0) { r = g = b = 130 }
-          else if (maxCh < 80) {
-            const boost = 80 / maxCh
-            r = Math.min(255, Math.round(r * boost))
-            g = Math.min(255, Math.round(g * boost))
-            b = Math.min(255, Math.round(b * boost))
+        // Check meta-specific color first (wool, stained glass/clay, planks, logs)
+        const metaColor = metaBlockColorRGB(id, meta)
+        if (metaColor) {
+          r = metaColor[0]; g = metaColor[1]; b = metaColor[2]
+        } else {
+          const mapped = colorMap?.[id]
+          const raw    = mapped ?? blockColorRGB(id, meta)
+          r = raw[0]; g = raw[1]; b = raw[2]
+          if (mapped) {
+            const maxCh = Math.max(r, g, b)
+            if (maxCh === 0) { r = g = b = 130 }
+            else if (maxCh < 80) {
+              const boost = 80 / maxCh
+              r = Math.min(255, Math.round(r * boost))
+              g = Math.min(255, Math.round(g * boost))
+              b = Math.min(255, Math.round(b * boost))
+            }
           }
         }
       }
@@ -192,13 +216,13 @@ function renderChunkImage(
         b = Math.round(lum + (b - lum) * sat)
       }
 
-      const texKey = !isWater ? (textureKeys?.[id] ?? null) : null
+      const texKey = !isWater ? (baseDef.textureAlias ?? metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null) : null
       // For 'simplified' foliage mode, skip the texture so only the biome fill renders.
       const skipTex = config.foliageMode === 'simplified' && isFoliage
       const texImg  = config.terrainTextures && !skipTex && texKey ? getTexture(texKey) : null
 
-      // Counters
-      if (!isWater) {
+      // Counters (skip for flat-mode blocks — they intentionally have no texture)
+      if (!isWater && baseDef.mapRenderMode !== 'flat') {
         if (!texKey)      missingTexKey++
         else if (!texImg) failedTexLoad++
       }
@@ -208,14 +232,119 @@ function renderChunkImage(
       // Biome-tinted base (grass, leaves, …):
       //   Fill the biome color first so transparent texture pixels adopt it,
       //   then multiply-draw the texture to tint opaque pixels.
-      //   Result: pixels with alpha>0 → texture_rgb × biome_rgb
-      //           pixels with alpha=0 → biome_rgb (background bleeds through)
+      //
+      // Transparent base (glass, ice, stained glass):
+      //   Draw the block below first, then composite the transparent block
+      //   texture on top at ~50% alpha so terrain shows through.
       //
       // Non-biome base: fill block color, source-over texture.
       // Saturation filter string — set on ctx around texture draws to mute texture colours.
       const satFilter = sat < 1.0 ? `saturate(${Math.round(sat * 100)}%)` : ''
 
-      if (isBiome) {
+      if (isTransparent && underY[i] >= 0) {
+        // ── Transparent block: render terrain below, then glass on top ──
+        const uId   = underId[i]
+        const uMeta = underMeta[i]
+        const uDef  = registry.lookup(uId)
+        const uIsGrass   = uDef.tint === 'grass'
+        const uIsFoliage = uDef.tint === 'foliage'
+        const uIsBiome   = (uIsGrass || uIsFoliage) && config.biomeTint
+
+        let ur: number, ug: number, ub: number
+        if (uIsGrass)        { ;[ur, ug, ub] = grassTints[i] }
+        else if (uIsFoliage) { ;[ur, ug, ub] = foliageTints[i] }
+        else {
+          const uMeta2 = metaBlockColorRGB(uId, uMeta)
+          if (uMeta2) {
+            ur = uMeta2[0]; ug = uMeta2[1]; ub = uMeta2[2]
+          } else {
+            const uMapped = colorMap?.[uId]
+            const uRaw    = uMapped ?? blockColorRGB(uId, uMeta)
+            ur = uRaw[0]; ug = uRaw[1]; ub = uRaw[2]
+            if (uMapped) {
+              const maxCh = Math.max(ur, ug, ub)
+              if (maxCh === 0) { ur = ug = ub = 130 }
+              else if (maxCh < 80) {
+                const boost = 80 / maxCh
+                ur = Math.min(255, Math.round(ur * boost))
+                ug = Math.min(255, Math.round(ug * boost))
+                ub = Math.min(255, Math.round(ub * boost))
+              }
+            }
+          }
+        }
+        if (sat < 1.0) {
+          const lum = 0.299 * ur + 0.587 * ug + 0.114 * ub
+          ur = Math.round(lum + (ur - lum) * sat)
+          ug = Math.round(lum + (ug - lum) * sat)
+          ub = Math.round(lum + (ub - lum) * sat)
+        }
+
+        const uTexKey = metaTextureKeys?.[`${uId}:${uMeta}`] ?? textureKeys?.[uId] ?? null
+        const uTexImg = config.terrainTextures && uTexKey ? getTexture(uTexKey) : null
+
+        // Draw under-block
+        if (uIsBiome) {
+          ctx.fillStyle = `rgb(${ur},${ug},${ub})`
+          ctx.fillRect(px, pz, CELL, CELL)
+          if (uTexImg) {
+            if (satFilter) ctx.filter = satFilter
+            ctx.globalCompositeOperation = 'multiply'
+            ctx.drawImage(uTexImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+            ctx.globalCompositeOperation = 'source-over'
+            if (satFilter) ctx.filter = 'none'
+            drawImage++
+          }
+        } else {
+          ctx.fillStyle = `rgb(${ur},${ug},${ub})`
+          ctx.fillRect(px, pz, CELL, CELL)
+          if (uTexImg) {
+            if (satFilter) ctx.filter = satFilter
+            ctx.drawImage(uTexImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+            if (satFilter) ctx.filter = 'none'
+            drawImage++
+          }
+        }
+
+        // Draw transparent block on top at partial alpha
+        if (baseDef.mapRenderMode === 'flat') {
+          // Flat map override: skip texture entirely, fill with meta color at mapOpacity.
+          // Used for blocks like Ztones glaxx whose in-game texture is just a flat tinted
+          // transparent square — no vanilla glass streak pattern should appear.
+          const opacity = baseDef.mapOpacity ?? 0.40
+          ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
+          ctx.fillRect(px, pz, CELL, CELL)
+          fillRect++
+        } else if (texImg && (baseDef.textureTint === 'metadata16' || baseDef.textureTint === 'custom')) {
+          // Tinted transparent block: fill tint color, multiply texture, restore alpha, draw at 50%
+          miniCtx.clearRect(0, 0, 16, 16)
+          miniCtx.fillStyle = `rgb(${r},${g},${b})`
+          miniCtx.fillRect(0, 0, 16, 16)
+          miniCtx.globalCompositeOperation = 'multiply'
+          miniCtx.drawImage(texImg, 0, 0, 16, 16)
+          if (baseDef.preserveAlpha) {
+            miniCtx.globalCompositeOperation = 'destination-in'
+            miniCtx.drawImage(texImg, 0, 0, 16, 16)
+          }
+          miniCtx.globalCompositeOperation = 'source-over'
+          ctx.globalAlpha = 0.50
+          ctx.drawImage(mini, 0, 0, 16, 16, px, pz, CELL, CELL)
+          ctx.globalAlpha = 1.0
+          drawImage++
+        } else if (texImg) {
+          ctx.globalAlpha = 0.50
+          if (satFilter) ctx.filter = satFilter
+          ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
+          ctx.globalAlpha = 1.0
+          if (satFilter) ctx.filter = 'none'
+          drawImage++
+        } else {
+          const opacity = baseDef.mapOpacity ?? 0.40
+          ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
+          ctx.fillRect(px, pz, CELL, CELL)
+          fillRect++
+        }
+      } else if (isBiome) {
         ctx.fillStyle = `rgb(${r},${g},${b})`
         ctx.fillRect(px, pz, CELL, CELL)
         if (texImg) {
@@ -265,8 +394,8 @@ function renderChunkImage(
       // grass/foliage tint without contaminating their transparent areas.
       const overlays = overlayLists[i]
       if (overlays) {
-        for (const [ovId] of overlays) {
-          const ovKey = textureKeys?.[ovId] ?? null
+        for (const [ovId, ovMeta] of overlays) {
+          const ovKey = metaTextureKeys?.[`${ovId}:${ovMeta}`] ?? textureKeys?.[ovId] ?? null
           const ovImg = ovKey ? getTexture(ovKey) : null
           if (!ovImg) continue
 
@@ -435,13 +564,28 @@ function elevColor(y: number): [number, number, number] {
   return [Math.round(220 + t * 35), Math.round(230 + t * 25), Math.round(20 + t * 235)]
 }
 
-function makeChunkTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
+function makeChunkTexture(canvas: HTMLCanvasElement, filter: TextureFilter = 'pixel'): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
-  tex.magFilter  = THREE.NearestFilter
-  tex.minFilter  = THREE.LinearMipMapLinearFilter  // smooth downsampling at far zoom
   tex.generateMipmaps = true
+  if (filter === 'pixel') {
+    tex.magFilter = THREE.NearestFilter
+    tex.minFilter = THREE.NearestMipMapLinearFilter
+  } else {
+    tex.magFilter = THREE.LinearFilter
+    tex.minFilter = THREE.LinearMipMapLinearFilter
+  }
   return tex
+}
+
+function upscaleCanvas(src: HTMLCanvasElement, size: number): HTMLCanvasElement {
+  const dst = document.createElement('canvas')
+  dst.width = dst.height = size
+  const ctx = dst.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(src, 0, 0, size, size)
+  return dst
 }
 
 // ── Canvas diagnostics ─────────────────────────────────────────────────────
@@ -484,11 +628,47 @@ const MAX_SCALE       = 32
 const FETCH_MIN_SCALE = 0.25
 const MAX_CONCURRENT  = 128
 
+// ── Filter pipeline info overlay (debug mode only) ────────────────────────
+function FilterPipelineInfo({ filter }: { filter: TextureFilter }) {
+  const isJM     = filter === 'journeymap'
+  const isPixel  = filter === 'pixel'
+  const canvasSize  = isJM ? '256×256 → 512×512' : '256×256'
+  const magFilter   = isPixel ? 'NearestFilter'  : 'LinearFilter'
+  const minFilter   = isPixel ? 'NearestMipMapLinear' : 'LinearMipMapLinear'
+  const smoothing   = isJM   ? 'true (upscale ctx)' : 'false'
+  const upscaled    = isJM   ? 'yes — 2× bilinear' : 'no'
+  return (
+    <div className="pointer-events-none absolute bottom-2 right-2 rounded border border-zinc-700 bg-black/80 px-2 py-1.5 font-mono text-[10px] text-zinc-300">
+      <div className="mb-0.5 font-semibold text-zinc-200">Filter pipeline: {filter}</div>
+      <table className="border-separate" style={{ borderSpacing: '0 1px' }}>
+        <tbody>
+          <Row label="canvas"    value={canvasSize} />
+          <Row label="upscaled"  value={upscaled}   highlight={isJM} />
+          <Row label="magFilter" value={magFilter}  />
+          <Row label="minFilter" value={minFilter}  />
+          <Row label="mipmaps"   value="true"       />
+          <Row label="smoothing" value={smoothing}  highlight={isJM} />
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Row({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
+  return (
+    <tr>
+      <td className="pr-3 text-zinc-500">{label}</td>
+      <td className={highlight ? 'text-cyan-300' : 'text-zinc-200'}>{value}</td>
+    </tr>
+  )
+}
+
 interface Props {
   dimensionPath: string
   regions: RegionSummary[]
   blockColors?: BlockColorMap
   textureKeys?: Record<number, string>
+  metaTextureKeys?: Record<string, string>
   worldPath?: string
   blockNames?: Record<number, string>
   registry?: BlockRenderRegistry
@@ -501,6 +681,7 @@ export function WorldMap({
   regions,
   blockColors,
   textureKeys,
+  metaTextureKeys,
   worldPath: _worldPath,
   blockNames,
   registry: registryProp,
@@ -511,9 +692,10 @@ export function WorldMap({
   const hudRef        = useRef<HTMLDivElement>(null)
   const inspectorRef  = useRef<HTMLDivElement>(null)
 
-  const blockColorsRef = useRef(blockColors);  blockColorsRef.current = blockColors
-  const textureKeysRef = useRef(textureKeys);  textureKeysRef.current = textureKeys
-  const blockNamesRef  = useRef(blockNames);   blockNamesRef.current  = blockNames
+  const blockColorsRef     = useRef(blockColors);     blockColorsRef.current     = blockColors
+  const textureKeysRef     = useRef(textureKeys);     textureKeysRef.current     = textureKeys
+  const metaTextureKeysRef = useRef(metaTextureKeys); metaTextureKeysRef.current = metaTextureKeys
+  const blockNamesRef      = useRef(blockNames);      blockNamesRef.current      = blockNames
   const configRef      = useRef(configProp ?? DEFAULT_CONFIG)
   configRef.current    = configProp ?? DEFAULT_CONFIG
   const debugModeRef   = useRef(debugMode);    debugModeRef.current   = debugMode
@@ -788,6 +970,7 @@ export function WorldMap({
             data,
             blockColorsRef.current,
             textureKeysRef.current,
+            metaTextureKeysRef.current,
             registryRef.current,
             configRef.current,
             true,
@@ -819,7 +1002,9 @@ export function WorldMap({
 
           // ── Upload to GPU ──
           st.dataCache.set(key, data)
-          const chunkTex = makeChunkTexture(image)
+          const texFilter = configRef.current.textureFilter ?? 'pixel'
+          const uploadCanvas = texFilter === 'journeymap' ? upscaleCanvas(image, 512) : image
+          const chunkTex = makeChunkTexture(uploadCanvas, texFilter)
           if (dbg) {
             console.log(
               `[atlas:chunk] texture   ${mcx},${mcz}` +
@@ -943,6 +1128,7 @@ export function WorldMap({
               chunkData,
               blockColorsRef.current,
               textureKeysRef.current,
+              metaTextureKeysRef.current,
               registryRef.current,
               configRef.current,
               false,
@@ -959,7 +1145,9 @@ export function WorldMap({
             }
             const mat = entry.material as THREE.MeshBasicMaterial
             mat.map?.dispose()
-            mat.map = makeChunkTexture(newImg)
+            const texFilter = configRef.current.textureFilter ?? 'pixel'
+            const uploadCanvas = texFilter === 'journeymap' ? upscaleCanvas(newImg, 512) : newImg
+            mat.map = makeChunkTexture(uploadCanvas, texFilter)
             mat.needsUpdate = true
             st.texVersionAtRender.set(key, st.texVersion)
             rerendered++
@@ -1119,12 +1307,15 @@ export function WorldMap({
         : shade > 0 ? `+${shade} (lit)` : shade < 0 ? `${shade} (shadow)` : '0 (flat)'
 
       const biomeId    = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
-      const texKey     = textureKeysRef.current?.[topId] ?? null
+      const topDef     = registryRef.current.lookup(topId)
+      const texKey     = topDef.textureAlias
+        ?? metaTextureKeysRef.current?.[`${topId}:${topMeta}`]
+        ?? textureKeysRef.current?.[topId]
+        ?? null
       const texImg     = texKey ? getTexture(texKey) : null
       const hasTexture = !!texImg
       const name       = blockNamesRef.current?.[topId] ?? `block:${topId}`
 
-      const topDef  = registryRef.current.lookup(topId)
       let raw: readonly [number, number, number]
       let colorSrc: string
       if (topDef.tint === 'grass') {
@@ -1133,6 +1324,9 @@ export function WorldMap({
       } else if (topDef.tint === 'foliage') {
         raw = biomeTints(biomeId >= 0 ? biomeId : 1).foliage
         colorSrc = hasTexture ? 'texture + foliage tint' : 'biome foliage'
+      } else if (topDef.textureTint === 'metadata16' || topDef.textureTint === 'custom') {
+        raw = resolveMetadataTint(topMeta, topDef.textureTintColors)
+        colorSrc = hasTexture ? 'texture + meta tint' : 'meta tint'
       } else {
         const mapped = blockColorsRef.current?.[topId]
         raw = mapped ?? blockColorRGB(topId, topMeta)
@@ -1143,8 +1337,11 @@ export function WorldMap({
       const texStatus = hasTexture ? '✓ loaded' : texKey ? '⏳ loading…' : '✗ no mapping'
       const renderInfo =
         topDef.category +
-        (topDef.tint                                        ? ` · tint:${topDef.tint}`        : '') +
-        (topDef.alphaMode && topDef.alphaMode !== 'opaque' ? ` · alpha:${topDef.alphaMode}`  : '') +
+        (topDef.tint                                         ? ` · tint:${topDef.tint}`           : '') +
+        (topDef.textureTint && topDef.textureTint !== 'none'
+          ? ` · tex-tint:${topDef.textureTint}${topDef.textureTintColors ? ' custom' : ''}`
+          : '') +
+        (topDef.alphaMode && topDef.alphaMode !== 'opaque'  ? ` · alpha:${topDef.alphaMode}`     : '') +
         ` · src:${topDef.resolverSource}`
       const yLine = terrainYv >= 0 && terrainYv !== topYv
         ? `Y ${topYv}  terrain ${terrainYv}`
@@ -1155,7 +1352,7 @@ export function WorldMap({
         `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}<br>` +
         `slope: <span style="opacity:.75">${slopeStr}</span><br>` +
         `render: <span style="opacity:.75">${renderInfo}</span><br>` +
-        `tex: ${texKey ?? 'none'} — ${texStatus}<br>` +
+        `tex: ${texKey ?? 'none'}${topDef.textureAlias ? ' (alias)' : ''} — ${texStatus}<br>` +
         `color: <span style="display:inline-block;width:10px;height:10px;background:${hex};border:1px solid #888"></span> ${hex}` +
         `  <span style="opacity:.6">(${colorSrc})</span>` +
         `<br><button id="atlas-copy-block" style="margin-top:4px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;color:#ccc">copy</button>`
@@ -1167,7 +1364,7 @@ export function WorldMap({
             name,
             `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}`,
             `slope: ${slopeStr}`,
-            `tex: ${texKey ?? 'none'} — ${texStatus}`,
+            `tex: ${texKey ?? 'none'}${topDef.textureAlias ? ' (alias)' : ''} — ${texStatus}`,
             `color: ${hex} (${colorSrc})`,
           ]
           await navigator.clipboard.writeText(lines.join('\n'))
@@ -1255,6 +1452,9 @@ export function WorldMap({
       >
         ⌖ fit
       </button>
+      {debugMode && (
+        <FilterPipelineInfo filter={configProp?.textureFilter ?? 'pixel'} />
+      )}
       <div
         ref={inspectorRef}
         className="pointer-events-auto absolute hidden rounded border border-zinc-600 bg-black/80 px-2 py-1 font-mono text-xs text-zinc-200"

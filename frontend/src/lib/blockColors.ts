@@ -340,6 +340,151 @@ function hslToRgb(h: number, s: number, l: number): readonly [number, number, nu
   return [f(0), f(8), f(4)]
 }
 
+// ── Meta-variant fallback colors ───────────────────────────────────────────────
+// Used when a meta-specific texture hasn't loaded yet. Avoids showing the
+// generic single-meta color (e.g. white wool) for all variants.
+
+const WOOL_META: readonly (readonly [number, number, number])[] = [
+  [233, 236, 236], // 0  white
+  [240, 118,  19], // 1  orange
+  [189,  68, 179], // 2  magenta
+  [107, 138, 201], // 3  light blue
+  [248, 197,  39], // 4  yellow
+  [112, 185,  25], // 5  lime
+  [237, 141, 172], // 6  pink
+  [ 62,  68,  71], // 7  gray
+  [142, 142, 134], // 8  light gray
+  [ 21, 137, 145], // 9  cyan
+  [121,  42, 172], // 10 purple
+  [ 53,  57, 157], // 11 blue
+  [114,  71,  40], // 12 brown
+  [ 84, 109,  27], // 13 green
+  [161,  39,  34], // 14 red
+  [ 20,  21,  25], // 15 black
+]
+
+const GLASS_META: readonly (readonly [number, number, number])[] = [
+  [214, 224, 228], // 0  white
+  [235, 160,  75], // 1  orange
+  [210, 139, 200], // 2  magenta
+  [163, 186, 220], // 3  light blue
+  [237, 228,  76], // 4  yellow
+  [165, 212, 136], // 5  lime
+  [236, 172, 186], // 6  pink
+  [126, 133, 135], // 7  gray
+  [189, 194, 188], // 8  light gray
+  [133, 193, 199], // 9  cyan
+  [170, 130, 198], // 10 purple
+  [130, 135, 201], // 11 blue
+  [165, 133, 115], // 12 brown
+  [153, 178, 119], // 13 green
+  [196, 130, 127], // 14 red
+  [104, 107, 112], // 15 black
+]
+
+const CLAY_META: readonly (readonly [number, number, number])[] = [
+  [209, 177, 161], // 0  white
+  [162,  84,  38], // 1  orange
+  [149,  88, 108], // 2  magenta
+  [113, 108, 138], // 3  light blue
+  [186, 133,  36], // 4  yellow
+  [103, 117,  53], // 5  lime
+  [162,  78,  79], // 6  pink
+  [ 58,  58,  58], // 7  gray
+  [136, 127, 120], // 8  light gray
+  [ 86,  91,  91], // 9  cyan
+  [118,  70,  86], // 10 purple
+  [ 74,  60,  91], // 11 blue
+  [ 77,  51,  35], // 12 brown
+  [ 76,  83,  42], // 13 green
+  [143,  61,  46], // 14 red
+  [ 37,  22,  16], // 15 black
+]
+
+const PLANK_META: readonly (readonly [number, number, number])[] = [
+  [196, 165,  90], // 0 oak
+  [116,  82,  52], // 1 spruce
+  [199, 186, 125], // 2 birch
+  [155, 122,  73], // 3 jungle
+  [168,  90,  50], // 4 acacia
+  [ 75,  45,  15], // 5 dark oak
+]
+
+const LOG_META: readonly (readonly [number, number, number])[] = [
+  [107,  76,  17], // oak
+  [ 80,  70,  50], // spruce
+  [175, 165, 120], // birch
+  [ 97,  82,  28], // jungle
+]
+
+const LOG2_META: readonly (readonly [number, number, number])[] = [
+  [125,  90,  42], // acacia
+  [ 60,  40,  10], // dark oak
+]
+
+// Standard Minecraft dye colors in meta 0–15 order (wool, stained glass, dyed blocks, etc.)
+export const STANDARD_DYE_COLORS: readonly (readonly [number, number, number])[] = [
+  [240, 240, 240], // 0  white
+  [242, 130,  26], // 1  orange
+  [199,  78, 189], // 2  magenta
+  [ 58, 175, 217], // 3  light blue
+  [247, 227,  66], // 4  yellow
+  [112, 185,  25], // 5  lime
+  [237, 141, 172], // 6  pink
+  [ 62,  68,  71], // 7  gray
+  [142, 142, 134], // 8  light gray
+  [ 21, 137, 145], // 9  cyan
+  [121,  42, 172], // 10 purple
+  [ 53,  57, 157], // 11 blue
+  [114,  71,  40], // 12 brown
+  [ 84, 109,  27], // 13 green
+  [161,  39,  34], // 14 red
+  [ 20,  21,  25], // 15 black
+]
+
+/**
+ * Resolve a per-metadata tint color.
+ * 1. Uses tintColors[meta & 15] if provided (hex string, e.g. "#4eb234")
+ * 2. Falls back to STANDARD_DYE_COLORS[meta & 15]
+ * 3. Returns white if neither is available
+ */
+export function resolveMetadataTint(
+  meta: number,
+  tintColors?: readonly string[],
+): readonly [number, number, number] {
+  const idx = meta & 15
+  if (tintColors) {
+    const hex = tintColors[idx]
+    if (hex) {
+      const c = parseInt(hex.replace('#', ''), 16)
+      return [(c >> 16) & 255, (c >> 8) & 255, c & 255]
+    }
+  }
+  return STANDARD_DYE_COLORS[idx] ?? [255, 255, 255]
+}
+
+/**
+ * Return a hardcoded per-meta color for blocks whose appearance varies by
+ * metadata (wool, stained glass/clay, planks, logs, leaves).
+ * Returns null for blocks where meta doesn't affect color.
+ */
+export function metaBlockColorRGB(
+  id: number,
+  meta: number,
+): readonly [number, number, number] | null {
+  switch (id) {
+    case  35: return WOOL_META[meta & 15]  ?? null  // wool
+    case 171: return WOOL_META[meta & 15]  ?? null  // carpet
+    case  95: return GLASS_META[meta & 15] ?? null  // stained glass
+    case 160: return GLASS_META[meta & 15] ?? null  // stained glass pane
+    case 159: return CLAY_META[meta & 15]  ?? null  // stained hardened clay
+    case   5: return PLANK_META[meta & 7]  ?? null  // planks
+    case  17: return LOG_META[meta & 3]    ?? null  // log
+    case 162: return LOG2_META[meta & 1]   ?? null  // log2 (acacia/dark oak)
+    default:  return null
+  }
+}
+
 export function hardcodedBlockColor(
   id: number,
 ): readonly [number, number, number] | null {

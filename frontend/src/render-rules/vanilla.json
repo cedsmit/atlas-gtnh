@@ -41,6 +41,28 @@
     "minecraft:carrots":                         { "category": "overlay", "blockTags": ["flower"] },
     "minecraft:potatoes":                        { "category": "overlay", "blockTags": ["flower"] },
 
+    "minecraft:wheat":                           { "category": "overlay" },
+    "minecraft:carrots":                         { "category": "overlay" },
+    "minecraft:potatoes":                        { "category": "overlay" },
+
+    "minecraft:oak_stairs":                      { "category": "solid" },
+    "minecraft:stone_stairs":                    { "category": "solid" },
+    "minecraft:stone_brick_stairs":              { "category": "solid" },
+    "minecraft:birch_stairs":                    { "category": "solid" },
+    "minecraft:spruce_stairs":                   { "category": "solid" },
+    "minecraft:jungle_stairs":                   { "category": "solid" },
+    "minecraft:acacia_stairs":                   { "category": "solid" },
+    "minecraft:dark_oak_stairs":                 { "category": "solid" },
+    "minecraft:brick_stairs":                    { "category": "solid" },
+    "minecraft:nether_brick_stairs":             { "category": "solid" },
+    "minecraft:sandstone_stairs":                { "category": "solid" },
+    "minecraft:red_sandstone_stairs":            { "category": "solid" },
+    "minecraft:quartz_stairs":                   { "category": "solid" },
+
+    "minecraft:fence":                           { "category": "solid" },
+    "minecraft:fence_gate":                      { "category": "solid" },
+    "minecraft:nether_brick_fence":              { "category": "solid" },
+
     "minecraft:golden_rail":                     { "category": "overlay", "blockTags": ["rail"] },
     "minecraft:detector_rail":                   { "category": "overlay", "blockTags": ["rail"] },
     "minecraft:rail":                            { "category": "overlay", "blockTags": ["rail"] },
