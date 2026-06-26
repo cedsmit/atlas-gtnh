@@ -1,19 +1,21 @@
-"""SQLite-backed cache for texture scan results.
+"""SQLite-backed cache for texture scan results and JSON blockstate/model assets.
 
-Stores per-JAR texture colors keyed by (source_jar, jar_mtime).  When a JAR
-is unchanged the scan is skipped entirely — typical re-scans complete in
-milliseconds instead of minutes.
+Stores per-JAR texture colors and JSON assets keyed by (source_jar, jar_mtime).
+When a JAR is unchanged the scan is skipped entirely — typical re-scans complete
+in milliseconds instead of minutes.
 
 DB location: ~/.atlas_gtnh/colors.db
 """
 
+import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 _DB_PATH = Path.home() / ".atlas_gtnh" / "colors.db"
 
 # Bump this when the scan format changes to force a full rescan on next startup.
-_SCAN_VERSION = 3  # bumped: texture keys now normalized to lowercase
+_SCAN_VERSION = 4  # bumped: now also caches blockstate + model JSON assets
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS texture_colors (
@@ -28,8 +30,17 @@ CREATE TABLE IF NOT EXISTS texture_colors (
     dominant_b    INTEGER,
     PRIMARY KEY (registry_name, source_jar)
 );
+CREATE TABLE IF NOT EXISTS json_assets (
+    asset_type  TEXT NOT NULL,
+    asset_key   TEXT NOT NULL,
+    source_jar  TEXT NOT NULL,
+    jar_mtime   REAL NOT NULL,
+    content     TEXT NOT NULL,
+    PRIMARY KEY (asset_type, asset_key, source_jar)
+);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX IF NOT EXISTS idx_jar ON texture_colors (source_jar, jar_mtime);
+CREATE INDEX IF NOT EXISTS idx_json_jar ON json_assets (source_jar, jar_mtime);
 """
 
 
@@ -49,6 +60,10 @@ def _connect() -> sqlite3.Connection:
         stored = int(row[0]) if row else 0
         if stored < _SCAN_VERSION:
             conn.execute("DELETE FROM texture_colors")
+            try:
+                conn.execute("DELETE FROM json_assets")
+            except Exception:
+                pass
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('scan_version', ?)",
                 (str(_SCAN_VERSION),),
@@ -126,6 +141,77 @@ def save_jar_colors(
                 "(registry_name, source_jar, jar_mtime, avg_r, avg_g, avg_b, "
                 " dominant_r, dominant_g, dominant_b) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
+    except Exception:
+        pass
+
+
+def load_jar_json_assets(
+    jar_path: Path,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """
+    Return (blockstates, models) cached for *jar_path* if the mtime still matches.
+
+    Returns None when the JAR hasn't been scanned yet (caller should rescan).
+    Returns ({}, {}) when the JAR was scanned but contained no JSON assets.
+    """
+    try:
+        mtime = jar_path.stat().st_mtime
+        jar_str = str(jar_path)
+        with _connect() as conn:
+            rows = conn.execute(
+                "SELECT asset_type, asset_key, content FROM json_assets "
+                "WHERE source_jar = ? AND jar_mtime = ?",
+                (jar_str, mtime),
+            ).fetchall()
+        if not rows:
+            return None  # Not cached — caller must scan
+        blockstates: dict[str, Any] = {}
+        models: dict[str, Any] = {}
+        for asset_type, key, content_str in rows:
+            if asset_type == "_sentinel":
+                continue  # JAR was scanned but had no JSON assets
+            try:
+                parsed = json.loads(content_str)
+            except Exception:
+                continue
+            if asset_type == "bs":
+                blockstates[key] = parsed
+            elif asset_type == "m":
+                models[key] = parsed
+        return blockstates, models
+    except Exception:
+        return None
+
+
+def save_jar_json_assets(
+    jar_path: Path,
+    blockstates: dict[str, Any],
+    models: dict[str, Any],
+) -> None:
+    """
+    Persist blockstate and model JSON assets for *jar_path*.
+
+    Inserts a sentinel record when both dicts are empty so subsequent startups
+    know this JAR was already scanned and don't re-open it.
+    """
+    try:
+        mtime = jar_path.stat().st_mtime
+        jar_str = str(jar_path)
+        rows: list[tuple[str, str, str, float, str]] = []
+        for key, val in blockstates.items():
+            rows.append(("bs", key, jar_str, mtime, json.dumps(val, separators=(",", ":"))))
+        for key, val in models.items():
+            rows.append(("m", key, jar_str, mtime, json.dumps(val, separators=(",", ":"))))
+        if not rows:
+            rows.append(("_sentinel", "_empty", jar_str, mtime, "{}"))
+        with _connect() as conn:
+            conn.execute("DELETE FROM json_assets WHERE source_jar = ?", (jar_str,))
+            conn.executemany(
+                "INSERT OR REPLACE INTO json_assets "
+                "(asset_type, asset_key, source_jar, jar_mtime, content) "
+                "VALUES (?, ?, ?, ?, ?)",
                 rows,
             )
     except Exception:

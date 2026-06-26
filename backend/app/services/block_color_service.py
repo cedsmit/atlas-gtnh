@@ -2,10 +2,30 @@ import os
 import re
 import time
 from pathlib import Path
+from typing import Any
 
-from app.services.color_cache import load_jar_colors, save_jar_colors
+from app.services.blockstate_resolver import (
+    AssetDatabase,
+    resolve_block_texture,
+)
+from app.services.color_cache import (
+    load_jar_colors,
+    load_jar_json_assets,
+    save_jar_colors,
+    save_jar_json_assets,
+)
+from app.services.dump_resolver import (
+    get_dump_resolver,
+    resolve_db_key,
+    try_load_dump,
+)
+from app.services.legacy_resolver import resolve_legacy_texture
 from app.world.block_registry import read_block_id_map
-from app.world.texture_colors import scan_jar
+from app.world.texture_colors import scan_jar, scan_jar_assets
+
+# Prefixes stripped from block names before texture lookup.
+# Order matters — try most specific first.
+_BLOCK_NAME_PREFIXES = ["gt.block", "block", "tile.block", "block."]
 
 # Vanilla blocks where the registry name doesn't match the texture filename.
 _OVERRIDES: dict[str, str] = {
@@ -28,6 +48,18 @@ _OVERRIDES: dict[str, str] = {
     "minecraft:stained_glass_pane": "minecraft:glass_pane_top",
     "minecraft:piston": "minecraft:piston_top_normal",
     "minecraft:sticky_piston": "minecraft:piston_top_sticky",
+    "minecraft:oak_stairs": "minecraft:planks_oak",
+    "minecraft:stone_stairs": "minecraft:stone",
+    "minecraft:stone_brick_stairs": "minecraft:stonebrick",
+    "minecraft:birch_stairs": "minecraft:planks_birch",
+    "minecraft:spruce_stairs": "minecraft:planks_spruce",
+    "minecraft:jungle_stairs": "minecraft:planks_jungle",
+    "minecraft:acacia_stairs": "minecraft:planks_acacia",
+    "minecraft:dark_oak_stairs": "minecraft:planks_big_oak",
+    "minecraft:brick_stairs": "minecraft:brick",
+    "minecraft:nether_brick_stairs": "minecraft:nether_brick",
+    "minecraft:cobblestone_stairs": "minecraft:cobblestone",
+    "minecraft:wheat": "minecraft:wheat_stage_7",
     "minecraft:tallgrass": "minecraft:tallgrass",
     "minecraft:stone_brick": "minecraft:stonebrick",
     "minecraft:double_stone_brick": "minecraft:stonebrick",
@@ -59,12 +91,143 @@ _OVERRIDES: dict[str, str] = {
     "minecraft:fence_gate": "minecraft:planks_oak",
     "minecraft:nether_brick_fence": "minecraft:nether_brick",
     "minecraft:packed_ice": "minecraft:ice_packed",
+    # ── Modded transparent blocks ──────────────────────────────────────────
+    # Ztones glaxx: no dedicated texture in the JAR — use vanilla glass diamond pattern
+    "ztones:tile.glaxx":                           "minecraft:glass",
+    # AE2: FluixGlass texture file is BlockFluix.png, not BlockFluixGlass.png
+    "appliedenergistics2:tile.blockfluixglass":    "appliedenergistics2:blockfluix",
+    # EnderIO: texture files drop the "block" prefix
+    "enderio:blockfusedquartz":                    "enderio:fusedquartz",
+    "enderio:blockfusedquartzframed":              "enderio:fusedquartzframe",
+    # ── Blocks whose texture key uses a path suffix the auto-scanner can't infer ──
+    # Chisel: meta-variant blocks stored under subdirectory paths (cubit/0, hempcrete/concrete/white)
+    "chisel:cubit":                                "chisel:cubit/0",
+    "chisel:hempcrete":                            "chisel:hempcrete/concrete/white",
+    # Railcraft:cube is meta-variant (cube.steel, cube.copper, etc.); steel is the representative
+    "railcraft:cube":                              "railcraft:cube.steel",
+    # HarvestCraft garden plots: textures appended with digit suffix, not underscore-digit
+    "harvestcraft:textilegarden":                  "harvestcraft:textilegarden0",
+    "harvestcraft:berrygarden":                    "harvestcraft:berrygarden0",
+    "harvestcraft:grassgarden":                    "harvestcraft:grassgarden0",
+    "harvestcraft:gourdgarden":                    "harvestcraft:gourdgarden0",
+    "harvestcraft:leafygarden":                    "harvestcraft:leafygarden0",
+    "harvestcraft:groundgarden":                   "harvestcraft:groundgarden0",
+    "harvestcraft:herbgarden":                     "harvestcraft:herbgarden0",
+    "harvestcraft:mushroomgarden":                 "harvestcraft:mushroomgarden0",
+    "harvestcraft:stalkgarden":                    "harvestcraft:stalkgarden0",
+    "harvestcraft:tropicalgarden":                 "harvestcraft:tropicalgarden0",
+    "harvestcraft:desertgarden":                   "harvestcraft:desertgarden0",
+    "harvestcraft:watergarden":                    "harvestcraft:watergarden0",
+    # Thaumcraft:blockCosmeticSolid — meta-variant decorative block; arcane_stone (meta 7) as representative
+    "thaumcraft:blockcosmeticsolid":               "thaumcraft:arcane_stone",
+    # GregTech natural stone replacements — FML name uses dot-separated path not matched by snake_case
+    "gregtech:gt.blockstones":                     "gregtech:basalt_stone",
+    "gregtech:gt.blockgranites":                   "gregtech:granite_black_stone",
+    "gregtech:gt.blockconcretes":                  "gregtech:concrete_dark_stone",
+    # GregTech ore blocks — all variants map to basalt_stone (stone-like appearance from above)
+    # gt.blockores through gt.blockores5 cover the ore meta-variant range in GTNH
+    "gregtech:gt.blockores":                       "gregtech:basalt_stone",
+    "gregtech:gt.blockores1":                      "gregtech:basalt_stone",
+    "gregtech:gt.blockores2":                      "gregtech:basalt_stone",
+    "gregtech:gt.blockores3":                      "gregtech:basalt_stone",
+    "gregtech:gt.blockores4":                      "gregtech:basalt_stone",
+    "gregtech:gt.blockores5":                      "gregtech:basalt_stone",
+    # GregTech machine block — meta-variant; meta=0 is LV hull. LV top face is most map-readable.
+    # Machine top texture from gregtech JAR (iconsets/machine_lv_top and plain machine_lv_top).
+    "gregtech:gt.blockmachines":                   "gregtech:machine_lv_top",
+    # GregTech casings — meta-variant; blockcasing is the default steel machine casing.
+    "gregtech:gt.blockcasings":                    "gregtech:blockcasing",
+    "gregtech:gt.blockcasings2":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings3":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings4":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings5":                   "gregtech:blockcasing",
+
+    # ── IC2 — registry "blockXxx" → texture "xxx" or "xxx_top" ──────────────
+    # The block-prefix stripping in _resolve_texture_key handles most IC2 blocks
+    # automatically; these entries cover the few that need an explicit redirect.
+    "ic2:blockrublog":                             "ic2:rubber_wood",
+    "ic2:blockrubleaves":                          "ic2:rubber_leaves",
+    "ic2:blockrubsapling":                         "ic2:rubber_sapling",
+
+    # ── BuildCraft — pipe-namespace is "buildcraft|*", assets are under buildcraft{module} ─
+    # Fluid blocks use a distinct registered name but share the oil texture.
+    "buildcraft|energy:blockoil":                  "buildcraft:oil_still",
+    "buildcraft|energy:blockfuel":                 "buildcraft:fuel_still",
+    # BC6/7 Factory machines: textures live under buildcraftfactory / buildcraftbuilders
+    # using "{name}block/{face}" subpath format that the auto-resolver can't derive.
+    "buildcraft|factory:blockquarry":              "buildcraftbuilders:machineblock/top",
+    "buildcraft|factory:blockminingwell":          "buildcraftfactory:miningwellblock/top",
+    "buildcraft|factory:blockpump":               "buildcraftfactory:pumpblock/top",
+    "buildcraft|factory:blockrefinery":           "buildcraftfactory:refineryblock/refinery",
+    "buildcraft|factory:blockautoworkbench":      "buildcraftfactory:autoworkbenchblock/top",
+    "buildcraft|factory:blockfloodgate":          "buildcraftfactory:floodgateblock/top",
+    "buildcraft|factory:blockhopperbase":         "buildcraftfactory:hopperblock/top",
+    "buildcraft|builders:blockfiller":            "buildcraftbuilders:fillerblock/top",
+    "buildcraft|builders:blockbuilder":           "buildcraftbuilders:builderblock/top",
+    "buildcraft|builders:blockarchitect":         "buildcraftbuilders:architectblock/top",
+
+    # ── Railcraft extra named blocks ──────────────────────────────────────────
+    "railcraft:brick":                             "railcraft:brick.abyssal",
+    # Standard track (tile.railcraft.track) — no "track.standard" PNG in the JAR;
+    # reinforced track is the most common Railcraft track in GTNH worlds.
+    "railcraft:tile.railcraft.track":              "railcraft:track.reinforced",
+    # Coke oven, blast furnace, boiler — multiblock structures; use side texture
+    "railcraft:tile.railcraft.machine.alpha":      "railcraft:coke.oven",
+    "railcraft:tile.railcraft.machine.gamma":      "railcraft:blast.furnace",
+    "railcraft:tile.railcraft.boiler.firebox.solid": "railcraft:boiler.firebox.solid",
+    "railcraft:tile.railcraft.boiler.firebox.fluid": "railcraft:boiler.firebox.liquid",
+    "railcraft:tile.railcraft.boiler.tank":        "railcraft:boiler.tank.pressure.high",
+    # railcraft:glass resolves automatically; "glass.infused" does not exist in the DB.
+
+    # ── EnderIO ───────────────────────────────────────────────────────────────
+    # Most EnderIO blocks resolve via block-prefix stripping; these need redirects.
+    # Texture keys are lowercase in the DB.
+    "enderio:blockconduitbundle":                  "enderio:conduitbundle",
+    "enderio:blockdarksteel":                      "enderio:darksteelblock",
+    # AlloyFurnace in registry is "AlloySmelter" in assets (naming inconsistency in EnderIO)
+    "enderio:blockalloyfurnace":                   "enderio:alloysmelterfront",
+
+    # ── Applied Energistics 2 ─────────────────────────────────────────────────
+    # AE2 uses "tile." prefix in registry; tile-stripping handles most but these
+    # need an explicit remap where the texture name differs structurally.
+    # Quartz ore: JAR texture is "orequartz.png" (ore-prefix form), not blockquartzore.
+    "appliedenergistics2:tile.blockquartzore":     "appliedenergistics2:orequartz",
+    # Charger: JAR texture is "blockcharger.png" (full block name).
+    "appliedenergistics2:tile.blockcharger":       "appliedenergistics2:blockcharger",
+    # Sky stone: JAR texture is "blockskystone.png".
+    "appliedenergistics2:tile.blockskystone":      "appliedenergistics2:blockskystone",
+    "appliedenergistics2:tile.blockskycompass":    "appliedenergistics2:blockskystone",
+
+    # ── Thaumcraft ────────────────────────────────────────────────────────────
+    "thaumcraft:blockarcane_log":                  "thaumcraft:blockArcaneLog",
+    "thaumcraft:blockmagicallog":                  "thaumcraft:blockMagicalLog",
+    "thaumcraft:blockcosmeticopaque":              "thaumcraft:arcane_stone",
+    # Taint blocks use underscore-separated names
+    "thaumcraft:blocktaint":                       "thaumcraft:taint_crust",
+
+    # ── Botania ───────────────────────────────────────────────────────────────
+    # Botania stores textures with digit appended directly (no underscore):
+    # "livingrock0.png" not "livingrock_0.png". Auto-resolver generates underscore form.
+    "botania:livingrock":                          "botania:livingrock0",
+    "botania:livingwood":                          "botania:livingwood0",
+
+    # ── Chisel extra blocks ───────────────────────────────────────────────────
+    "chisel:marble":                               "chisel:marble/raw",
+    "chisel:limestone":                            "chisel:limestone/raw",
+    "chisel:basalt":                               "chisel:basalt/raw",
+    "chisel:obsidian":                             "chisel:obsidian/0",
+
+    # ── Natura ───────────────────────────────────────────────────────────────
+    "natura:natura.overworld.treeroots":           "natura:planks_eucalyptus",
+    "natura:natura.overworld.saguaro":             "natura:cactus.saguaro.body",
+    "natura:natura.nether.glowshroom":             "natura:mushroom.glow",
 }
 
 # Suffixes tried in order when no direct match is found.
 _FALLBACK_SUFFIXES = [
     "_top", "_side", "_front", "_back", "_bottom", "_normal",
     "_0", "_1", "_2", "_3", "_4", "_5",
+    "_6", "_7", "_8", "_9", "_10", "_11", "_12", "_13", "_14", "_15",
     "_on", "_off", "_active", "_inactive",
 ]
 
@@ -272,9 +435,20 @@ def _resolve_texture_key(
     registry_name: str,
     texture_colors: dict[str, tuple[int, int, int]],
 ) -> str | None:
-    """Return the resolved texture key for *registry_name*, or None."""
+    """Return the resolved texture key for *registry_name*, or None.
+
+    Resolution order:
+      1. Exact override from _OVERRIDES.
+      2. Direct name match (lowercase + snake_case) with optional suffixes.
+      3. Same as 2 but with the pipe-namespace suffix stripped
+         (BuildCraft|Factory → buildcraft).
+      4. Trailing-number strip — "gt.blockores1" → try override for "gt.blockores".
+      5. Common block-name prefixes stripped ("blockGenerator" → "generator").
+      6. "tile." prefix stripped (AE2 pattern).
+    """
     norm_name = registry_name.lower()
 
+    # 1. Exact override.
     override = _OVERRIDES.get(norm_name)
     if override and override in texture_colors:
         return override
@@ -282,62 +456,258 @@ def _resolve_texture_key(
     if ":" not in registry_name:
         return None
 
-    domain = norm_name.split(":", 1)[0]
-    orig_name = registry_name.split(":", 1)[1]
+    raw_domain = norm_name.split(":", 1)[0]
+    orig_name  = registry_name.split(":", 1)[1]
     lower_name = orig_name.lower()
-    snake_name = _camel_to_snake(orig_name)
 
-    bases = [lower_name]
-    if snake_name != lower_name:
-        bases.append(snake_name)
+    # Many mods use pipe-delimited mod-category namespaces (BuildCraft|Factory,
+    # BuildCraft|Transport, …) but their JAR assets live under the base name only
+    # (assets/buildcraft/textures/…).  Build a clean domain without the |-suffix.
+    clean_domain = raw_domain.split("|")[0] if "|" in raw_domain else raw_domain
 
-    for base in bases:
-        for suffix in ("", *_FALLBACK_SUFFIXES):
-            key = f"{domain}:{base}{suffix}"
-            if key in texture_colors:
-                return key
-
-    # Some mods (AE2, etc.) prefix registry names with "tile." but the texture
-    # file is named without that prefix (e.g. "tile.OreQuartz" → "orequartz.png").
-    if lower_name.startswith("tile."):
-        stripped = lower_name[5:]
-        snake_stripped = _camel_to_snake(orig_name[5:]) if len(orig_name) > 5 else ""
-        stripped_bases = [stripped]
-        if snake_stripped and snake_stripped != stripped:
-            stripped_bases.append(snake_stripped)
-        for base in stripped_bases:
+    def _try_bases(domain: str, name_lower: str, name_orig: str) -> str | None:
+        bases = [name_lower]
+        sn = _camel_to_snake(name_orig)
+        if sn != name_lower:
+            bases.append(sn)
+        for base in bases:
             for suffix in ("", *_FALLBACK_SUFFIXES):
                 key = f"{domain}:{base}{suffix}"
                 if key in texture_colors:
                     return key
+        return None
+
+    # 2. Direct name match.
+    result = _try_bases(raw_domain, lower_name, orig_name)
+    if result:
+        return result
+
+    # 3. Pipe-namespace stripped domain (BuildCraft|Factory → buildcraft).
+    if clean_domain != raw_domain:
+        result = _try_bases(clean_domain, lower_name, orig_name)
+        if result:
+            return result
+
+    # 4. Trailing-number strip: "gt.blockores1" → check override for "gt.blockores".
+    #    Also retries resolution with the suffix removed.
+    stripped_num = re.sub(r"\d+$", "", lower_name)
+    if stripped_num and stripped_num != lower_name:
+        alt_norm = f"{clean_domain}:{stripped_num}"
+        alt_override = _OVERRIDES.get(alt_norm)
+        if alt_override and alt_override in texture_colors:
+            return alt_override
+        result = _try_bases(clean_domain, stripped_num, orig_name.rstrip("0123456789"))
+        if result:
+            return result
+
+    # 5. Strip common block-name prefixes.
+    #    IC2 registers "blockGenerator"; texture is "generator" or "generator_top".
+    #    GT  registers "gt.blockCasings"; texture might be "casings_top".
+    for prefix in _BLOCK_NAME_PREFIXES:
+        if lower_name.startswith(prefix) and len(lower_name) > len(prefix):
+            tail = lower_name[len(prefix):]
+            tail_orig = orig_name[len(prefix):]
+            result = _try_bases(clean_domain, tail, tail_orig)
+            if result:
+                return result
+
+    # 6. "tile." prefix stripped (AE2 "tile.OreQuartz" → "orequartz").
+    if lower_name.startswith("tile."):
+        tail = lower_name[5:]
+        tail_orig = orig_name[5:] if len(orig_name) > 5 else ""
+        if tail:
+            result = _try_bases(clean_domain, tail, tail_orig)
+            if result:
+                return result
 
     return None
 
 
+def _resolve_unified(
+    registry_name: str,
+    meta: int,
+    db: AssetDatabase,
+) -> tuple[str | None, str]:
+    """
+    Full four-stage texture resolver.
+
+    Returns (texture_key | None, method) where method is one of:
+      'override'             — matched a hardcoded _OVERRIDES entry
+      'forge_dump'           — resolved via Forge icon dump (exact icon name)
+      'forge_dump_ambiguous' — resolved via dump but sides carry different icons
+      'modern'               — resolved via blockstate/model pipeline
+      'legacy_*'             — resolved via 1.7.10 naming-convention heuristics
+      'none'                 — all stages failed
+    """
+    norm_name = registry_name.lower()
+
+    # Stage 1: hardcoded overrides (exceptional cases conventions can't derive)
+    override = _OVERRIDES.get(norm_name)
+    if override and override in db.texture_colors:
+        return override, "override"
+
+    # Stage 2: Forge icon dump — exact IIcon names from running Minecraft
+    dump = get_dump_resolver()
+    if dump.is_loaded:
+        dr = dump.resolve(registry_name, meta)
+        if dr.resolved and dr.texture_key:
+            # Normalise the raw IIcon name to a texture-DB key (vanilla prefix,
+            # IC2 sub-index strip, case).
+            tex_key = resolve_db_key(dr.texture_key, db.texture_colors)
+            if tex_key is not None:
+                method = "forge_dump_ambiguous" if dr.is_ambiguous else "forge_dump"
+                return tex_key, method
+
+    # Stage 3: modern blockstate → model → texture pipeline
+    modern = resolve_block_texture(registry_name, meta, db)
+    if modern.resolved:
+        return modern.texture_key, "modern"
+
+    # Stage 4: legacy 1.7.10 naming-convention resolver
+    legacy = resolve_legacy_texture(registry_name, db.texture_colors, meta)
+    if legacy.resolved:
+        return legacy.texture_key, legacy.method_tag
+
+    return None, "none"
+
+
 def _build_color_map(
     id_map: dict[int, str],
-    texture_colors: dict[str, tuple[int, int, int]],
+    db: AssetDatabase,
 ) -> dict[int, list[int]]:
     result: dict[int, list[int]] = {}
     for block_id, registry_name in id_map.items():
-        key = _resolve_texture_key(registry_name, texture_colors)
+        key, _ = _resolve_unified(registry_name, 0, db)
         if key:
-            r, g, b = texture_colors[key]
+            r, g, b = db.texture_colors[key]
             result[block_id] = [r, g, b]
     return result
 
 
 def _build_texture_key_map(
     id_map: dict[int, str],
-    texture_colors: dict[str, tuple[int, int, int]],
+    db: AssetDatabase,
 ) -> dict[int, str]:
     """Same resolution as _build_color_map but returns the texture key string."""
     result: dict[int, str] = {}
     for block_id, registry_name in id_map.items():
-        key = _resolve_texture_key(registry_name, texture_colors)
+        key, _ = _resolve_unified(registry_name, 0, db)
         if key:
             result[block_id] = key
     return result
+
+
+# ── Meta-variant texture key tables ───────────────────────────────────────────
+# Maps meta value → texture-key suffix for vanilla blocks that differ per meta.
+
+_WOOL_COLORS = [
+    "white", "orange", "magenta", "light_blue", "yellow", "lime",
+    "pink", "gray", "silver", "cyan", "purple", "blue", "brown",
+    "green", "red", "black",
+]
+
+_LOG_WOODS    = ["oak", "spruce", "birch", "jungle"]
+_ACACIA_WOODS = ["acacia", "big_oak"]
+_PLANK_WOODS  = ["oak", "spruce", "birch", "jungle", "acacia", "big_oak"]
+
+
+def _build_meta_texture_map_for_world(id_map: dict[int, str]) -> dict[str, str]:
+    """Return '{block_id}:{meta}' → texture-key for all known meta-variant blocks."""
+    name_to_id: dict[str, int] = {v: k for k, v in id_map.items()}
+    result: dict[str, str] = {}
+
+    def add(reg_name: str, meta: int, tex_key: str) -> None:
+        bid = name_to_id.get(reg_name)
+        if bid is not None:
+            result[f"{bid}:{meta}"] = tex_key
+
+    # Wool (meta 0-15)
+    for m, color in enumerate(_WOOL_COLORS):
+        add("minecraft:wool", m, f"minecraft:wool_colored_{color}")
+
+    # Carpet — same textures as wool
+    for m, color in enumerate(_WOOL_COLORS):
+        add("minecraft:carpet", m, f"minecraft:wool_colored_{color}")
+
+    # Stained Glass (meta 0-15)
+    for m, color in enumerate(_WOOL_COLORS):
+        add("minecraft:stained_glass", m, f"minecraft:glass_{color}")
+
+    # Stained Glass Pane — same face texture as stained glass
+    for m, color in enumerate(_WOOL_COLORS):
+        add("minecraft:stained_glass_pane", m, f"minecraft:glass_{color}")
+
+    # Stained Hardened Clay (meta 0-15)
+    for m, color in enumerate(_WOOL_COLORS):
+        add("minecraft:stained_hardened_clay", m, f"minecraft:hardened_clay_stained_{color}")
+
+    # Planks (meta 0-5: oak, spruce, birch, jungle, acacia, dark-oak)
+    for m, wood in enumerate(_PLANK_WOODS):
+        add("minecraft:planks", m, f"minecraft:planks_{wood}")
+
+    # Oak-family logs (bits 0-1 = wood type, bits 2-3 = orientation; meta 0-15)
+    for m in range(16):
+        add("minecraft:log", m, f"minecraft:log_{_LOG_WOODS[m & 3]}")
+
+    # Acacia/dark-oak logs (bit 0 = type; meta 0-15)
+    for m in range(16):
+        add("minecraft:log2", m, f"minecraft:log_{_ACACIA_WOODS[m & 1]}")
+
+    # Oak-family leaves (bits 0-1 = type, bits 2-3 = flags; meta 0-15)
+    for m in range(16):
+        add("minecraft:leaves", m, f"minecraft:leaves_{_LOG_WOODS[m & 3]}")
+
+    # Acacia/dark-oak leaves (bit 0 = type; meta 0-15)
+    for m in range(16):
+        add("minecraft:leaves2", m, f"minecraft:leaves_{_ACACIA_WOODS[m & 1]}")
+
+    # ── Modded meta-variant blocks ─────────────────────────────────────────
+    # Ztones glaxx: no dedicated texture in the JAR, all 16 metas use vanilla glass.
+    for m in range(16):
+        add("Ztones:tile.glaxx", m, "minecraft:glass")
+
+    return result
+
+
+# ── Forge dump auto-discovery ─────────────────────────────────────────────────
+# The dump is generated by the AtlasDumper Forge mod and written to
+# {mc_dir}/config/atlas/icon_dump.json.  We try to load it once per unique
+# mc_dir the first time a world from that install is accessed.
+# Also respects the ATLAS_ICON_DUMP_PATH environment variable.
+
+_dump_attempted_dirs: set[str] = set()
+
+
+def _try_auto_load_dump(mc_dir: Path | None) -> None:
+    """Try to load the Forge icon dump if not already loaded."""
+    dump = get_dump_resolver()
+
+    # Already loaded — nothing to do
+    if dump.is_loaded:
+        return
+
+    # Env-var override (highest priority)
+    env_path = os.environ.get("ATLAS_ICON_DUMP_PATH", "").strip()
+    if env_path:
+        try_load_dump(env_path)
+        return
+
+    if mc_dir is None:
+        return
+
+    dir_key = str(mc_dir)
+    if dir_key in _dump_attempted_dirs:
+        return
+    _dump_attempted_dirs.add(dir_key)
+
+    candidates = [
+        mc_dir / "config" / "atlas" / "icon_dump.json",
+        Path.home() / ".atlas_gtnh" / "icon_dump.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            try_load_dump(candidate)
+            return
 
 
 # ── In-process caches ─────────────────────────────────────────────────────────
@@ -345,6 +715,8 @@ def _build_texture_key_map(
 _texture_colors_cache: dict[str, dict[str, tuple[int, int, int]]] = {}
 _color_cache: dict[str, dict[int, list[int]]] = {}
 _texture_key_cache: dict[str, dict[int, str]] = {}
+_meta_texture_key_cache: dict[str, dict[str, str]] = {}
+_asset_db_cache: dict[str, AssetDatabase] = {}
 
 
 def _ensure_texture_colors(world_path: str) -> dict[str, tuple[int, int, int]]:
@@ -378,6 +750,304 @@ def _ensure_texture_colors(world_path: str) -> dict[str, tuple[int, int, int]]:
     return all_colors
 
 
+def _ensure_asset_db(world_path: str) -> AssetDatabase:
+    """
+    Load (or return cached) the full AssetDatabase for a world.
+
+    Scans every mod JAR for:
+      - Texture colors      (PNG average/dominant color per texture key)
+      - Blockstate JSONs    (assets/{domain}/blockstates/*.json)
+      - Block model JSONs   (assets/{domain}/models/block/**/*.json)
+
+    Results are cached in SQLite so subsequent server restarts are fast.
+    """
+    if world_path in _asset_db_cache:
+        return _asset_db_cache[world_path]
+
+    mc_dir = find_minecraft_dir(Path(world_path))
+    if mc_dir is None:
+        db = AssetDatabase()
+        _asset_db_cache[world_path] = db
+        return db
+
+    jars = _collect_jars(mc_dir)
+    all_colors: dict[str, tuple[int, int, int]] = {}
+    all_blockstates: dict[str, Any] = {}
+    all_models: dict[str, Any] = {}
+
+    for jar in jars:
+        try:
+            # ── Texture colors ────────────────────────────────────────────────
+            cached_colors = load_jar_colors(jar)
+            if cached_colors is not None:
+                all_colors.update(cached_colors)
+            else:
+                fresh = scan_jar(jar)
+                save_jar_colors(jar, fresh)
+                for name, (avg, dom) in fresh.items():
+                    all_colors[name] = dom if dom is not None else avg
+
+            # ── JSON assets (blockstates + models) ────────────────────────────
+            cached_json = load_jar_json_assets(jar)
+            if cached_json is not None:
+                bs, mods = cached_json
+            else:
+                bs, mods = scan_jar_assets(jar)
+                save_jar_json_assets(jar, bs, mods)
+            all_blockstates.update(bs)
+            all_models.update(mods)
+            time.sleep(0)
+        except Exception:
+            pass
+
+    db = AssetDatabase(
+        blockstates=all_blockstates,
+        models=all_models,
+        texture_colors=all_colors,
+    )
+    _asset_db_cache[world_path] = db
+
+    # Auto-discover the Forge icon dump for this mc_dir (no-op if already loaded)
+    _try_auto_load_dump(mc_dir)
+
+    return db
+
+
+def debug_pipeline_report(world_path: str) -> dict[str, object]:
+    """
+    Run the full three-stage resolution pipeline (override → modern → legacy)
+    for every block in this world and return a categorised report.
+
+    Legacy blocks are tagged with confidence/ambiguity in block_methods:
+      "legacy_high", "legacy_medium", "legacy_low",
+      "legacy_high_ambiguous", "legacy_medium_ambiguous", "legacy_low_ambiguous"
+
+    The 'categories' dict shows the modern pipeline failure reason for blocks
+    that STILL couldn't be resolved after the legacy resolver also ran.
+    """
+    from collections import Counter, defaultdict
+
+    path = Path(world_path)
+    id_map = read_block_id_map(path)
+    if not id_map:
+        return {"error": "No block ID map found in world"}
+
+    db = _ensure_asset_db(world_path)
+
+    override_count = 0
+    forge_dump_count = 0
+    forge_dump_ambiguous_count = 0
+    modern_count = 0
+    legacy_high_count = 0
+    legacy_medium_count = 0
+    legacy_low_count = 0
+    legacy_ambiguous_count = 0
+    none_count = 0
+    failure_counts: Counter[str] = Counter()
+    failure_examples: dict[str, list[str]] = defaultdict(list)
+    legacy_examples: dict[str, list[str]] = defaultdict(list)
+    block_methods: dict[str, str] = {}  # JSON-serialised block_id → method tag
+
+    dump = get_dump_resolver()
+
+    for block_id, registry_name in sorted(id_map.items()):
+        norm_name = registry_name.lower()
+
+        # Stage 1: override
+        override = _OVERRIDES.get(norm_name)
+        if override and override in db.texture_colors:
+            override_count += 1
+            block_methods[str(block_id)] = "override"
+            continue
+
+        # Stage 2: Forge icon dump
+        if dump.is_loaded:
+            dr = dump.resolve(registry_name, 0)
+            if dr.resolved and dr.texture_key:
+                tex_key = resolve_db_key(dr.texture_key, db.texture_colors)
+                if tex_key is not None:
+                    tag = "forge_dump_ambiguous" if dr.is_ambiguous else "forge_dump"
+                    block_methods[str(block_id)] = tag
+                    if dr.is_ambiguous:
+                        forge_dump_ambiguous_count += 1
+                    else:
+                        forge_dump_count += 1
+                    continue
+
+        # Stage 3: modern blockstate pipeline
+        modern = resolve_block_texture(registry_name, 0, db)
+        if modern.resolved:
+            modern_count += 1
+            block_methods[str(block_id)] = "modern"
+            continue
+
+        # Stage 4: legacy naming-convention resolver
+        legacy = resolve_legacy_texture(registry_name, db.texture_colors, 0)
+        if legacy.resolved:
+            tag = legacy.method_tag  # e.g. "legacy_high", "legacy_low_ambiguous"
+            block_methods[str(block_id)] = tag
+            if legacy.is_ambiguous:
+                legacy_ambiguous_count += 1
+            if legacy.confidence == "high":
+                legacy_high_count += 1
+            elif legacy.confidence == "medium":
+                legacy_medium_count += 1
+            else:
+                legacy_low_count += 1
+            if len(legacy_examples[tag]) < 6:
+                key_note = f" → {legacy.texture_key}"
+                legacy_examples[tag].append(f"[{block_id}] {registry_name}{key_note}")
+            continue
+
+        none_count += 1
+        block_methods[str(block_id)] = "none"
+        cat = modern.failure_reason or "unknown"
+        failure_counts[cat] += 1
+        if len(failure_examples[cat]) < 8:
+            failure_examples[cat].append(f"[{block_id}] {registry_name}")
+
+    total = len(id_map)
+    legacy_count = legacy_high_count + legacy_medium_count + legacy_low_count
+    forge_dump_total = forge_dump_count + forge_dump_ambiguous_count
+    resolved = override_count + forge_dump_total + modern_count + legacy_count
+    return {
+        "total": total,
+        "pipeline_resolved": resolved,
+        "pipeline_unresolved": none_count,
+        "override_resolved": override_count,
+        "forge_dump_resolved": forge_dump_count,
+        "forge_dump_ambiguous": forge_dump_ambiguous_count,
+        "forge_dump_loaded": dump.is_loaded,
+        "forge_dump_path": dump.path,
+        "forge_dump_block_count": dump.block_count,
+        "modern_resolved": modern_count,
+        "legacy_resolved": legacy_count,
+        "legacy_high": legacy_high_count,
+        "legacy_medium": legacy_medium_count,
+        "legacy_low": legacy_low_count,
+        "legacy_ambiguous": legacy_ambiguous_count,
+        "blockstate_count": len(db.blockstates),
+        "model_count": len(db.models),
+        "texture_color_count": len(db.texture_colors),
+        "categories": dict(failure_counts.most_common()),
+        "examples": dict(failure_examples),
+        "legacy_examples": dict(legacy_examples),
+        "block_methods": block_methods,
+    }
+
+
+def trace_block_pipeline(world_path: str, registry_name: str, meta: int) -> dict[str, object]:
+    """
+    Trace all three pipeline stages for a single block.
+
+    Returns step-by-step audit trail showing exactly which stage resolved the block
+    (or why all three stages failed).  The 'method' field is one of:
+    'override', 'modern', 'legacy', or 'none'.
+    """
+    db = _ensure_asset_db(world_path)
+    trace: list[dict[str, object]] = []
+
+    norm_name = registry_name.lower()
+
+    # Stage 1: override
+    override = _OVERRIDES.get(norm_name)
+    if override:
+        in_db = override in db.texture_colors
+        status_note = "found" if in_db else "key not in texture DB"
+        step = f"Override table: {norm_name!r} → {override!r} ({status_note})"
+        trace.append({"ok": in_db, "step": step})
+        if in_db:
+            return {
+                "registry_name": registry_name,
+                "meta": meta,
+                "resolved": True,
+                "method": "override",
+                "texture_key": override,
+                "failure_reason": "",
+                "trace": trace,
+            }
+    else:
+        trace.append({"ok": True, "step": f"Override table: no entry for {norm_name!r}"})
+
+    # Stage 2: Forge icon dump
+    dump = get_dump_resolver()
+    if dump.is_loaded:
+        dr = dump.resolve(registry_name, meta)
+        for msg in dr.trace:
+            trace.append({"ok": dr.resolved, "step": f"Forge dump: {msg}"})
+        if dr.resolved and dr.texture_key:
+            tex_key = resolve_db_key(dr.texture_key, db.texture_colors)
+            if tex_key is not None:
+                method = "forge_dump_ambiguous" if dr.is_ambiguous else "forge_dump"
+                trace.append({"ok": True, "step": (
+                    f"Forge dump: icon {dr.texture_key!r} → {tex_key!r} "
+                    f"found in texture DB (side {dr.side_used})"
+                )})
+                return {
+                    "registry_name": registry_name,
+                    "meta": meta,
+                    "resolved": True,
+                    "method": method,
+                    "texture_key": tex_key,
+                    "failure_reason": "",
+                    "is_ambiguous": dr.is_ambiguous,
+                    "side_used": dr.side_used,
+                    "meta_exact": dr.meta_exact,
+                    "trace": trace,
+                }
+            else:
+                trace.append({"ok": False, "step": f"Forge dump: icon {dr.texture_key!r} not in texture DB — falling through"})
+    else:
+        trace.append({"ok": True, "step": "Forge dump: not loaded (install AtlasDumper mod and run GTNH once)"})
+
+    # Stage 3: modern blockstate pipeline
+    modern = resolve_block_texture(registry_name, meta, db)
+    for t in modern.trace:
+        trace.append({"ok": t.ok, "step": t.step})
+    if modern.resolved:
+        return {
+            "registry_name": registry_name,
+            "meta": meta,
+            "resolved": True,
+            "method": "modern",
+            "texture_key": modern.texture_key,
+            "failure_reason": "",
+            "trace": trace,
+        }
+
+    # Stage 4: legacy naming-convention resolver
+    legacy = resolve_legacy_texture(registry_name, db.texture_colors, meta)
+    for msg in legacy.trace:
+        trace.append({"ok": legacy.resolved, "step": f"Legacy resolver: {msg}"})
+
+    if legacy.resolved:
+        return {
+            "registry_name": registry_name,
+            "meta": meta,
+            "resolved": True,
+            "method": legacy.method_tag,
+            "texture_key": legacy.texture_key,
+            "failure_reason": "",
+            "confidence": legacy.confidence,
+            "is_ambiguous": legacy.is_ambiguous,
+            "top_candidates": legacy.top_candidates,
+            "trace": trace,
+        }
+
+    return {
+        "registry_name": registry_name,
+        "meta": meta,
+        "resolved": False,
+        "method": "none",
+        "texture_key": None,
+        "failure_reason": modern.failure_reason,
+        "confidence": None,
+        "is_ambiguous": False,
+        "top_candidates": [],
+        "trace": trace,
+    }
+
+
 def build_block_color_map(world_path: str) -> dict[int, list[int]]:
     """Build (or return cached) block-id → RGB color map."""
     if world_path in _color_cache:
@@ -389,8 +1059,8 @@ def build_block_color_map(world_path: str) -> dict[int, list[int]]:
         _color_cache[world_path] = {}
         return {}
 
-    all_colors = _ensure_texture_colors(world_path)
-    result = _build_color_map(id_map, all_colors)
+    db = _ensure_asset_db(world_path)
+    result = _build_color_map(id_map, db)
 
     # Fill in vanilla blocks when the Minecraft JAR wasn't scanned.
     for block_id, color in _VANILLA_COLORS.items():
@@ -418,8 +1088,8 @@ def build_block_texture_map(world_path: str) -> dict[int, str]:
         _texture_key_cache[world_path] = {}
         return {}
 
-    all_colors = _ensure_texture_colors(world_path)
-    result = _build_texture_key_map(id_map, all_colors)
+    db = _ensure_asset_db(world_path)
+    result = _build_texture_key_map(id_map, db)
 
     # Fill vanilla blocks whose JAR textures weren't scanned.
     for block_id, registry_name in id_map.items():
@@ -429,6 +1099,27 @@ def build_block_texture_map(world_path: str) -> dict[int, str]:
                 result[block_id] = fallback
 
     _texture_key_cache[world_path] = result
+    return result
+
+
+def build_block_meta_texture_map(world_path: str) -> dict[str, str]:
+    """Build (or return cached) '{block_id}:{meta}' → texture-key for meta-variant blocks.
+
+    Only covers vanilla blocks whose visual appearance changes with metadata
+    (wool, stained glass/clay/pane, carpet, planks, logs, leaves).
+    Keys are string-encoded so JSON serialisation works without conversion.
+    """
+    if world_path in _meta_texture_key_cache:
+        return _meta_texture_key_cache[world_path]
+
+    path = Path(world_path)
+    id_map = read_block_id_map(path)
+    if not id_map:
+        _meta_texture_key_cache[world_path] = {}
+        return {}
+
+    result = _build_meta_texture_map_for_world(id_map)
+    _meta_texture_key_cache[world_path] = result
     return result
 
 

@@ -1,7 +1,9 @@
 import io
+import json
 import zipfile
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -114,6 +116,53 @@ def scan_jar(jar_path: Path) -> JarColors:
     except Exception:
         pass
     return colors
+
+
+def scan_jar_assets(jar_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Scan a JAR for blockstate and block model JSON assets.
+
+    Returns (blockstates, models) where:
+      blockstates: {"domain:blockname"  → parsed JSON}   (from assets/{d}/blockstates/)
+      models:      {"domain:block/path" → parsed JSON}   (from assets/{d}/models/block/)
+
+    Keys are lowercase. Model paths include the "block/" prefix, e.g. "ic2:block/generator".
+    """
+    blockstates: dict[str, Any] = {}
+    models: dict[str, Any] = {}
+    try:
+        with zipfile.ZipFile(jar_path, "r") as zf:
+            for entry in zf.namelist():
+                if not entry.endswith(".json"):
+                    continue
+                parts = entry.split("/")
+                if len(parts) < 4 or parts[0] != "assets":
+                    continue
+                domain = parts[1].lower()
+
+                # assets/{domain}/blockstates/{name}.json  (exactly 4 parts)
+                if parts[2] == "blockstates" and len(parts) == 4:
+                    name = parts[3][:-5].lower()
+                    try:
+                        content = json.loads(zf.read(entry).decode("utf-8", errors="replace"))
+                        if isinstance(content, dict):
+                            blockstates[f"{domain}:{name}"] = content
+                    except Exception:
+                        pass
+
+                # assets/{domain}/models/block/**/*.json  (5+ parts)
+                elif parts[2] == "models" and parts[3] == "block" and len(parts) >= 5:
+                    # Relative path from models/ including "block/": e.g. "block/cube_all"
+                    rel = "/".join(parts[3:])[:-5].lower()
+                    try:
+                        content = json.loads(zf.read(entry).decode("utf-8", errors="replace"))
+                        if isinstance(content, dict):
+                            models[f"{domain}:{rel}"] = content
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return blockstates, models
 
 
 def collect_texture_colors(minecraft_dir: Path) -> dict[str, tuple[int, int, int]]:

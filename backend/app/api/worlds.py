@@ -3,15 +3,20 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel
 
 from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
 from app.services.block_color_service import (
     build_block_color_map,
+    build_block_meta_texture_map,
     build_block_texture_map,
+    debug_pipeline_report,
     debug_texture_resolution,
     find_minecraft_dir,
+    trace_block_pipeline,
 )
+from app.services.dump_resolver import get_dump_resolver, try_load_dump
 from app.services.region_service import (
     get_chunk_data,
     get_region_detail,
@@ -495,6 +500,98 @@ async def get_block_texture_map(world_path: str = Query(...)) -> dict[int, str]:
         return await asyncio.to_thread(build_block_texture_map, world_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/block-meta-texture-map")
+async def get_block_meta_texture_map(world_path: str = Query(...)) -> dict[str, str]:
+    """Return '{block_id}:{meta}' → texture_key for meta-variant vanilla blocks.
+
+    Covers wool, carpet, stained glass/pane, stained clay, planks, logs, leaves.
+    The frontend checks this before falling back to the plain block-texture-map.
+    """
+    try:
+        return await asyncio.to_thread(build_block_meta_texture_map, world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/pipeline-report")
+async def pipeline_report_endpoint(world_path: str = Query(...)) -> dict[str, object]:
+    """
+    Run the blockstate → model → texture pipeline for every block in this world
+    and return a categorized failure report.
+
+    Blocks are resolved via JARs' assets/{domain}/blockstates/ and models/block/ JSON files.
+    Failure categories tell you exactly where in the chain each block failed.
+    This is slow on first call (scans all JARs for JSON assets) but cached afterwards.
+    """
+    try:
+        return await asyncio.to_thread(debug_pipeline_report, world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.get("/pipeline-trace")
+async def pipeline_trace_endpoint(
+    world_path: str = Query(...),
+    registry_name: str = Query(...),
+    meta: int = Query(0),
+) -> dict[str, object]:
+    """
+    Trace the blockstate resolution pipeline step-by-step for a single block.
+
+    Returns a list of (ok, description) trace steps showing exactly where
+    resolution succeeded or failed for the given registry_name + meta value.
+    """
+    try:
+        return await asyncio.to_thread(trace_block_pipeline, world_path, registry_name, meta)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+class LoadDumpRequest(BaseModel):
+    path: str  # Absolute path to icon_dump.json
+
+
+@router.post("/load-dump")
+async def load_dump_endpoint(request: LoadDumpRequest) -> dict[str, object]:
+    """
+    Load a Forge icon dump JSON file produced by the AtlasDumper mod.
+
+    The dump is cached in memory for the lifetime of the Atlas process.
+    Calling this again replaces any previously loaded dump.
+
+    Body: { "path": "/absolute/path/to/icon_dump.json" }
+    """
+    p = Path(request.path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail=f"File not found: {request.path}")
+    if not p.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {request.path}")
+
+    ok = await asyncio.to_thread(try_load_dump, p)
+    if not ok:
+        raise HTTPException(status_code=422, detail="Failed to parse dump file — check that it is a valid atlas-gtnh-icon-dump-v1 JSON")
+
+    dump = get_dump_resolver()
+    return {
+        "loaded": dump.is_loaded,
+        "path": dump.path,
+        "block_count": dump.block_count,
+        "summary": dump.summary,
+    }
+
+
+@router.get("/dump-status")
+async def dump_status_endpoint() -> dict[str, object]:
+    """Return the current Forge icon dump load status."""
+    dump = get_dump_resolver()
+    return {
+        "loaded": dump.is_loaded,
+        "path": dump.path,
+        "block_count": dump.block_count,
+        "summary": dump.summary,
+    }
 
 
 @router.get("/debug-texture-resolution")
