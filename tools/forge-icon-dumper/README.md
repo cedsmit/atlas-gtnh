@@ -95,12 +95,18 @@ that the dump was generated from a **different pack build** than the world.
 
 ## Giving the dump to Atlas
 
-Copy `config/atlas/icon_dump.json` from your GTNH instance to your Atlas GTNH
-data directory, or set the `ATLAS_ICON_DUMP_PATH` environment variable to the
-full path of the file.
+Atlas resolves the dump in this order:
 
-Atlas auto-discovers the dump if the world path is inside the same GTNH
-instance (i.e., `{mc_dir}/config/atlas/icon_dump.json`).
+1. `ATLAS_ICON_DUMP_PATH` environment variable (full path to the file)
+2. `{mc_dir}/config/atlas/icon_dump.json` — auto-discovered when the world sits
+   inside the GTNH instance that wrote it (the normal single-player case)
+3. `~/.atlas_gtnh/icon_dump.json` — a global drop-in that works for **any** map,
+   including **server worlds** copied out on their own with no instance around
+   them. Generate the dump from a client running the same modpack as the server,
+   then drop it here.
+
+The dump must come from a **client** with the same mods as the world (a server
+can't generate it — no textures). The dump-mismatch banner flags version gaps.
 
 You can also import it via the Atlas API:
 ```
