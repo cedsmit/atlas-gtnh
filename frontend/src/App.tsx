@@ -16,6 +16,7 @@ import { WorldMap } from './components/WorldMap'
 import { WorldPicker } from './components/WorldPicker'
 import { useTexturePreloader } from './hooks/useTexturePreloader'
 import { createResolvedRegistry } from './lib/blockRenderRegistry'
+import { columnTally } from './lib/columnTally'
 import { type ElevationMode, type ContourMode, type TextureFilter, BUILT_IN_PRESETS, presetToConfig } from './lib/renderPresets'
 import { getTextureState } from './lib/textureLoader'
 import { textureDebugStore } from './lib/textureDebugStore'
@@ -109,6 +110,11 @@ export default function App() {
       setDimensionPath(dimensions[0].path)
     }
   }, [isScanning, dimensions, dimensionPath])
+
+  // Reset the on-map block tally when the rendered world/dimension changes.
+  useEffect(() => {
+    columnTally.reset()
+  }, [worldPath, dimensionPath])
 
   // ── Log debug summary when textures finish loading ─────────────────────
   useEffect(() => {

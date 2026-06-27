@@ -1216,19 +1216,51 @@ def compute_dump_mismatch(world_path: str) -> dict[str, object]:
         for mid, wv, bc in raw_missing
     ]
 
-    count_differs = len(world_mods) != len(dump_mods)
-    has_mismatch = bool(missing_from_dump or version_mismatches or count_differs)
+    # ── Block-name-level check ─────────────────────────────────────────────
+    # Compare every world block registry name against the dump's block keys.
+    # A block missing while its mod *is* in the dump is "registration drift" —
+    # the cause of un-textured blocks even when the mod lists otherwise agree
+    # (e.g. ProjectRed: mod loaded, but its decorative block never dumped).
+    raw_mblocks: list[tuple[int, str, str, bool]] = []  # (id, name, domain, mod_in_dump)
+    drift_block_count = 0
+    for block_id, reg_name in id_map.items():
+        if ":" not in reg_name or dump.has_block(reg_name):
+            continue
+        domain = reg_name.split(":", 1)[0]
+        mod_in_dump = domain in dump_mods
+        if mod_in_dump:
+            drift_block_count += 1
+        raw_mblocks.append((block_id, reg_name, domain, mod_in_dump))
 
-    # Severity ranks the *impact* on rendering so the UI can avoid false alarms:
-    #   error — mods with blocks are missing from the dump (those blocks can't map)
+    missing_block_total = len(raw_mblocks)
+    # Drift first (mod present but block absent — the surprising ones), then domain.
+    # The client ranks these by on-map occurrence, so keep a generous cap.
+    raw_mblocks.sort(key=lambda t: (not t[3], t[2], t[1]))
+    block_cap = 1000
+    missing_blocks: list[dict[str, object]] = [
+        {"registry_name": rn, "block_id": bid, "domain": dom,
+         "mod_in_dump": mid, "drift": mid}
+        for bid, rn, dom, mid in raw_mblocks[:block_cap]
+    ]
+
+    count_differs = len(world_mods) != len(dump_mods)
+    has_mismatch = bool(
+        missing_from_dump or version_mismatches or count_differs or missing_block_total
+    )
+
+    # Mod-level severity. Block-level drift stays at "info" here because many
+    # missing blocks are technical/TESR blocks that never appear on a top-down
+    # map — the client escalates to "error" only when a missing block is actually
+    # visible (has on-map occurrences), which avoids false alarms.
+    #   error — a whole mod with blocks is absent from the dump
     #   warn  — mod versions differ (textures may be subtly wrong)
-    #   info  — only benign differences (extra mods in dump, or blockless mods)
-    #   ok    — mod lists agree
+    #   info  — benign mod differences, or block drift within present mods
+    #   ok    — world and dump agree
     if missing_with_blocks > 0:
         severity = "error"
     elif version_mismatches:
         severity = "warn"
-    elif missing_from_dump or count_differs:
+    elif missing_from_dump or count_differs or missing_block_total:
         severity = "info"
     else:
         severity = "ok"
@@ -1243,6 +1275,9 @@ def compute_dump_mismatch(world_path: str) -> dict[str, object]:
         "missing_with_blocks": missing_with_blocks,
         "missing_from_dump": missing_from_dump,
         "version_mismatches": version_mismatches,
+        "missing_block_total": missing_block_total,
+        "drift_block_count": drift_block_count,
+        "missing_blocks": missing_blocks,
     }
 
 

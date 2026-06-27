@@ -142,6 +142,10 @@ class ForgeDumpResolver:
     def block_count(self) -> int:
         return len(self._blocks)
 
+    def has_block(self, registry_name: str) -> bool:
+        """True if the dump contains any entry for *registry_name* (case-insensitive)."""
+        return registry_name.lower() in self._blocks
+
     @property
     def path(self) -> str | None:
         return self._path

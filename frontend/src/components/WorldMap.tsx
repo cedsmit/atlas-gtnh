@@ -6,6 +6,7 @@ import type { ChunkData } from '../api/chunks'
 import type { RegionSummary } from '../api/regions'
 import { API_BASE } from '../lib/api'
 import { biomeTints, blockColorRGB, metaBlockColorRGB, resolveMetadataTint } from '../lib/blockColors'
+import { columnTally } from '../lib/columnTally'
 import { textureDebugStore } from '../lib/textureDebugStore'
 import {
   type BlockRenderRegistry,
@@ -532,9 +533,14 @@ function renderChunkImage(
         }
       }
 
-      // ── Debug store recording (first render only) ──────────────────
-      if (recordDebug && debugMode) {
-        textureDebugStore.record(id, blockNames?.[id], texKey, tintType)
+      // ── Per-column tallies (first render only, so each chunk counts once) ──
+      if (recordDebug) {
+        // Always-on: top-block occurrence for the dump-mismatch banner.
+        columnTally.record(id)
+        // Debug panel detail is gated on debug mode.
+        if (debugMode) {
+          textureDebugStore.record(id, blockNames?.[id], texKey, tintType)
+        }
       }
     }
   }
@@ -682,7 +688,6 @@ export function WorldMap({
   blockColors,
   textureKeys,
   metaTextureKeys,
-  worldPath: _worldPath,
   blockNames,
   registry: registryProp,
   config: configProp,

@@ -14,6 +14,15 @@ export interface VersionMismatch {
   dump_version: string
 }
 
+export interface MissingBlock {
+  registry_name: string
+  block_id: number
+  domain: string
+  mod_in_dump: boolean
+  /** Mod present in the dump but this specific block absent (registration drift). */
+  drift: boolean
+}
+
 export interface DumpMismatch {
   dump_loaded: boolean
   has_mismatch?: boolean
@@ -24,6 +33,11 @@ export interface DumpMismatch {
   missing_with_blocks?: number
   missing_from_dump?: MissingMod[]
   version_mismatches?: VersionMismatch[]
+  /** Total world block registry names absent from the dump. */
+  missing_block_total?: number
+  /** Of those, how many belong to a mod that *is* present in the dump (drift). */
+  drift_block_count?: number
+  missing_blocks?: MissingBlock[]
 }
 
 async function fetchDumpMismatch(worldPath: string): Promise<DumpMismatch> {
