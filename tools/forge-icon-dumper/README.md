@@ -68,8 +68,30 @@ already complete. You do NOT need to load a world.
 
 Watch the game log for:
 ```
-[AtlasDumper] Done — 4012/4095 blocks, 83 errors → .minecraft/config/atlas/icon_dump.json
+[AtlasDumper] Done — 4012/4095 blocks (61 no-icon, 22 unnamed), 289 mods, 83 errors → .minecraft/config/atlas/icon_dump.json
 ```
+
+## Dump summary fields
+
+The `summary` block records coverage so a world↔dump mismatch is visible
+instead of showing up as silent "no mapping" blocks on the map:
+
+| field | meaning |
+|-------|---------|
+| `total_blocks` | blocks with a resolved registry name |
+| `blocks_with_icons` | blocks that produced at least one icon (the dumped set) |
+| `blocks_without_icons` | named blocks with no icon (TESR-rendered, technical) |
+| `skipped_no_name` | registry entries with no resolvable name |
+| `mod_count` | number of loaded mods |
+| `no_icon_blocks` | full list of `blocks_without_icons` names (registry entries whose `getIcon(side, meta)` yielded nothing — resolve these via render rules/legacy) |
+
+A top-level **`mods`** array lists every loaded mod as `modid@version`. Atlas
+can diff this against a world's `FML.ModList` to tell you exactly which mods are
+absent from the dump — the usual reason a block falls back to a flat color is
+that the dump was generated from a **different pack build** than the world.
+
+> **Generate the dump from the same instance whose worlds you view.** If the
+> world uses mods the dump's client didn't load, those blocks have no mapping.
 
 ## Giving the dump to Atlas
 

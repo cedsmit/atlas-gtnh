@@ -1,5 +1,7 @@
 package com.atlasgtnh.icondumper;
 
+import cpw.mods.fml.common.Loader;
+import cpw.mods.fml.common.ModContainer;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
@@ -96,10 +98,12 @@ public class AtlasDumper {
 
         // ── Collect data ──────────────────────────────────────────────────────
         Map<String, Map<String, Map<String, String>>> blocksMap = new LinkedHashMap<>();
-        int totalBlocks    = 0;
-        int resolvedBlocks = 0;
-        int errorCount     = 0;
+        int totalBlocks     = 0;   // blocks with a resolved registry name
+        int resolvedBlocks  = 0;   // blocks that produced at least one icon
+        int skippedNoName   = 0;   // registry entries with no resolvable name
+        int errorCount      = 0;
         List<String> errorSamples = new ArrayList<>();
+        List<String> noIconNames  = new ArrayList<>();  // named but zero icons (full list)
 
         // Raw registry — generics erased at runtime, elements are Block at runtime.
         FMLControlledNamespacedRegistry blockReg = GameData.getBlockRegistry();
@@ -128,13 +132,66 @@ public class AtlasDumper {
             }
         }
 
+        // Build the full block set.  The registry iterator can silently miss
+        // blocks in some Forge/GTNH builds (observed: ProjectRed's blocks never
+        // appear despite the mod being loaded).  We union the iterator with a
+        // direct id-scan via Block.getBlockById, which backstops any iterator
+        // gap and catches every block reachable by ID.
+        Set<Object> blockSet = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
         Iterator<?> iter = blockReg.iterator();
         while (iter.hasNext()) {
-            Object block = iter.next();
-            if (block == null) continue;
+            Object b = iter.next();
+            if (b != null) blockSet.add(b);
+        }
+        int iterCount = blockSet.size();
 
+        // Resolve Block.getBlockById(int). At runtime Forge keeps SRG method
+        // names, so try MCP + SRG, then fall back to a signature scan (the only
+        // public static Block(int) method) so we don't depend on a hard-coded
+        // SRG string being correct.
+        String idScanMethod = "unresolved";
+        Method getBlockById = null;
+        try {
+            Class<?> blockClass = Class.forName("net.minecraft.block.Block");
+            for (String n : new String[]{"getBlockById", "func_149729_e"}) {
+                try { getBlockById = blockClass.getMethod(n, int.class); idScanMethod = n; break; }
+                catch (NoSuchMethodException ignored) {}
+            }
+            if (getBlockById == null) {
+                for (Method m : blockClass.getMethods()) {
+                    if (java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                        && m.getReturnType() == blockClass
+                        && m.getParameterCount() == 1
+                        && m.getParameterTypes()[0] == int.class) {
+                        getBlockById = m;
+                        idScanMethod = m.getName() + " (by signature)";
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (getBlockById != null) {
+            Object air = null;
+            try { air = getBlockById.invoke(null, 0); } catch (Exception ignored) {}
+            // GTNH uses extended block IDs well above the vanilla 4096 ceiling.
+            for (int id = 1; id <= 32767; id++) {
+                try {
+                    Object b = getBlockById.invoke(null, id);
+                    if (b != null && b != air) blockSet.add(b);
+                } catch (Exception ignored) {}
+            }
+        }
+        int idScanAdded = blockSet.size() - iterCount;
+        System.out.printf("[AtlasDumper] registry iterator=%d, id-scan method=%s, id-scan added=%d%n",
+            iterCount, idScanMethod, idScanAdded);
+
+        for (Object block : blockSet) {
             String regName = getRegistryName(blockReg, block);
-            if (regName == null || regName.isEmpty()) continue;
+            if (regName == null || regName.isEmpty()) {
+                skippedNoName++;
+                continue;
+            }
 
             totalBlocks++;
             Map<String, Map<String, String>> metaMap = new LinkedHashMap<>();
@@ -169,7 +226,24 @@ public class AtlasDumper {
             if (!metaMap.isEmpty()) {
                 blocksMap.put(regName, metaMap);
                 resolvedBlocks++;
+            } else {
+                // Full list (not capped): these blocks are in the registry but
+                // getIcon(side, meta) yielded nothing — the precise set Atlas
+                // must resolve another way (render rules / legacy heuristics).
+                noIconNames.add(regName);
             }
+        }
+
+        // Loaded mod list — lets Atlas diff a world's FML.ModList against the
+        // dump and surface exactly which mods are absent (the usual cause of
+        // "no mapping" blocks: the dump was built from a different pack build).
+        List<String> modList = new ArrayList<>();
+        try {
+            for (ModContainer mc : Loader.instance().getActiveModList()) {
+                modList.add(mc.getModId() + "@" + mc.getVersion());
+            }
+        } catch (Throwable t) {
+            System.err.println("[AtlasDumper] Could not read mod list: " + t);
         }
 
         // ── Write output ──────────────────────────────────────────────────────
@@ -181,9 +255,14 @@ public class AtlasDumper {
         File outFile = new File(outDir, "icon_dump.json");
 
         try (FileWriter w = new FileWriter(outFile)) {
-            writeJson(w, blocksMap, totalBlocks, resolvedBlocks, errorCount, errorSamples);
-            System.out.printf("[AtlasDumper] Done — %d/%d blocks, %d errors → %s%n",
-                resolvedBlocks, totalBlocks, errorCount, outFile.getAbsolutePath());
+            writeJson(w, blocksMap, totalBlocks, resolvedBlocks, skippedNoName,
+                      errorCount, errorSamples, noIconNames, modList,
+                      iterCount, idScanMethod, idScanAdded);
+            System.out.printf(
+                "[AtlasDumper] Done — %d/%d blocks (%d no-icon, %d unnamed), "
+                + "%d mods, %d errors → %s%n",
+                resolvedBlocks, totalBlocks, noIconNames.size(), skippedNoName,
+                modList.size(), errorCount, outFile.getAbsolutePath());
         } catch (IOException e) {
             System.err.println("[AtlasDumper] Write failed: " + e.getMessage());
         }
@@ -228,8 +307,9 @@ public class AtlasDumper {
     private void writeJson(
         FileWriter w,
         Map<String, Map<String, Map<String, String>>> blocksMap,
-        int total, int resolved, int errors,
-        List<String> errorSamples
+        int total, int resolved, int skippedNoName, int errors,
+        List<String> errorSamples, List<String> noIconNames, List<String> modList,
+        int iterCount, String idScanMethod, int idScanAdded
     ) throws IOException {
         String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
 
@@ -238,15 +318,35 @@ public class AtlasDumper {
         w.write("  \"minecraft_version\": \"1.7.10\",\n");
         w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
         w.write("  \"summary\": {\n");
-        w.write("    \"total_blocks\": "     + total    + ",\n");
-        w.write("    \"blocks_with_icons\": " + resolved + ",\n");
-        w.write("    \"errors\": "            + errors   + ",\n");
+        w.write("    \"total_blocks\": "         + total         + ",\n");
+        w.write("    \"blocks_with_icons\": "    + resolved      + ",\n");
+        w.write("    \"blocks_without_icons\": " + (total - resolved) + ",\n");
+        w.write("    \"skipped_no_name\": "      + skippedNoName  + ",\n");
+        w.write("    \"registry_iter_count\": " + iterCount      + ",\n");
+        w.write("    \"id_scan_method\": "       + jsonStr(idScanMethod) + ",\n");
+        w.write("    \"id_scan_added\": "        + idScanAdded    + ",\n");
+        w.write("    \"mod_count\": "            + modList.size() + ",\n");
+        w.write("    \"errors\": "               + errors        + ",\n");
         w.write("    \"error_samples\": [");
         for (int i = 0; i < errorSamples.size(); i++) {
             if (i > 0) w.write(", ");
             w.write(jsonStr(errorSamples.get(i)));
         }
+        w.write("],\n");
+        w.write("    \"no_icon_blocks\": [");
+        for (int i = 0; i < noIconNames.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(noIconNames.get(i)));
+        }
         w.write("]\n  },\n");
+
+        // Loaded mods (modid@version) — for world↔dump mismatch detection.
+        w.write("  \"mods\": [");
+        for (int i = 0; i < modList.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(modList.get(i)));
+        }
+        w.write("],\n");
 
         w.write("  \"blocks\": {\n");
         int bi = 0;
