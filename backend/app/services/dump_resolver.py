@@ -101,6 +101,7 @@ class ForgeDumpResolver:
         self._loaded = False
         self._path: str | None = None
         self._summary: dict[str, object] = {}
+        self._mods: list[str] = []  # ["modid@version", ...] from the dump
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
@@ -122,6 +123,7 @@ class ForgeDumpResolver:
         self._loaded = True
         self._path = str(path)
         self._summary = data.get("summary", {})
+        self._mods = data.get("mods", []) or []
         log.info(
             "ForgeDumpResolver: loaded %d blocks from %s (errors=%s)",
             len(self._blocks),
@@ -147,6 +149,23 @@ class ForgeDumpResolver:
     @property
     def summary(self) -> dict[str, object]:
         return self._summary
+
+    @property
+    def mods(self) -> list[str]:
+        """Raw 'modid@version' strings recorded in the dump (empty for old dumps)."""
+        return self._mods
+
+    @property
+    def mods_map(self) -> dict[str, str]:
+        """{mod_id: version} parsed from the dump's mods list."""
+        result: dict[str, str] = {}
+        for entry in self._mods:
+            mod_id, _, version = entry.rpartition("@")
+            if mod_id:
+                result[mod_id] = version
+            else:  # no '@' — treat the whole string as the id
+                result[entry] = ""
+        return result
 
     # ── Resolution ────────────────────────────────────────────────────────────
 

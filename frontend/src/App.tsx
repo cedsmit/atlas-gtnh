@@ -7,6 +7,7 @@ import { useMetaTextureKeys } from './api/metaTextureKeys'
 import { useRegions } from './api/regions'
 import { useTextureKeys } from './api/textureKeys'
 import { DimensionPicker } from './components/DimensionPicker'
+import { DumpMismatchBanner } from './components/DumpMismatchBanner'
 import { InspectPanel } from './components/InspectPanel'
 import { LoadingScreen, type LoadingStage } from './components/LoadingScreen'
 import { MenuBar } from './components/MenuBar'
@@ -256,6 +257,7 @@ export default function App() {
               config={config}
               debugMode={debugOpen}
             />
+            <DumpMismatchBanner worldPath={worldPath} />
           </div>
 
           {/* Inspect panel */}

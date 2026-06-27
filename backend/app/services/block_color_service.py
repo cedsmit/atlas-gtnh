@@ -20,7 +20,7 @@ from app.services.dump_resolver import (
     try_load_dump,
 )
 from app.services.legacy_resolver import resolve_legacy_texture
-from app.world.block_registry import read_block_id_map
+from app.world.block_registry import read_block_id_map, read_world_modlist
 from app.world.texture_colors import scan_jar, scan_jar_assets
 
 # Prefixes stripped from block names before texture lookup.
@@ -1164,6 +1164,86 @@ def build_block_meta_texture_map(world_path: str) -> dict[str, str]:
     _augment_meta_map_from_dump(id_map, db, result)
     _meta_texture_key_cache[world_path] = result
     return result
+
+
+def compute_dump_mismatch(world_path: str) -> dict[str, object]:
+    """Compare a world's FML mod list against the loaded icon dump.
+
+    Surfaces instance/version mismatches that cause "no mapping" blocks:
+      - mods present in the world but absent from the dump (with how many
+        blocks each contributes — those are the ones that won't resolve)
+      - mods whose version differs between world and dump
+      - differing total mod counts
+
+    Returns ``{"dump_loaded": False}`` when no dump is loaded.
+    """
+    from collections import Counter
+
+    path = Path(world_path)
+
+    # Make sure the dump is loaded (no-op if already loaded).
+    _try_auto_load_dump(find_minecraft_dir(path))
+    dump = get_dump_resolver()
+    if not dump.is_loaded:
+        return {"dump_loaded": False}
+
+    world_mods = read_world_modlist(path)
+    dump_mods = dump.mods_map
+
+    # Block count per mod domain (registry name prefix before ':').
+    id_map = read_block_id_map(path)
+    block_counts: Counter[str] = Counter(
+        name.split(":", 1)[0] for name in id_map.values() if ":" in name
+    )
+
+    raw_missing: list[tuple[str, str, int]] = []  # (mod_id, world_version, block_count)
+    version_mismatches: list[dict[str, object]] = []
+    for mod_id, world_ver in world_mods.items():
+        if mod_id not in dump_mods:
+            raw_missing.append((mod_id, world_ver, int(block_counts.get(mod_id, 0))))
+        elif dump_mods[mod_id] and world_ver and dump_mods[mod_id] != world_ver:
+            version_mismatches.append({
+                "mod_id": mod_id,
+                "world_version": world_ver,
+                "dump_version": dump_mods[mod_id],
+            })
+
+    # Most impactful first: mods that actually contribute blocks.
+    raw_missing.sort(key=lambda t: -t[2])
+    missing_with_blocks = sum(1 for t in raw_missing if t[2] > 0)
+    missing_from_dump: list[dict[str, object]] = [
+        {"mod_id": mid, "world_version": wv, "block_count": bc}
+        for mid, wv, bc in raw_missing
+    ]
+
+    count_differs = len(world_mods) != len(dump_mods)
+    has_mismatch = bool(missing_from_dump or version_mismatches or count_differs)
+
+    # Severity ranks the *impact* on rendering so the UI can avoid false alarms:
+    #   error — mods with blocks are missing from the dump (those blocks can't map)
+    #   warn  — mod versions differ (textures may be subtly wrong)
+    #   info  — only benign differences (extra mods in dump, or blockless mods)
+    #   ok    — mod lists agree
+    if missing_with_blocks > 0:
+        severity = "error"
+    elif version_mismatches:
+        severity = "warn"
+    elif missing_from_dump or count_differs:
+        severity = "info"
+    else:
+        severity = "ok"
+
+    return {
+        "dump_loaded": True,
+        "has_mismatch": has_mismatch,
+        "severity": severity,
+        "world_mod_count": len(world_mods),
+        "dump_mod_count": len(dump_mods),
+        "count_differs": count_differs,
+        "missing_with_blocks": missing_with_blocks,
+        "missing_from_dump": missing_from_dump,
+        "version_mismatches": version_mismatches,
+    }
 
 
 def debug_texture_resolution(world_path: str) -> dict[str, object]:

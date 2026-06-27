@@ -86,3 +86,31 @@ def read_block_id_map(world_path: Path) -> dict[int, str]:
         return {}
     except Exception:
         return {}
+
+
+def read_world_modlist(world_path: Path) -> dict[str, str]:
+    """Read {mod_id: mod_version} from level.dat's FML ModList.
+
+    Returns an empty dict if the world has no readable ModList.
+    """
+    level_dat = world_path / "level.dat"
+    if not level_dat.exists():
+        return {}
+
+    try:
+        nbt: Any = nbtlib.load(str(level_dat))
+        fml: Any = nbt.get("FML") or nbt["Data"].get("FML")
+        if fml is None:
+            return {}
+        mod_list: Any = fml.get("ModList")
+        if mod_list is None:
+            return {}
+        result: dict[str, str] = {}
+        for entry in mod_list:
+            mod_id = entry.get("ModId")
+            version = entry.get("ModVersion")
+            if mod_id is not None:
+                result[str(mod_id)] = str(version) if version is not None else ""
+        return result
+    except Exception:
+        return {}

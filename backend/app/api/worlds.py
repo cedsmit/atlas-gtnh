@@ -11,6 +11,7 @@ from app.services.block_color_service import (
     build_block_color_map,
     build_block_meta_texture_map,
     build_block_texture_map,
+    compute_dump_mismatch,
     debug_pipeline_report,
     debug_texture_resolution,
     find_minecraft_dir,
@@ -592,6 +593,20 @@ async def dump_status_endpoint() -> dict[str, object]:
         "block_count": dump.block_count,
         "summary": dump.summary,
     }
+
+
+@router.get("/dump-mismatch")
+async def dump_mismatch_endpoint(world_path: str = Query(...)) -> dict[str, object]:
+    """Compare a world's FML mod list against the loaded icon dump.
+
+    Reports mods present in the world but missing from the dump (with the
+    number of blocks each contributes), version differences, and total-count
+    differences — the usual cause of "no mapping" blocks.
+    """
+    try:
+        return await asyncio.to_thread(compute_dump_mismatch, world_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/debug-texture-resolution")
