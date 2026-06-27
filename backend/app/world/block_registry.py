@@ -48,22 +48,39 @@ def read_block_id_map(world_path: Path) -> dict[int, str]:
                 if ids is not None:
                     return _parse_id_list(ids)
 
-        # Older Forge 1.7.10 format: ItemData mixes blocks and items.
-        # The prefix byte is \x01 or \x02 depending on how the mod registered
-        # the block — strip either prefix and include all IDs < 4096 (block range).
+        # Older Forge 1.7.10 format: ItemData lists both registries.  Each entry's
+        # name carries a leading control byte — \x01 marks a block registration,
+        # \x02 an item.  A block always has a \x01 entry (and, when it also has an
+        # ItemBlock, a second \x02 entry at the same id).  Selecting the \x01
+        # entries yields exactly the block set and — crucially for GTNH — keeps
+        # extended block IDs above the vanilla 4096 ceiling (e.g. id 10826).
+        # Note: we iterate raw entries rather than _parse_id_list() because that
+        # dedupes by id and would discard the \x01/\x02 distinction.
         item_data: Any = fml.get("ItemData")
         if item_data is not None:
-            all_entries = _parse_id_list(item_data)
             result: dict[int, str] = {}
-            for nid, name in all_entries.items():
-                if name.startswith(("\x01", "\x02")):
-                    cleaned = name[1:]
-                elif name.startswith("\x00"):
-                    cleaned = name[1:]
-                else:
-                    cleaned = name
-                if nid < 4096:
-                    result[nid] = cleaned
+            for entry in item_data:
+                name = entry.get("K")
+                nid = entry.get("V")
+                if name is None or nid is None:
+                    continue
+                s = str(name)
+                if s[:1] == "\x01":
+                    result[int(nid)] = s[1:]
+            if result:
+                return result
+
+            # Fallback for layouts that carry no \x01 block markers: strip any
+            # control prefix and keep the vanilla block-id range.
+            for entry in item_data:
+                name = entry.get("K")
+                nid = entry.get("V")
+                if name is None or nid is None:
+                    continue
+                s = str(name)
+                cleaned = s[1:] if s[:1] in ("\x00", "\x01", "\x02") else s
+                if int(nid) < 4096:
+                    result[int(nid)] = cleaned
             return result
 
         return {}
