@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
-import { useDumpMismatch } from '../api/dumpMismatch'
+import { downloadMissingBlockReport, useDumpMismatch } from '../api/dumpMismatch'
 import { columnTally } from '../lib/columnTally'
 
 interface Props {
@@ -25,6 +25,7 @@ const shortName = (n: string) => (n.includes(':') ? n.split(':', 2)[1] : n)
 export function DumpMismatchBanner({ worldPath }: Props) {
   const { data } = useDumpMismatch(worldPath)
   const [dismissed, setDismissed] = useState(false)
+  const [exporting, setExporting] = useState<null | 'json' | 'csv'>(null)
 
   // Re-render as the map tally grows.
   useSyncExternalStore(columnTally.subscribe, columnTally.getVersion)
@@ -62,6 +63,18 @@ export function DumpMismatchBanner({ worldPath }: Props) {
           : 'Icon dump doesn’t fully match this world'
 
   const shownBlocks = visibleMissing.slice(0, 8)
+
+  const handleExport = async (format: 'json' | 'csv') => {
+    if (!worldPath || exporting) return
+    setExporting(format)
+    try {
+      await downloadMissingBlockReport(worldPath, format, columnTally.snapshot())
+    } catch (e) {
+      console.error('missing-block report export failed', e)
+    } finally {
+      setExporting(null)
+    }
+  }
 
   return (
     <div
@@ -132,6 +145,26 @@ export function DumpMismatchBanner({ worldPath }: Props) {
               </ul>
             </div>
           )}
+
+          <div className="mt-2 text-zinc-500">
+            Export missing-block report:{' '}
+            <button
+              onClick={() => handleExport('json')}
+              disabled={!!exporting}
+              className="text-sky-300 hover:underline disabled:opacity-50"
+            >
+              JSON
+            </button>
+            {' · '}
+            <button
+              onClick={() => handleExport('csv')}
+              disabled={!!exporting}
+              className="text-sky-300 hover:underline disabled:opacity-50"
+            >
+              CSV
+            </button>
+            {exporting && <span className="ml-1 text-zinc-400">generating…</span>}
+          </div>
         </div>
 
         <button

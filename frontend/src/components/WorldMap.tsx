@@ -535,8 +535,8 @@ function renderChunkImage(
 
       // ── Per-column tallies (first render only, so each chunk counts once) ──
       if (recordDebug) {
-        // Always-on: top-block occurrence for the dump-mismatch banner.
-        columnTally.record(id)
+        // Always-on: top-block occurrence + metadata for the dump-mismatch banner.
+        columnTally.record(id, meta)
         // Debug panel detail is gated on debug mode.
         if (debugMode) {
           textureDebugStore.record(id, blockNames?.[id], texKey, tintType)

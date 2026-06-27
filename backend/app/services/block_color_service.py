@@ -1281,6 +1281,98 @@ def compute_dump_mismatch(world_path: str) -> dict[str, object]:
     }
 
 
+def build_missing_block_report(
+    world_path: str,
+    occurrences: dict[int, int] | None = None,
+    metas: dict[int, list[int]] | None = None,
+) -> dict[str, object]:
+    """Build a diagnostic report of every world block absent from the icon dump.
+
+    Each row joins the cheap backend facts (id, domain, mod versions, resolver
+    result, fallback reason) with optional client-supplied on-map data
+    (``occurrences`` = columns rendered, ``metas`` = metadata values seen).
+    The block list is complete; occurrence/metas are 0/empty for blocks the
+    client hasn't rendered yet.
+    """
+    from datetime import UTC, datetime
+
+    occurrences = occurrences or {}
+    metas = metas or {}
+
+    path = Path(world_path)
+    _try_auto_load_dump(find_minecraft_dir(path))
+    dump = get_dump_resolver()
+    world_mods = read_world_modlist(path)
+    dump_mods = dump.mods_map
+    id_map = read_block_id_map(path)
+    db = _ensure_asset_db(world_path)
+
+    rows: list[dict[str, object]] = []
+    for block_id, reg_name in id_map.items():
+        if ":" not in reg_name or (dump.is_loaded and dump.has_block(reg_name)):
+            continue
+        domain = reg_name.split(":", 1)[0]
+        key, method = _resolve_unified(reg_name, 0, db)
+        fallback_reason = ""
+        if key is None:
+            modern = resolve_block_texture(reg_name, 0, db)
+            fallback_reason = modern.failure_reason or "no resolver matched"
+        rows.append({
+            "registry_name": reg_name,
+            "block_id": block_id,
+            "domain": domain,
+            "metas_seen": sorted(metas.get(block_id, [])),
+            "occurrence_columns": int(occurrences.get(block_id, 0)),
+            "mod_in_dump": domain in dump_mods,
+            "world_mod_version": world_mods.get(domain, ""),
+            "dump_mod_version": dump_mods.get(domain, ""),
+            "resolver_method": method,
+            "resolver_texture_key": key,
+            "fallback_reason": fallback_reason,
+        })
+
+    # Most impactful first: blocks actually covering the map.
+    def _sort_key(r: dict[str, object]) -> tuple[int, str, str]:
+        return (-int(r["occurrence_columns"]), str(r["domain"]), str(r["registry_name"]))  # type: ignore[call-overload]
+    rows.sort(key=_sort_key)
+
+    return {
+        "format": "atlas-missing-block-report-v1",
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "world_path": world_path,
+        "dump_loaded": dump.is_loaded,
+        "dump_path": dump.path,
+        "summary": {
+            "missing_block_count": len(rows),
+            "drift_block_count": sum(1 for r in rows if r["mod_in_dump"]),
+            "on_map_block_count": sum(1 for r in rows if int(r["occurrence_columns"]) > 0),  # type: ignore[call-overload]
+        },
+        "blocks": rows,
+    }
+
+
+def missing_block_report_csv(report: dict[str, object]) -> str:
+    """Serialise a missing-block report (from build_missing_block_report) to CSV."""
+    import csv
+    import io
+
+    fields = [
+        "registry_name", "block_id", "domain", "metas_seen", "occurrence_columns",
+        "mod_in_dump", "world_mod_version", "dump_mod_version",
+        "resolver_method", "resolver_texture_key", "fallback_reason",
+    ]
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for row in report.get("blocks", []):  # type: ignore[union-attr]
+        out = dict(row)
+        metas = out.get("metas_seen")
+        if isinstance(metas, list):
+            out["metas_seen"] = ";".join(str(m) for m in metas)
+        writer.writerow(out)
+    return buf.getvalue()
+
+
 def debug_texture_resolution(world_path: str) -> dict[str, object]:
     """Return diagnostic data for the full texture-resolution chain.
 

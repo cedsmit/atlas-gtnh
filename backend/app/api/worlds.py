@@ -1,9 +1,10 @@
 import asyncio
+import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
 from app.models.world import WorldValidateRequest, WorldValidateResponse
@@ -11,10 +12,12 @@ from app.services.block_color_service import (
     build_block_color_map,
     build_block_meta_texture_map,
     build_block_texture_map,
+    build_missing_block_report,
     compute_dump_mismatch,
     debug_pipeline_report,
     debug_texture_resolution,
     find_minecraft_dir,
+    missing_block_report_csv,
     trace_block_pipeline,
 )
 from app.services.dump_resolver import get_dump_resolver, try_load_dump
@@ -607,6 +610,44 @@ async def dump_mismatch_endpoint(world_path: str = Query(...)) -> dict[str, obje
         return await asyncio.to_thread(compute_dump_mismatch, world_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+class MissingReportBody(BaseModel):
+    # On-map data from the client: block_id -> columns rendered, and metas seen.
+    occurrences: dict[int, int] = Field(default_factory=dict)
+    metas: dict[int, list[int]] = Field(default_factory=dict)
+
+
+@router.post("/missing-block-report")
+async def missing_block_report_endpoint(
+    body: MissingReportBody,
+    world_path: str = Query(...),
+    fmt: str = Query("json", alias="format"),
+) -> Response:
+    """Generate a downloadable diagnostic of every world block missing from the dump.
+
+    Body carries optional client on-map data (occurrences = columns rendered,
+    metas = metadata values seen). Returns JSON (default) or CSV (?format=csv)
+    as a file attachment.
+    """
+    try:
+        report = await asyncio.to_thread(
+            build_missing_block_report, world_path, body.occurrences, body.metas
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    if fmt == "csv":
+        return Response(
+            content=missing_block_report_csv(report),
+            media_type="text/csv",
+            headers={"Content-Disposition": 'attachment; filename="missing-blocks.csv"'},
+        )
+    return Response(
+        content=json.dumps(report, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="missing-blocks.json"'},
+    )
 
 
 @router.get("/debug-texture-resolution")
