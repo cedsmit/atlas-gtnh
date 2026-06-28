@@ -42,17 +42,30 @@ def get_texture_png(texture_key: str) -> bytes | None:
             try:
                 png = zf.read(jar_path)
             except KeyError:
-                # Keys are stored lowercase but mod JARs (IC2, BuildCraft, etc.) use
-                # camelCase filenames — do a case-insensitive scan to find the entry.
+                # Two mismatches to absorb, case-insensitively:
+                #  1. mod JARs (IC2, BuildCraft, …) use camelCase filenames;
+                #  2. the color scan stores a filename-only alias for textures that
+                #     actually live in a subdirectory (e.g. projectred:basalt_brick
+                #     → assets/projectred/textures/blocks/world/basalt_brick.png).
+                # Prefer an exact path match, else any entry under this domain's
+                # blocks dir ending in /{name}.png.
                 target_lower = jar_path.lower()
-                png = None
+                prefix = f"assets/{domain}/textures/blocks/".lower()
+                suffix = f"/{name}.png".lower()
+                exact: str | None = None
+                subdir: str | None = None
                 for entry in zf.namelist():
-                    if entry.lower() == target_lower:
-                        png = zf.read(entry)
+                    el = entry.lower()
+                    if el == target_lower:
+                        exact = entry
                         break
-            if png is None:
-                _cache[texture_key] = None
-                return None
+                    if subdir is None and el.startswith(prefix) and el.endswith(suffix):
+                        subdir = entry
+                chosen = exact or subdir
+                if chosen is None:
+                    _cache[texture_key] = None
+                    return None
+                png = zf.read(chosen)
         _cache[texture_key] = png
         return png
     except (zipfile.BadZipFile, OSError):
