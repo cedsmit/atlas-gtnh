@@ -221,6 +221,13 @@ _OVERRIDES: dict[str, str] = {
     "natura:natura.overworld.treeroots":           "natura:planks_eucalyptus",
     "natura:natura.overworld.saguaro":             "natura:cactus.saguaro.body",
     "natura:natura.nether.glowshroom":             "natura:mushroom.glow",
+
+    # ── ProjectRed Exploration ─────────────────────────────────────────────
+    # Scala/CCL blocks that never appear in the Forge icon dump; their textures
+    # exist in the JAR, so map base (meta 0) here and full meta tables below.
+    "projred|exploration:projectred.exploration.stone":      "projectred:marble",
+    "projred|exploration:projectred.exploration.stonewalls": "projectred:marble",
+    "projred|exploration:projectred.exploration.ore":        "projectred:ruby_ore",
 }
 
 # Suffixes tried in order when no direct match is found.
@@ -665,6 +672,22 @@ def _build_meta_texture_map_for_world(id_map: dict[int, str]) -> dict[str, str]:
     # Ztones glaxx: no dedicated texture in the JAR, all 16 metas use vanilla glass.
     for m in range(16):
         add("Ztones:tile.glaxx", m, "minecraft:glass")
+
+    # ProjectRed Exploration — not in the Forge dump (Scala/CCL); meta order from
+    # the mod's decorative-stone / ore enums. Verify against a world export.
+    _PR_STONE = [
+        "marble", "marble_brick", "basalt", "basalt_cobble", "basalt_brick",
+        "ruby_block", "sapphire_block", "peridot_block",
+    ]
+    _PR_ORE = [
+        "ruby_ore", "sapphire_ore", "peridot_ore", "copper_ore",
+        "tin_ore", "silver_ore", "electrotine_ore",
+    ]
+    for m, tex in enumerate(_PR_STONE):
+        add("ProjRed|Exploration:projectred.exploration.stone", m, f"projectred:{tex}")
+        add("ProjRed|Exploration:projectred.exploration.stonewalls", m, f"projectred:{tex}")
+    for m, tex in enumerate(_PR_ORE):
+        add("ProjRed|Exploration:projectred.exploration.ore", m, f"projectred:{tex}")
 
     return result
 
