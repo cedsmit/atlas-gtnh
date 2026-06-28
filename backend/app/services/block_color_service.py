@@ -228,6 +228,7 @@ _OVERRIDES: dict[str, str] = {
     "projred|exploration:projectred.exploration.stone":      "projectred:marble",
     "projred|exploration:projectred.exploration.stonewalls": "projectred:marble",
     "projred|exploration:projectred.exploration.ore":        "projectred:ruby_ore",
+    "projred|exploration:projectred.exploration.barrel":     "projectred:world/barrel/top",
 }
 
 # Suffixes tried in order when no direct match is found.
