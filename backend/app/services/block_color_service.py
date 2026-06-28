@@ -141,6 +141,20 @@ _OVERRIDES: dict[str, str] = {
     "gregtech:gt.blockcasings3":                   "gregtech:blockcasing",
     "gregtech:gt.blockcasings4":                   "gregtech:blockcasing",
     "gregtech:gt.blockcasings5":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings6":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings8":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings9":                   "gregtech:blockcasing",
+    "gregtech:gt.blockcasings10":                  "gregtech:blockcasing",
+    "gregtech:gt.blockcasings11":                  "gregtech:blockcasing",
+    "gregtech:gt.blockcasings12":                  "gregtech:blockcasing",
+    "gregtech:gt.blockcasings13":                  "gregtech:blockcasing",
+    "gregtech:gt.blockcasingsnh":                  "gregtech:blockcasing",
+    "gregtech:gt.blockcasings.cyclotron_coils":    "gregtech:blockcasing",
+    # GT solid utility blocks (not TESR machines) — map to their JAR textures.
+    "gregtech:gt.blockglass1":                     "gregtech:glass_ph_resistant",
+    "gregtech:gt.blocktintedglass":                "gregtech:glass_tinted_industrial_gray",
+    "gregtech:gt.laserplate":                      "gregtech:iconsets/laser_plate",
+    "gregtech:gt.block.longdistancepipe":          "gregtech:em_pipe",
 
     # ── IC2 — registry "blockXxx" → texture "xxx" or "xxx_top" ──────────────
     # The block-prefix stripping in _resolve_texture_key handles most IC2 blocks
@@ -229,6 +243,20 @@ _OVERRIDES: dict[str, str] = {
     "projred|exploration:projectred.exploration.stonewalls": "projectred:marble",
     "projred|exploration:projectred.exploration.ore":        "projectred:ruby_ore",
     "projred|exploration:projectred.exploration.barrel":     "projectred:world/barrel/top",
+
+    # ── Chisel blocks the dump missed (CTM/meta-variant; representative texture) ─
+    "chisel:amber":           "chisel:amberblock",
+    "chisel:bloodbrick":      "chisel:bloodmagic/bloodrunebricks",
+    "chisel:futuracircuit":   "chisel:futura/circuitplate-v9",
+    "chisel:hexlargeplating": "chisel:hexplating/hexbase",
+    "chisel:technical3":      "chisel:technical/industrialrelic",
+
+    # ── FloodLights ────────────────────────────────────────────────────────
+    # (tilePhantomLight is an invisible light source — intentionally unmapped.)
+    "floodlights:smallelectricfloodlightmetablock": "floodlights:electricfloodlight_top",
+
+    # ── Cooking for Blockheads ─────────────────────────────────────────────
+    "cookingforblockheads:cookingtable": "cookingforblockheads:cooking_table_top",
 }
 
 # Suffixes tried in order when no direct match is found.
