@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -811,6 +812,11 @@ _color_cache: dict[str, dict[int, list[int]]] = {}
 _texture_key_cache: dict[str, dict[int, str]] = {}
 _meta_texture_key_cache: dict[str, dict[str, str]] = {}
 _asset_db_cache: dict[str, AssetDatabase] = {}
+# Serialises the (slow) asset-DB build so concurrent first-requests don't race:
+# the build also loads the Forge icon dump, and a half-built cache entry would let
+# one request read an asset DB before the dump is loaded (meta-variant textures
+# would then resolve to the base texture and that wrong result would be cached).
+_asset_db_lock = threading.Lock()
 
 
 def _ensure_texture_colors(world_path: str) -> dict[str, tuple[int, int, int]]:
@@ -858,53 +864,60 @@ def _ensure_asset_db(world_path: str) -> AssetDatabase:
     if world_path in _asset_db_cache:
         return _asset_db_cache[world_path]
 
-    mc_dir = find_minecraft_dir(Path(world_path))
-    if mc_dir is None:
-        db = AssetDatabase()
+    # Serialise concurrent first-builds; re-check the cache inside the lock so the
+    # work happens once and the dump is loaded before the entry is published.
+    with _asset_db_lock:
+        if world_path in _asset_db_cache:
+            return _asset_db_cache[world_path]
+
+        mc_dir = find_minecraft_dir(Path(world_path))
+        if mc_dir is None:
+            db = AssetDatabase()
+            _asset_db_cache[world_path] = db
+            return db
+
+        jars = _collect_jars(mc_dir)
+        all_colors: dict[str, tuple[int, int, int]] = {}
+        all_blockstates: dict[str, Any] = {}
+        all_models: dict[str, Any] = {}
+
+        for jar in jars:
+            try:
+                # ── Texture colors ────────────────────────────────────────────
+                cached_colors = load_jar_colors(jar)
+                if cached_colors is not None:
+                    all_colors.update(cached_colors)
+                else:
+                    fresh = scan_jar(jar)
+                    save_jar_colors(jar, fresh)
+                    for name, (avg, dom) in fresh.items():
+                        all_colors[name] = dom if dom is not None else avg
+
+                # ── JSON assets (blockstates + models) ────────────────────────
+                cached_json = load_jar_json_assets(jar)
+                if cached_json is not None:
+                    bs, mods = cached_json
+                else:
+                    bs, mods = scan_jar_assets(jar)
+                    save_jar_json_assets(jar, bs, mods)
+                all_blockstates.update(bs)
+                all_models.update(mods)
+                time.sleep(0)
+            except Exception:
+                pass
+
+        db = AssetDatabase(
+            blockstates=all_blockstates,
+            models=all_models,
+            texture_colors=all_colors,
+        )
+
+        # Load the Forge icon dump BEFORE publishing the cache entry, so any reader
+        # that gets this DB is guaranteed the dump is available (no-op if loaded).
+        _try_auto_load_dump(mc_dir)
+
         _asset_db_cache[world_path] = db
         return db
-
-    jars = _collect_jars(mc_dir)
-    all_colors: dict[str, tuple[int, int, int]] = {}
-    all_blockstates: dict[str, Any] = {}
-    all_models: dict[str, Any] = {}
-
-    for jar in jars:
-        try:
-            # ── Texture colors ────────────────────────────────────────────────
-            cached_colors = load_jar_colors(jar)
-            if cached_colors is not None:
-                all_colors.update(cached_colors)
-            else:
-                fresh = scan_jar(jar)
-                save_jar_colors(jar, fresh)
-                for name, (avg, dom) in fresh.items():
-                    all_colors[name] = dom if dom is not None else avg
-
-            # ── JSON assets (blockstates + models) ────────────────────────────
-            cached_json = load_jar_json_assets(jar)
-            if cached_json is not None:
-                bs, mods = cached_json
-            else:
-                bs, mods = scan_jar_assets(jar)
-                save_jar_json_assets(jar, bs, mods)
-            all_blockstates.update(bs)
-            all_models.update(mods)
-            time.sleep(0)
-        except Exception:
-            pass
-
-    db = AssetDatabase(
-        blockstates=all_blockstates,
-        models=all_models,
-        texture_colors=all_colors,
-    )
-    _asset_db_cache[world_path] = db
-
-    # Auto-discover the Forge icon dump for this mc_dir (no-op if already loaded)
-    _try_auto_load_dump(mc_dir)
-
-    return db
 
 
 def debug_pipeline_report(world_path: str) -> dict[str, object]:
