@@ -5,12 +5,19 @@ from app.models.region import (
     ChunkData,
     ChunkMeta,
     ChunkSection,
+    ChunkSurface,
     DimensionInfo,
     RegionDetail,
     RegionListResponse,
     RegionSummary,
+    RegionSurfaceResponse,
 )
-from app.world.region_reader import read_chunk_data, read_region
+from app.world.region_reader import (
+    read_chunk_data,
+    read_region,
+    read_region_chunks,
+    read_region_surface,
+)
 
 _DIMS_FILE = Path(__file__).parent.parent / "data" / "dimensions.json"
 _KNOWN_DIMS: dict[str, str] = json.loads(_DIMS_FILE.read_text(encoding="utf-8"))
@@ -95,6 +102,73 @@ def get_chunk_data(world_path: str, cx: int, cz: int) -> ChunkData:
         chunk_z=raw.chunk_z,
         sections=[ChunkSection(y=s.y, blocks=s.blocks, data=s.data) for s in raw.sections],
         biomes=raw.biomes,
+    )
+
+
+def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> list[ChunkData]:
+    """Read many chunks in one pass, reading each region file only once.
+
+    Coords are grouped by region so a region's bytes are read (and cached) a
+    single time regardless of how many of its chunks were requested.  Chunks
+    that are absent or empty are simply omitted from the result; the caller
+    diffs the request against the response to learn which came back empty.
+    """
+    region_root = Path(world_path) / "region"
+
+    # Map (rx, rz) → { (local_x, local_z): (cx, cz) }
+    by_region: dict[tuple[int, int], dict[tuple[int, int], tuple[int, int]]] = {}
+    for cx, cz in coords:
+        rx, rz = cx >> 5, cz >> 5
+        by_region.setdefault((rx, rz), {})[(cx % 32, cz % 32)] = (cx, cz)
+
+    out: list[ChunkData] = []
+    for (rx, rz), wanted in by_region.items():
+        region_file = region_root / f"r.{rx}.{rz}.mca"
+        if not region_file.exists():
+            continue
+        try:
+            chunks = read_region_chunks(region_file, set(wanted))
+        except ValueError:
+            continue
+        for raw in chunks.values():
+            out.append(
+                ChunkData(
+                    chunk_x=raw.chunk_x,
+                    chunk_z=raw.chunk_z,
+                    sections=[
+                        ChunkSection(y=s.y, blocks=s.blocks, data=s.data) for s in raw.sections
+                    ],
+                    biomes=raw.biomes,
+                )
+            )
+    return out
+
+
+def get_region_surface(world_path: str, rx: int, rz: int) -> RegionSurfaceResponse:
+    """Compact per-column surface summary for every chunk in a region.
+
+    Used to render a single low-detail tile per region for the zoomed-out
+    overview, instead of one full-resolution texture per chunk.
+    """
+    region_file = Path(world_path) / "region" / f"r.{rx}.{rz}.mca"
+    if not region_file.exists():
+        raise FileNotFoundError(f"Region file not found: r.{rx}.{rz}.mca")
+
+    surfaces = read_region_surface(region_file)
+    return RegionSurfaceResponse(
+        region_x=rx,
+        region_z=rz,
+        chunks=[
+            ChunkSurface(
+                chunk_x=s.chunk_x,
+                chunk_z=s.chunk_z,
+                ids=s.ids,
+                metas=s.metas,
+                heights=s.heights,
+                biomes=s.biomes,
+            )
+            for s in surfaces
+        ],
     )
 
 

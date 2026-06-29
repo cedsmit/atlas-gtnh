@@ -31,6 +31,35 @@ export interface RegionDetail {
   chunks: ChunkMeta[]
 }
 
+export interface ChunkSurface {
+  chunk_x: number
+  chunk_z: number
+  ids: number[] // 256, top non-air block id per column (x + z*16); 0 = empty
+  metas: number[] // 256
+  heights: number[] // 256, absolute Y of the top block; -1 = empty
+  biomes: number[] // 256, or empty when not stored
+}
+
+export interface RegionSurface {
+  region_x: number
+  region_z: number
+  chunks: ChunkSurface[]
+}
+
+/** Fetch the compact per-column surface summary for one region (overview LOD). */
+export async function fetchRegionSurface(
+  worldPath: string,
+  rx: number,
+  rz: number
+): Promise<RegionSurface> {
+  const res = await fetch(
+    `${API_BASE}/worlds/regions/${rx}/${rz}/surface?world_path=${encodeURIComponent(worldPath)}`
+  )
+  if (!res.ok)
+    throw new Error(`Failed to load region surface r.${rx}.${rz}: ${res.statusText}`)
+  return res.json() as Promise<RegionSurface>
+}
+
 async function fetchRegions(worldPath: string): Promise<RegionListResponse> {
   const res = await fetch(
     `${API_BASE}/worlds/regions?world_path=${encodeURIComponent(worldPath)}`

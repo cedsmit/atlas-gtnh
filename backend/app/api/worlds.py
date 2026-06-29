@@ -6,7 +6,15 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
-from app.models.region import ChunkData, DimensionInfo, RegionDetail, RegionListResponse
+from app.models.region import (
+    ChunkBatchRequest,
+    ChunkBatchResponse,
+    ChunkData,
+    DimensionInfo,
+    RegionDetail,
+    RegionListResponse,
+    RegionSurfaceResponse,
+)
 from app.models.world import WorldValidateRequest, WorldValidateResponse
 from app.services.block_color_service import (
     build_block_color_map,
@@ -23,13 +31,18 @@ from app.services.block_color_service import (
 from app.services.dump_resolver import get_dump_resolver, try_load_dump
 from app.services.region_service import (
     get_chunk_data,
+    get_chunks_batch,
     get_region_detail,
+    get_region_surface,
     list_dimensions,
     list_regions,
 )
 from app.services.world_validator import validate_world_path
 
 router = APIRouter(prefix="/worlds", tags=["worlds"])
+
+# Upper bound on chunks served per bulk request, to cap response size and work.
+MAX_BATCH_CHUNKS = 1024
 
 
 @router.post("/validate", response_model=WorldValidateResponse)
@@ -58,6 +71,19 @@ async def list_world_regions(world_path: str = Query(...)) -> RegionListResponse
 async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> RegionDetail:
     try:
         return get_region_detail(world_path, rx, rz)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/regions/{rx}/{rz}/surface", response_model=RegionSurfaceResponse)
+async def get_world_region_surface(
+    rx: int, rz: int, world_path: str = Query(...)
+) -> RegionSurfaceResponse:
+    """Compact per-column surface summary for one region (zoomed-out LOD tile)."""
+    try:
+        return await asyncio.to_thread(get_region_surface, world_path, rx, rz)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
@@ -683,10 +709,28 @@ async def get_texture(key: str = Query(...)) -> Response:
     )
 
 
+@router.post("/chunks/batch", response_model=ChunkBatchResponse)
+async def get_world_chunks_batch(req: ChunkBatchRequest) -> ChunkBatchResponse:
+    """Read many chunks in one request.
+
+    Coords are grouped by region so each region file is read once.  Absent or
+    empty chunks are omitted; the caller diffs request vs. response to mark
+    them empty.  Parsing runs off the event loop so concurrent requests don't
+    serialize on the single async thread.
+    """
+    if len(req.coords) > MAX_BATCH_CHUNKS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many chunks requested ({len(req.coords)} > {MAX_BATCH_CHUNKS})",
+        )
+    chunks = await asyncio.to_thread(get_chunks_batch, req.world_path, req.coords)
+    return ChunkBatchResponse(chunks=chunks)
+
+
 @router.get("/chunks/{cx}/{cz}", response_model=ChunkData)
 async def get_world_chunk(cx: int, cz: int, world_path: str = Query(...)) -> ChunkData:
     try:
-        return get_chunk_data(world_path, cx, cz)
+        return await asyncio.to_thread(get_chunk_data, world_path, cx, cz)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:

@@ -205,6 +205,63 @@ def test_get_chunk_data(tmp_path: Path) -> None:
     assert section["data"][0] == 0
 
 
+def test_get_chunks_batch(tmp_path: Path) -> None:
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    response = client.post(
+        "/worlds/chunks/batch",
+        json={"world_path": str(world), "coords": [[0, 0], [1, 0]]},
+    )
+    assert response.status_code == 200
+    chunks = response.json()["chunks"]
+    # (0,0) has terrain; (1,0) is absent and is therefore omitted.
+    assert len(chunks) == 1
+    assert chunks[0]["chunk_x"] == 0
+    assert chunks[0]["chunk_z"] == 0
+    assert len(chunks[0]["sections"][0]["blocks"]) == 4096
+
+
+def test_get_chunks_batch_empty_coords(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.post(
+        "/worlds/chunks/batch", json={"world_path": str(world), "coords": []}
+    )
+    assert response.status_code == 200
+    assert response.json()["chunks"] == []
+
+
+def test_get_region_surface(tmp_path: Path) -> None:
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    response = client.get("/worlds/regions/0/0/surface", params={"world_path": str(world)})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["region_x"] == 0
+    assert body["region_z"] == 0
+    assert len(body["chunks"]) == 1
+    surf = body["chunks"][0]
+    assert surf["chunk_x"] == 0
+    assert surf["chunk_z"] == 0
+    assert len(surf["ids"]) == 256
+    assert len(surf["heights"]) == 256
+    # All-stone single section (Y=0): every column's surface is stone (id 1) at y=15.
+    assert surf["ids"][0] == 1
+    assert surf["heights"][0] == 15
+
+
+def test_get_region_surface_missing(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.get("/worlds/regions/9/9/surface", params={"world_path": str(world)})
+    assert response.status_code == 404
+
+
+def test_get_chunks_batch_too_many(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    coords = [[i, 0] for i in range(1025)]
+    response = client.post(
+        "/worlds/chunks/batch", json={"world_path": str(world), "coords": coords}
+    )
+    assert response.status_code == 400
+
+
 def test_get_chunk_data_missing_chunk(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.get("/worlds/chunks/1/0", params={"world_path": str(world)})

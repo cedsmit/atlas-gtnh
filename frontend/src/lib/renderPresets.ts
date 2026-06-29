@@ -26,6 +26,7 @@ export interface RenderPreset {
   showMachines:  boolean
   showPipes:     boolean
   showCables:    boolean
+  showFire?:     boolean   // transient fire blocks; hidden by default so terrain shows
 
   // Rendering style
   foliageMode:       FoliageMode
@@ -277,6 +278,7 @@ function buildHiddenTags(p: RenderPreset): ReadonlySet<string> {
   if (!p.showMachines)  t.add('machine')
   if (!p.showPipes)     t.add('pipe')
   if (!p.showCables)    t.add('cable')
+  if (!p.showFire)      t.add('fire')  // default: hide fire (showFire is opt-in)
   return t
 }
 

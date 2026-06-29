@@ -43,6 +43,30 @@ class ChunkData(BaseModel):
     biomes: list[int] = []  # 256 biome IDs (x + z*16), empty when not stored
 
 
+class ChunkSurface(BaseModel):
+    chunk_x: int
+    chunk_z: int
+    ids: list[int]  # 256, top non-air block id per column (x + z*16); 0 = empty
+    metas: list[int]  # 256
+    heights: list[int]  # 256, absolute Y of the top block; -1 = empty
+    biomes: list[int] = []  # 256, or empty when not stored
+
+
+class RegionSurfaceResponse(BaseModel):
+    region_x: int
+    region_z: int
+    chunks: list[ChunkSurface]
+
+
+class ChunkBatchRequest(BaseModel):
+    world_path: str
+    coords: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...]
+
+
+class ChunkBatchResponse(BaseModel):
+    chunks: list[ChunkData]
+
+
 class DimensionInfo(BaseModel):
     id: str  # e.g. "", "DIM-1", "DIM1", "DIM42"
     name: str  # e.g. "Overworld", "Nether", "The End"

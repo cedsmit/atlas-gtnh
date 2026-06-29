@@ -80,7 +80,7 @@
       "mapColor": "#E8A030",
       "blockTags": ["torch"]
     },
-    "minecraft:fire":                            { "category": "overlay" },
+    "minecraft:fire":                            { "category": "overlay", "blockTags": ["fire"] },
 
     "minecraft:bed":                             { "category": "overlay" },
     "minecraft:ladder":                          { "category": "overlay", "mapVisibility": "debug" },

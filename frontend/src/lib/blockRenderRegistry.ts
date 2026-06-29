@@ -140,7 +140,7 @@ const VANILLA_BY_ID: Record<number, BlockRenderDefinition> = {
 
   // ── Overlay: light sources / fire ───────────────────────────────────────
   50:  { category: 'overlay' },  // torch
-  51:  { category: 'overlay' },  // fire
+  51:  { category: 'overlay', blockTags: ['fire'] },  // fire (hidden by default)
 
   // ── Overlay: surface items / furniture ──────────────────────────────────
   26:  { category: 'overlay' },  // bed
