@@ -805,119 +805,179 @@ def _try_auto_load_dump(mc_dir: Path | None) -> None:
             return
 
 
-# ── In-process caches ─────────────────────────────────────────────────────────
-
-_texture_colors_cache: dict[str, dict[str, tuple[int, int, int]]] = {}
-_color_cache: dict[str, dict[int, list[int]]] = {}
-_texture_key_cache: dict[str, dict[int, str]] = {}
-_meta_texture_key_cache: dict[str, dict[str, str]] = {}
-_asset_db_cache: dict[str, AssetDatabase] = {}
-# Serialises the (slow) asset-DB build so concurrent first-requests don't race:
-# the build also loads the Forge icon dump, and a half-built cache entry would let
-# one request read an asset DB before the dump is loaded (meta-variant textures
-# would then resolve to the base texture and that wrong result would be cached).
-_asset_db_lock = threading.Lock()
+# ── Per-world asset/color service ─────────────────────────────────────────────
 
 
-def _ensure_texture_colors(world_path: str) -> dict[str, tuple[int, int, int]]:
-    """Scan all mod JARs and return every extracted texture color, cached per world."""
-    if world_path in _texture_colors_cache:
-        return _texture_colors_cache[world_path]
+def _load_asset_db(world_path: str) -> AssetDatabase:
+    """Scan every mod JAR into an AssetDatabase and load the Forge icon dump.
 
+    Builds texture colors, blockstate JSONs and block-model JSONs (each cached in
+    SQLite so subsequent server restarts are fast).  No in-process caching — the
+    caller (BlockColorService) owns that.  The icon dump is loaded as the final
+    step so a caller holding this DB is guaranteed the dump is available.
+    """
     mc_dir = find_minecraft_dir(Path(world_path))
     if mc_dir is None:
-        _texture_colors_cache[world_path] = {}
-        return {}
+        return AssetDatabase()
 
     jars = _collect_jars(mc_dir)
     all_colors: dict[str, tuple[int, int, int]] = {}
+    all_blockstates: dict[str, Any] = {}
+    all_models: dict[str, Any] = {}
 
     for jar in jars:
         try:
-            cached = load_jar_colors(jar)
-            if cached is not None:
-                all_colors.update(cached)
-                continue
-            fresh = scan_jar(jar)
-            save_jar_colors(jar, fresh)
-            for name, (avg, dom) in fresh.items():
-                all_colors[name] = dom if dom is not None else avg
+            # ── Texture colors ────────────────────────────────────────────────
+            cached_colors = load_jar_colors(jar)
+            if cached_colors is not None:
+                all_colors.update(cached_colors)
+            else:
+                fresh = scan_jar(jar)
+                save_jar_colors(jar, fresh)
+                for name, (avg, dom) in fresh.items():
+                    all_colors[name] = dom if dom is not None else avg
+
+            # ── JSON assets (blockstates + models) ────────────────────────────
+            cached_json = load_jar_json_assets(jar)
+            if cached_json is not None:
+                bs, mods = cached_json
+            else:
+                bs, mods = scan_jar_assets(jar)
+                save_jar_json_assets(jar, bs, mods)
+            all_blockstates.update(bs)
+            all_models.update(mods)
             time.sleep(0)
         except Exception:
             pass
 
-    _texture_colors_cache[world_path] = all_colors
-    return all_colors
+    db = AssetDatabase(
+        blockstates=all_blockstates,
+        models=all_models,
+        texture_colors=all_colors,
+    )
+    # No-op if already loaded; ensures the dump is ready before the DB is used.
+    _try_auto_load_dump(mc_dir)
+    return db
 
 
-def _ensure_asset_db(world_path: str) -> AssetDatabase:
+class BlockColorService:
+    """Owns one world's derived asset state: the scanned AssetDatabase and the
+    block-id → color / texture-key / meta-texture-key maps.
+
+    Every lazy build is serialised by a single re-entrant lock, so concurrent
+    requests for the same world build each map once. Because the asset DB is only
+    published after its build completes (and the build loads the icon dump),
+    meta-variant textures resolve deterministically — no half-built shared state.
     """
-    Load (or return cached) the full AssetDatabase for a world.
 
-    Scans every mod JAR for:
-      - Texture colors      (PNG average/dominant color per texture key)
-      - Blockstate JSONs    (assets/{domain}/blockstates/*.json)
-      - Block model JSONs   (assets/{domain}/models/block/**/*.json)
+    def __init__(self, world_path: str) -> None:
+        self.world_path = world_path
+        self._lock = threading.RLock()
+        self._asset_db: AssetDatabase | None = None
+        self._color_map: dict[int, list[int]] | None = None
+        self._texture_key_map: dict[int, str] | None = None
+        self._meta_texture_key_map: dict[str, str] | None = None
 
-    Results are cached in SQLite so subsequent server restarts are fast.
-    """
-    if world_path in _asset_db_cache:
-        return _asset_db_cache[world_path]
+    def asset_db(self) -> AssetDatabase:
+        """The world's scanned AssetDatabase (built once; dump loaded with it)."""
+        if self._asset_db is None:
+            with self._lock:
+                if self._asset_db is None:
+                    self._asset_db = _load_asset_db(self.world_path)
+        return self._asset_db
 
-    # Serialise concurrent first-builds; re-check the cache inside the lock so the
-    # work happens once and the dump is loaded before the entry is published.
-    with _asset_db_lock:
-        if world_path in _asset_db_cache:
-            return _asset_db_cache[world_path]
-
-        mc_dir = find_minecraft_dir(Path(world_path))
-        if mc_dir is None:
-            db = AssetDatabase()
-            _asset_db_cache[world_path] = db
-            return db
-
-        jars = _collect_jars(mc_dir)
-        all_colors: dict[str, tuple[int, int, int]] = {}
-        all_blockstates: dict[str, Any] = {}
-        all_models: dict[str, Any] = {}
-
-        for jar in jars:
-            try:
-                # ── Texture colors ────────────────────────────────────────────
-                cached_colors = load_jar_colors(jar)
-                if cached_colors is not None:
-                    all_colors.update(cached_colors)
+    def block_color_map(self) -> dict[int, list[int]]:
+        """Block-id → RGB color map, with vanilla fallbacks filled in."""
+        if self._color_map is not None:
+            return self._color_map
+        with self._lock:
+            if self._color_map is None:
+                id_map = read_block_id_map(Path(self.world_path))
+                if not id_map:
+                    self._color_map = {}
                 else:
-                    fresh = scan_jar(jar)
-                    save_jar_colors(jar, fresh)
-                    for name, (avg, dom) in fresh.items():
-                        all_colors[name] = dom if dom is not None else avg
+                    result = _build_color_map(id_map, self.asset_db())
+                    # Fill in vanilla blocks when the Minecraft JAR wasn't scanned.
+                    for block_id, color in _VANILLA_COLORS.items():
+                        if block_id not in result:
+                            result[block_id] = color
+                    self._color_map = result
+        return self._color_map
 
-                # ── JSON assets (blockstates + models) ────────────────────────
-                cached_json = load_jar_json_assets(jar)
-                if cached_json is not None:
-                    bs, mods = cached_json
+    def block_texture_map(self) -> dict[int, str]:
+        """Block-id → texture-key map, with vanilla fallbacks filled in."""
+        if self._texture_key_map is not None:
+            return self._texture_key_map
+        with self._lock:
+            if self._texture_key_map is None:
+                id_map = read_block_id_map(Path(self.world_path))
+                if not id_map:
+                    self._texture_key_map = {}
                 else:
-                    bs, mods = scan_jar_assets(jar)
-                    save_jar_json_assets(jar, bs, mods)
-                all_blockstates.update(bs)
-                all_models.update(mods)
-                time.sleep(0)
-            except Exception:
-                pass
+                    result = _build_texture_key_map(id_map, self.asset_db())
+                    # Fill vanilla blocks whose JAR textures weren't scanned.
+                    for block_id, registry_name in id_map.items():
+                        if block_id not in result:
+                            fallback = _VANILLA_TEXTURE_KEYS.get(registry_name.lower())
+                            if fallback:
+                                result[block_id] = fallback
+                    self._texture_key_map = result
+        return self._texture_key_map
 
-        db = AssetDatabase(
-            blockstates=all_blockstates,
-            models=all_models,
-            texture_colors=all_colors,
-        )
+    def block_meta_texture_map(self) -> dict[str, str]:
+        """'{block_id}:{meta}' → texture-key for meta-variant blocks.
 
-        # Load the Forge icon dump BEFORE publishing the cache entry, so any reader
-        # that gets this DB is guaranteed the dump is available (no-op if loaded).
-        _try_auto_load_dump(mc_dir)
+        Curated vanilla meta tables first, then Forge icon-dump per-meta icons
+        (GregTech machines/casings/ores, Chisel variants, …) for everything else.
+        """
+        if self._meta_texture_key_map is not None:
+            return self._meta_texture_key_map
+        with self._lock:
+            if self._meta_texture_key_map is None:
+                id_map = read_block_id_map(Path(self.world_path))
+                if not id_map:
+                    self._meta_texture_key_map = {}
+                else:
+                    db = self.asset_db()  # also ensures the icon dump is loaded
+                    result = _build_meta_texture_map_for_world(id_map)
+                    _augment_meta_map_from_dump(id_map, db, result)
+                    self._meta_texture_key_map = result
+        return self._meta_texture_key_map
 
-        _asset_db_cache[world_path] = db
-        return db
+
+class BlockColorServiceRegistry:
+    """Maps world_path → BlockColorService, creating each instance at most once."""
+
+    def __init__(self) -> None:
+        self._services: dict[str, BlockColorService] = {}
+        self._lock = threading.Lock()
+
+    def get(self, world_path: str) -> BlockColorService:
+        svc = self._services.get(world_path)
+        if svc is not None:
+            return svc
+        with self._lock:
+            svc = self._services.get(world_path)
+            if svc is None:
+                svc = BlockColorService(world_path)
+                self._services[world_path] = svc
+            return svc
+
+    def evict(self, world_path: str) -> None:
+        with self._lock:
+            self._services.pop(world_path, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._services.clear()
+
+
+_default_registry = BlockColorServiceRegistry()
+
+
+def get_block_color_service(world_path: str) -> BlockColorService:
+    """Return the process-shared BlockColorService for *world_path*."""
+    return _default_registry.get(world_path)
 
 
 def debug_pipeline_report(world_path: str) -> dict[str, object]:
@@ -939,7 +999,7 @@ def debug_pipeline_report(world_path: str) -> dict[str, object]:
     if not id_map:
         return {"error": "No block ID map found in world"}
 
-    db = _ensure_asset_db(world_path)
+    db = get_block_color_service(world_path).asset_db()
 
     override_count = 0
     forge_dump_count = 0
@@ -1051,7 +1111,7 @@ def trace_block_pipeline(world_path: str, registry_name: str, meta: int) -> dict
     (or why all three stages failed).  The 'method' field is one of:
     'override', 'modern', 'legacy', or 'none'.
     """
-    db = _ensure_asset_db(world_path)
+    db = get_block_color_service(world_path).asset_db()
     trace: list[dict[str, object]] = []
 
     norm_name = registry_name.lower()
@@ -1156,84 +1216,22 @@ def trace_block_pipeline(world_path: str, registry_name: str, meta: int) -> dict
 
 
 def build_block_color_map(world_path: str) -> dict[int, list[int]]:
-    """Build (or return cached) block-id → RGB color map."""
-    if world_path in _color_cache:
-        return _color_cache[world_path]
-
-    path = Path(world_path)
-    id_map = read_block_id_map(path)
-    if not id_map:
-        _color_cache[world_path] = {}
-        return {}
-
-    db = _ensure_asset_db(world_path)
-    result = _build_color_map(id_map, db)
-
-    # Fill in vanilla blocks when the Minecraft JAR wasn't scanned.
-    for block_id, color in _VANILLA_COLORS.items():
-        if block_id not in result:
-            result[block_id] = color
-
-    _color_cache[world_path] = result
-    return result
+    """Block-id → RGB color map for *world_path* (cached per world)."""
+    return _default_registry.get(world_path).block_color_map()
 
 
 def build_block_texture_map(world_path: str) -> dict[int, str]:
-    """Build (or return cached) block-id → texture-key map.
+    """Block-id → texture-key map for *world_path* (cached per world).
 
     The texture key is the same 'domain:name' string used to serve PNG bytes
     from the texture endpoint, e.g. 'minecraft:stone' or 'gregtech:ore_stone'.
-    Vanilla blocks that couldn't be resolved from scanned JARs fall back to
-    _VANILLA_TEXTURE_KEYS so the frontend can attempt to load their images.
     """
-    if world_path in _texture_key_cache:
-        return _texture_key_cache[world_path]
-
-    path = Path(world_path)
-    id_map = read_block_id_map(path)
-    if not id_map:
-        _texture_key_cache[world_path] = {}
-        return {}
-
-    db = _ensure_asset_db(world_path)
-    result = _build_texture_key_map(id_map, db)
-
-    # Fill vanilla blocks whose JAR textures weren't scanned.
-    for block_id, registry_name in id_map.items():
-        if block_id not in result:
-            fallback = _VANILLA_TEXTURE_KEYS.get(registry_name.lower())
-            if fallback:
-                result[block_id] = fallback
-
-    _texture_key_cache[world_path] = result
-    return result
+    return _default_registry.get(world_path).block_texture_map()
 
 
 def build_block_meta_texture_map(world_path: str) -> dict[str, str]:
-    """Build (or return cached) '{block_id}:{meta}' → texture-key for meta-variant blocks.
-
-    Combines two sources, curated-first:
-      1. Hardcoded vanilla meta tables (wool, stained glass/clay/pane, carpet,
-         planks, logs, leaves) — reliable, always present.
-      2. Forge icon-dump per-meta icons for every other block in the world
-         (GregTech machines/casings/ores, Chisel variants, …) when a dump is
-         loaded. Only metas whose texture differs from meta 0 are emitted.
-    Keys are string-encoded so JSON serialisation works without conversion.
-    """
-    if world_path in _meta_texture_key_cache:
-        return _meta_texture_key_cache[world_path]
-
-    path = Path(world_path)
-    id_map = read_block_id_map(path)
-    if not id_map:
-        _meta_texture_key_cache[world_path] = {}
-        return {}
-
-    db = _ensure_asset_db(world_path)  # also auto-loads the Forge icon dump
-    result = _build_meta_texture_map_for_world(id_map)
-    _augment_meta_map_from_dump(id_map, db, result)
-    _meta_texture_key_cache[world_path] = result
-    return result
+    """'{block_id}:{meta}' → texture-key for meta-variant blocks (cached per world)."""
+    return _default_registry.get(world_path).block_meta_texture_map()
 
 
 def compute_dump_mismatch(world_path: str) -> dict[str, object]:
@@ -1375,7 +1373,7 @@ def build_missing_block_report(
     world_mods = read_world_modlist(path)
     dump_mods = dump.mods_map
     id_map = read_block_id_map(path)
-    db = _ensure_asset_db(world_path)
+    db = get_block_color_service(world_path).asset_db()
 
     rows: list[dict[str, object]] = []
     for block_id, reg_name in id_map.items():
