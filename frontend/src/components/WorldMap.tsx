@@ -747,6 +747,10 @@ export function WorldMap({
     const inspector = inspectorRef.current!
     inspector.addEventListener('mousedown', (e) => e.stopPropagation())
 
+    // Set in cleanup; async continuations (fetches, createImageBitmap) check it
+    // so they don't write to torn-down state after unmount / dimension change.
+    let destroyed = false
+
     let W = container.clientWidth  || 800
     let H = container.clientHeight || 600
 
@@ -931,13 +935,15 @@ export function WorldMap({
     const gridBuf  = new Float32Array(MAX_GV * 3); const gridAttr = new THREE.BufferAttribute(gridBuf,  3)
     gridAttr.setUsage(THREE.DynamicDrawUsage)
     const gridGeo  = new THREE.BufferGeometry(); gridGeo.setAttribute('position', gridAttr)
-    const regionGridLines = new THREE.LineSegments(gridGeo, new THREE.LineBasicMaterial({ color: 0x2e2e48 }))
+    const regionGridMat = new THREE.LineBasicMaterial({ color: 0x2e2e48 })
+    const regionGridLines = new THREE.LineSegments(gridGeo, regionGridMat)
     regionGridLines.frustumCulled = false; scene.add(regionGridLines)
 
     const chunkGridBuf  = new Float32Array(MAX_GV * 3); const chunkGridAttr = new THREE.BufferAttribute(chunkGridBuf, 3)
     chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
     const chunkGridGeo  = new THREE.BufferGeometry(); chunkGridGeo.setAttribute('position', chunkGridAttr)
-    const chunkGridLines = new THREE.LineSegments(chunkGridGeo, new THREE.LineBasicMaterial({ color: 0x1c1c2e }))
+    const chunkGridMat = new THREE.LineBasicMaterial({ color: 0x1c1c2e })
+    const chunkGridLines = new THREE.LineSegments(chunkGridGeo, chunkGridMat)
     chunkGridLines.frustumCulled = false; scene.add(chunkGridLines)
 
     function updateGrid() {
@@ -1145,7 +1151,12 @@ export function WorldMap({
         const opts: ImageBitmapOptions | undefined =
           src instanceof HTMLCanvasElement ? { imageOrientation: 'flipY' } : undefined
         createImageBitmap(src, opts)
-          .then((bmp) => tileCache.put(key, bmp, ver))
+          .then((bmp) => {
+            // The effect may have torn down (and cleared the cache) while we
+            // decoded — drop the bitmap instead of leaking it into a dead cache.
+            if (destroyed) { bmp.close(); return }
+            tileCache.put(key, bmp, ver)
+          })
           .catch(() => {})
           .finally(() => { if (src instanceof ImageBitmap) src.close() })
       }
@@ -1697,6 +1708,7 @@ export function WorldMap({
         inspector.style.display = 'block'
         try {
           const fetched = await fetchChunkBatch(dimensionPath, [[cx, cz]])
+          if (destroyed) return  // effect torn down while fetching — bail
           if (fetched[0]) { st.dataCache.set(key, fetched[0]); data = fetched[0] }
         } catch { /* leave data undefined */ }
         if (!data) {
@@ -1866,6 +1878,7 @@ export function WorldMap({
     window.addEventListener('keydown',   onKeyDown)
 
     return () => {
+      destroyed = true
       unsubTextures()
       syncRegionsRef.current = null
       fitCameraRef.current   = null
@@ -1885,6 +1898,7 @@ export function WorldMap({
       regionMat.dispose()
       chunkGeo.dispose(); regionGeo.dispose()
       gridGeo.dispose();  chunkGridGeo.dispose()
+      regionGridMat.dispose(); chunkGridMat.dispose()
       renderer.dispose()
       renderer.domElement.remove()
     }
