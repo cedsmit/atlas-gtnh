@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorldValidateRequest(BaseModel):
@@ -8,3 +8,13 @@ class WorldValidateRequest(BaseModel):
 class WorldValidateResponse(BaseModel):
     valid: bool
     error: str | None = None
+
+
+class LoadDumpRequest(BaseModel):
+    path: str  # Absolute path to icon_dump.json
+
+
+class MissingReportBody(BaseModel):
+    # On-map data from the client: block_id -> columns rendered, and metas seen.
+    occurrences: dict[int, int] = Field(default_factory=dict)
+    metas: dict[int, list[int]] = Field(default_factory=dict)

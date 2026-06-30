@@ -10,8 +10,6 @@ import threading
 from pathlib import Path
 
 from app.services.block_color_resolution import (
-    _VANILLA_COLORS,
-    _VANILLA_TEXTURE_KEYS,
     _augment_meta_map_from_dump,
     _build_color_map,
     _build_meta_texture_map_for_world,
@@ -19,6 +17,7 @@ from app.services.block_color_resolution import (
     _load_asset_db,
 )
 from app.services.blockstate_resolver import AssetDatabase
+from app.services.vanilla_tables import _VANILLA_COLORS, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map
 
 

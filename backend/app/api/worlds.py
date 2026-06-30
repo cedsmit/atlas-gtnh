@@ -4,7 +4,6 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel, Field
 
 from app.models.region import (
     ChunkBatchRequest,
@@ -15,7 +14,12 @@ from app.models.region import (
     RegionListResponse,
     RegionSurfaceResponse,
 )
-from app.models.world import WorldValidateRequest, WorldValidateResponse
+from app.models.world import (
+    LoadDumpRequest,
+    MissingReportBody,
+    WorldValidateRequest,
+    WorldValidateResponse,
+)
 from app.services.block_color_diagnostics import (
     build_missing_block_report,
     compute_dump_mismatch,
@@ -581,10 +585,6 @@ async def pipeline_trace_endpoint(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-class LoadDumpRequest(BaseModel):
-    path: str  # Absolute path to icon_dump.json
-
-
 # Icon dumps are ~10-20 MB; cap well above that to reject junk without OOM risk.
 _MAX_DUMP_BYTES = 128 * 1024 * 1024
 
@@ -649,12 +649,6 @@ async def dump_mismatch_endpoint(world_path: str = Query(...)) -> dict[str, obje
         return await asyncio.to_thread(compute_dump_mismatch, world_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-class MissingReportBody(BaseModel):
-    # On-map data from the client: block_id -> columns rendered, and metas seen.
-    occurrences: dict[int, int] = Field(default_factory=dict)
-    metas: dict[int, list[int]] = Field(default_factory=dict)
 
 
 @router.post("/missing-block-report")

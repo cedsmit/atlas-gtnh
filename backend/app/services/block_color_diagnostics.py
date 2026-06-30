@@ -7,8 +7,6 @@ the debug / missing-block-report endpoints.
 from pathlib import Path
 
 from app.services.block_color_resolution import (
-    _OVERRIDES,
-    _VANILLA_TEXTURE_KEYS,
     _collect_jars,
     _resolve_texture_key,
     _resolve_unified,
@@ -20,6 +18,7 @@ from app.services.blockstate_resolver import resolve_block_texture
 from app.services.color_cache import load_jar_colors, save_jar_colors
 from app.services.dump_resolver import get_dump_resolver, resolve_db_key
 from app.services.legacy_resolver import resolve_legacy_texture
+from app.services.vanilla_tables import _OVERRIDES, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map, read_world_modlist
 from app.world.texture_colors import scan_jar
 
