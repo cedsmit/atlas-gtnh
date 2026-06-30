@@ -323,11 +323,14 @@ export const FOLIAGE_TINTED_IDS = new Set([
 ])
 
 export function biomeTints(biomeId: number): { grass: RGB; foliage: RGB } {
-  // Mutated biomes (128+) use the same tints as their base variant
-  const id = biomeId >= 128 ? biomeId - 128 : biomeId
+  // Prefer an exact entry for this id (covers custom BOP/GTNH biomes), then the
+  // vanilla "mutated" convention where a mutated biome (base + 128) reuses its
+  // base variant's tint, then the default. Checking the raw id first stops a
+  // custom biome with id >= 128 from being silently remapped to a vanilla tint.
+  const mutatedBase = biomeId >= 128 ? biomeId - 128 : -1
   return {
-    grass:   BIOME_GRASS[id]   ?? DEFAULT_GRASS,
-    foliage: BIOME_FOLIAGE[id] ?? DEFAULT_FOLIAGE,
+    grass:   BIOME_GRASS[biomeId]   ?? BIOME_GRASS[mutatedBase]   ?? DEFAULT_GRASS,
+    foliage: BIOME_FOLIAGE[biomeId] ?? BIOME_FOLIAGE[mutatedBase] ?? DEFAULT_FOLIAGE,
   }
 }
 
@@ -457,7 +460,9 @@ export function resolveMetadataTint(
     const hex = tintColors[idx]
     if (hex) {
       const c = parseInt(hex.replace('#', ''), 16)
-      return [(c >> 16) & 255, (c >> 8) & 255, c & 255]
+      // Fall through to the dye defaults when the hex is malformed (NaN would
+      // otherwise render as black).
+      if (!Number.isNaN(c)) return [(c >> 16) & 255, (c >> 8) & 255, c & 255]
     }
   }
   return STANDARD_DYE_COLORS[idx] ?? [255, 255, 255]
@@ -478,7 +483,7 @@ export function metaBlockColorRGB(
     case  95: return GLASS_META[meta & 15] ?? null  // stained glass
     case 160: return GLASS_META[meta & 15] ?? null  // stained glass pane
     case 159: return CLAY_META[meta & 15]  ?? null  // stained hardened clay
-    case   5: return PLANK_META[meta & 7]  ?? null  // planks
+    case   5: return PLANK_META[meta & 7]  ?? PLANK_META[0]  // planks (meta 6/7 → oak)
     case  17: return LOG_META[meta & 3]    ?? null  // log
     case 162: return LOG2_META[meta & 1]   ?? null  // log2 (acacia/dark oak)
     default:  return null

@@ -100,22 +100,30 @@ export function warmTextures(keys: string[], worldPath: string): void {
 
 /** Fetch one batch of texture keys and decode each returned data-URL. */
 async function _loadBatch(keys: string[], worldPath: string): Promise<void> {
-  let data: Record<string, string> = {}
-  try {
-    const res = await fetch(`${API_BASE}/worlds/textures-batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ world_path: worldPath, keys }),
-    })
-    if (res.ok) data = (await res.json()) as Record<string, string>
-  } catch {
-    // Network error: every key in this batch falls through to 'missing' below.
+  // Retry transient request failures a few times before giving up, so a brief
+  // network/backend hiccup doesn't permanently mark these keys 'missing' (the
+  // cache never re-requests a settled key). A successful response that simply
+  // omits a key is a genuine miss and is NOT retried.
+  let data: Record<string, string> | null = null
+  for (let attempt = 0; attempt < 3 && data === null; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 250 * attempt))
+    try {
+      const res = await fetch(`${API_BASE}/worlds/textures-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ world_path: worldPath, keys }),
+      })
+      if (res.ok) data = (await res.json()) as Record<string, string>
+    } catch {
+      // Network error: fall through to retry (or 'missing' after the last try).
+    }
   }
+  const resolved = data ?? {}
 
   for (const key of keys) {
     const entry = _cache.get(key)
     if (!entry) continue
-    const dataUrl = data[key]
+    const dataUrl = resolved[key]
     if (!dataUrl) {
       entry.state = 'missing'
       continue

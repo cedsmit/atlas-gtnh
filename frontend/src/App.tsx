@@ -34,7 +34,6 @@ export default function App() {
   const [debugOpen,           setDebugOpen]           = useState(false)
   const [showFallbackMagenta, setShowFallbackMagenta] = useState(false)
   const [disableTint,         setDisableTint]         = useState(false)
-  const [vanillaJarFound,     setVanillaJarFound]     = useState<boolean | null>(null)
   const [selectedPresetId,    setSelectedPresetId]    = useState('journeymap')
   const [elevOverride,        setElevOverride]        = useState<'preset'|'off'|'subtle'|'strong'|'relief'|'heightmap'|'contours'>('preset')
   const [textureFilterOverride, setTextureFilterOverride] = useState<'preset' | TextureFilter>('preset')
@@ -90,6 +89,20 @@ export default function App() {
   // `textureKeys` already contains only the blocks present in this world's FML registry,
   // so Object.values(textureKeys) is a bounded set (typically 200-600 keys for GTNH).
   const tex = useTexturePreloader(textureKeys, worldPath, metaTextureKeys)
+
+  // Whether the vanilla JAR resolved (probed via the stone texture, id 1).
+  // Derived during render — the component already re-renders on `tex` ticks, so
+  // this stays in sync with the imperative texture store without an effect.
+  // null = still detecting, true = found, false = not found.
+  const vanillaJarFound: boolean | null = !textureKeys
+    ? null
+    : !textureKeys[1]
+      ? false
+      : getTextureState(textureKeys[1]) === 'loaded'
+        ? true
+        : getTextureState(textureKeys[1]) === 'missing'
+          ? false
+          : null
 
   // ── Loading gate ───────────────────────────────────────────────────────
   // Determine which loading stage we are in so the loading screen can display
@@ -147,16 +160,6 @@ export default function App() {
       setDimensionPath(null)
     }
   }, [worldError])
-
-  // ── Track whether vanilla JAR textures are resolving ──────────────────
-  useEffect(() => {
-    if (!textureKeys) { setVanillaJarFound(null); return }
-    const stoneKey = textureKeys[1]
-    if (!stoneKey) { setVanillaJarFound(false); return }
-    const state = getTextureState(stoneKey)
-    if (state === 'loaded') setVanillaJarFound(true)
-    else if (state === 'missing') setVanillaJarFound(false)
-  }, [textureKeys, tex.loaded, tex.missing])
 
   // ── World picker handlers ──────────────────────────────────────────────
   function handleWorldSelected(path: string) {

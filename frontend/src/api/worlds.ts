@@ -13,5 +13,8 @@ export async function validateWorld(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path }),
   })
+  if (!response.ok) {
+    throw new Error(`World validation request failed (${response.status})`)
+  }
   return response.json() as Promise<WorldValidateResponse>
 }
