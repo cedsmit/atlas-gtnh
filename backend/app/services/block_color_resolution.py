@@ -12,7 +12,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.services.blockstate_resolver import AssetDatabase, resolve_block_texture
+from app.services.asset_database import AssetDatabase
+from app.services.blockstate_resolver import resolve_block_texture
 from app.services.color_cache import (
     load_jar_colors,
     load_jar_json_assets,

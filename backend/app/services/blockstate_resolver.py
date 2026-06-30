@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.services.asset_database import AssetDatabase
 
 # ── Failure-reason tags ───────────────────────────────────────────────────────
 
@@ -34,16 +35,6 @@ _TOP_FACE_VARS = ("up", "top", "end", "all", "side", "side_all", "particle", "cr
 
 
 # ── Data structures ───────────────────────────────────────────────────────────
-
-@dataclass
-class AssetDatabase:
-    """All JSON and texture assets loaded from mod JARs."""
-    # "domain:blockname"  → parsed blockstate JSON
-    blockstates: dict[str, Any] = field(default_factory=dict)
-    # "domain:block/path" → parsed model JSON
-    models: dict[str, Any] = field(default_factory=dict)
-    # "domain:texname"    → (r, g, b)
-    texture_colors: dict[str, tuple[int, int, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -62,7 +53,7 @@ class ResolveResult:
     def resolved(self) -> bool:
         return self.texture_key is not None
 
-    def _add(self, ok: bool, step: str) -> "ResolveResult":
+    def _add(self, ok: bool, step: str) -> ResolveResult:
         self.trace.append(ResolveTrace(ok=ok, step=step))
         return self
 

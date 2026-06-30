@@ -9,6 +9,7 @@ functions live in block_color_diagnostics.
 import threading
 from pathlib import Path
 
+from app.services.asset_database import AssetDatabase
 from app.services.block_color_resolution import (
     _augment_meta_map_from_dump,
     _build_color_map,
@@ -16,7 +17,6 @@ from app.services.block_color_resolution import (
     _build_texture_key_map,
     _load_asset_db,
 )
-from app.services.blockstate_resolver import AssetDatabase
 from app.services.vanilla_tables import _VANILLA_COLORS, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map
 
