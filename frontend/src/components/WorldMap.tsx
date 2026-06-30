@@ -796,9 +796,17 @@ export function WorldMap({
       mouseWorldX:        null as number | null,
       mouseWorldZ:        null as number | null,
       firstChunkLogged:   false,
+      // ── Render gate ── skip the RAF heavy passes + GPU draw when the view is
+      // idle (camera still, nothing loading, no re-render pending).
+      lastCam:            { cx: NaN, cz: NaN, scale: NaN },
+      forceFrame:         true,   // one-shot: force a render next frame
+      staleWork:          false,  // chunk re-renders still catching up to texVersion
+      lastTexKeysRef:     undefined as Record<number, string> | undefined,
+      texKeyCount:        0,      // cached for the HUD (no per-frame Object.keys)
+      lastHud:            '',     // last HUD string (skip redundant DOM writes)
     }
 
-    const unsubTextures = onTextureLoad(() => { st.texVersion++ })
+    const unsubTextures = onTextureLoad(() => { st.texVersion++; st.forceFrame = true })
 
     const renderer = new THREE.WebGLRenderer({ antialias: false })
     renderer.setSize(W, H)
@@ -924,6 +932,7 @@ export function WorldMap({
         regionMeshes.set(key, mesh)
       }
       fitCamera()
+      st.forceFrame = true   // region meshes changed — render even if fitCamera no-ops
     }
 
     syncRegionsRef.current = syncRegions
@@ -1444,6 +1453,35 @@ export function WorldMap({
     // ── RAF loop ──
     let rafId: number
 
+    // Cheap HUD refresh — runs every frame (even when the scene is idle) so the
+    // cursor coordinate readout stays live, but only touches the DOM when the
+    // text actually changes. Uses the maintained liveChunks counter and a cached
+    // tex-key count instead of spreading/filtering the whole chunk cache.
+    function updateHud() {
+      if (textureKeysRef.current !== st.lastTexKeysRef) {
+        st.lastTexKeysRef = textureKeysRef.current
+        st.texKeyCount = textureKeysRef.current
+          ? Object.keys(textureKeysRef.current).length
+          : 0
+      }
+      const rt = debugModeRef.current ? textureDebugStore.getRenderTotals() : null
+      const hudX = st.mouseWorldX !== null ? Math.round(st.mouseWorldX) : Math.round(st.cam.cx)
+      const hudZ = st.mouseWorldZ !== null ? Math.round(st.mouseWorldZ) : Math.round(st.cam.cz)
+      const text =
+        `X ${hudX}  Z ${hudZ}  ×${st.cam.scale.toFixed(2)}` +
+        `  |  ${st.liveChunks} chunks` +
+        (bcCountRef.current > 0 ? `  |  ${bcCountRef.current} colors` : '') +
+        (st.texKeyCount > 0 ? `  |  ${st.texKeyCount} tex-keys` : '') +
+        (rt
+          ? `  |  drawImage=${rt.drawImage} fillRect=${rt.fillRect}` +
+            ` miss=${rt.missingTexKey} fail=${rt.failedTexLoad}`
+          : '')
+      if (text !== st.lastHud) {
+        hud.textContent = text
+        st.lastHud = text
+      }
+    }
+
     function loop() {
       const { cx, cz, scale } = st.cam
       const halfW = W / (2 * scale), halfH = H / (2 * scale)
@@ -1456,18 +1494,21 @@ export function WorldMap({
         st.lastBcCount = bcCount
         st.texVersion++
         st.lodVersion++
+        st.forceFrame = true
       }
       const cfg = configRef.current
       if (cfg !== st.lastConfig) {
         st.lastConfig = cfg
         st.texVersion++
         st.lodVersion++
+        st.forceFrame = true
       }
 
       // Detect debug mode toggle — add/remove outlines for existing chunks
       const dbgNow = debugModeRef.current
       if (dbgNow !== st.lastDebugMode) {
         st.lastDebugMode = dbgNow
+        st.forceFrame = true
         if (dbgNow) {
           for (const [key, entry] of st.cache) {
             const [mxs, mzs] = key.split(',')
@@ -1486,16 +1527,35 @@ export function WorldMap({
         }
       }
 
+      // ── Dirty gate ── when nothing visible changed, skip the heavy passes
+      // (cache scans, LOD, grid rebuild) and the GPU draw; just keep the HUD
+      // live and re-arm the RAF. Any source of change re-arms a frame:
+      // camera move, a queued/in-flight load, a pending re-render, or forceFrame
+      // (texture load, colour/config/debug change, resize, region sync).
+      const camMoved =
+        cx !== st.lastCam.cx || cz !== st.lastCam.cz || scale !== st.lastCam.scale
+      const pendingWork =
+        st.renderQueue.length > 0 || st.regionRenderQueue.length > 0 ||
+        st.pending.length > 0 || st.resolving.size > 0 || st.renderSet.size > 0 ||
+        st.regionPending.length > 0 || st.regionResolving.size > 0 ||
+        st.regionRenderSet.size > 0 || st.activeBatches > 0 || st.activeRegionFetches > 0
+      if (!(st.forceFrame || camMoved || st.staleWork || pendingWork)) {
+        updateHud()
+        rafId = requestAnimationFrame(loop)
+        return
+      }
+
       // Re-render stale chunks (max 4 per frame) when textures or colors changed
       if (st.texVersion > 0) {
         let rerendered = 0
+        let moreStale = false
         const staleNoData: string[] = []
         for (const [key, entry] of st.cache) {
           if (!(entry instanceof THREE.Mesh)) continue
           if ((st.texVersionAtRender.get(key) ?? 0) >= st.texVersion) continue
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
-            if (rerendered >= 4) continue
+            if (rerendered >= 4) { moreStale = true; continue }
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
               blockColorsRef.current,
@@ -1533,6 +1593,8 @@ export function WorldMap({
           const entry = st.cache.get(key)
           if (entry instanceof THREE.Mesh) disposeLiveChunk(key, entry)
         }
+        // Keep frames coming until the re-render backlog is cleared.
+        st.staleWork = moreStale
       }
 
       // Render freshly-fetched chunks and region tiles, time-sliced, for a smooth UI.
@@ -1631,20 +1693,12 @@ export function WorldMap({
       updateGrid()
       renderer.render(scene, cam)
 
-      const loaded   = [...st.cache.values()].filter((e) => e instanceof THREE.Mesh).length
-      const texCount = Object.keys(textureKeysRef.current ?? {}).length
-      const rt       = debugModeRef.current ? textureDebugStore.getRenderTotals() : null
-      const hudX = st.mouseWorldX !== null ? Math.round(st.mouseWorldX) : Math.round(st.cam.cx)
-      const hudZ = st.mouseWorldZ !== null ? Math.round(st.mouseWorldZ) : Math.round(st.cam.cz)
-      hud.textContent =
-        `X ${hudX}  Z ${hudZ}  ×${scale.toFixed(2)}` +
-        `  |  ${loaded} chunks` +
-        (bcCountRef.current > 0 ? `  |  ${bcCountRef.current} colors` : '') +
-        (texCount > 0 ? `  |  ${texCount} tex-keys` : '') +
-        (rt
-          ? `  |  drawImage=${rt.drawImage} fillRect=${rt.fillRect}` +
-            ` miss=${rt.missingTexKey} fail=${rt.failedTexLoad}`
-          : '')
+      st.lastCam.cx = cx
+      st.lastCam.cz = cz
+      st.lastCam.scale = scale
+      st.forceFrame = false
+
+      updateHud()
 
       rafId = requestAnimationFrame(loop)
     }
@@ -1858,7 +1912,7 @@ export function WorldMap({
 
     const resizeObs = new ResizeObserver(() => {
       W = container.clientWidth || 800; H = container.clientHeight || 600
-      renderer.setSize(W, H); updateCam()
+      renderer.setSize(W, H); updateCam(); st.forceFrame = true
     })
     resizeObs.observe(container)
     updateCam()
