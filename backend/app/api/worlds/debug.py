@@ -1,99 +1,22 @@
+"""Diagnostic / debug endpoints for the resolution pipeline."""
+
 import asyncio
-import json
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse
 
-from app.models.region import (
-    ChunkBatchRequest,
-    ChunkBatchResponse,
-    ChunkData,
-    DimensionInfo,
-    RegionDetail,
-    RegionListResponse,
-    RegionSurfaceResponse,
-)
-from app.models.world import (
-    LoadDumpRequest,
-    MissingReportBody,
-    WorldValidateRequest,
-    WorldValidateResponse,
-)
 from app.services.blockcolor.diagnostics import (
-    build_missing_block_report,
-    compute_dump_mismatch,
     debug_pipeline_report,
     debug_texture_resolution,
-    missing_block_report_csv,
     trace_block_pipeline,
 )
-from app.services.blockcolor.dump_resolver import get_dump_resolver, try_load_dump
 from app.services.blockcolor.resolution import find_minecraft_dir
 from app.services.blockcolor.service import (
     build_block_color_map,
-    build_block_meta_texture_map,
-    build_block_texture_map,
 )
-from app.services.region_service import (
-    get_chunk_data,
-    get_chunks_batch,
-    get_region_detail,
-    get_region_surface,
-    list_dimensions,
-    list_regions,
-)
-from app.services.world_validator import validate_world_path
 
-router = APIRouter(prefix="/worlds", tags=["worlds"])
-
-# Upper bound on chunks served per bulk request, to cap response size and work.
-MAX_BATCH_CHUNKS = 1024
-
-
-@router.post("/validate", response_model=WorldValidateResponse)
-async def validate_world(request: WorldValidateRequest) -> WorldValidateResponse:
-    valid, error = validate_world_path(request.path)
-    return WorldValidateResponse(valid=valid, error=error)
-
-
-@router.get("/dimensions", response_model=list[DimensionInfo])
-async def get_world_dimensions(world_path: str = Query(...)) -> list[DimensionInfo]:
-    try:
-        return list_dimensions(world_path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-@router.get("/regions", response_model=RegionListResponse)
-async def list_world_regions(world_path: str = Query(...)) -> RegionListResponse:
-    try:
-        return list_regions(world_path)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-@router.get("/regions/{rx}/{rz}", response_model=RegionDetail)
-async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> RegionDetail:
-    try:
-        return get_region_detail(world_path, rx, rz)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-
-
-@router.get("/regions/{rx}/{rz}/surface", response_model=RegionSurfaceResponse)
-async def get_world_region_surface(
-    rx: int, rz: int, world_path: str = Query(...)
-) -> RegionSurfaceResponse:
-    """Compact per-column surface summary for one region (zoomed-out LOD tile)."""
-    try:
-        return await asyncio.to_thread(get_region_surface, world_path, rx, rz)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+router = APIRouter()
 
 
 @router.get("/debug-colors")
@@ -177,21 +100,6 @@ async def debug_colors(world_path: str = Query(...)) -> dict[str, object]:
             result["texture_error"] = traceback.format_exc()
 
     return result
-
-
-
-@router.get("/block-names")
-async def get_block_names(world_path: str = Query(...)) -> dict[int, str]:
-    from app.world.block_registry import read_block_id_map
-    return read_block_id_map(Path(world_path))
-
-
-@router.get("/block-colors")
-async def get_block_colors(world_path: str = Query(...)) -> dict[int, list[int]]:
-    try:
-        return await asyncio.to_thread(build_block_color_map, world_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/debug-color-stats")
@@ -524,33 +432,6 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@router.get("/block-texture-map")
-async def get_block_texture_map(world_path: str = Query(...)) -> dict[int, str]:
-    """Return block_id → texture_key for every block that has a matched texture.
-
-    The texture_key is passed to /worlds/textures to fetch the PNG.
-    Blocks without a texture are omitted; the frontend falls back to its own
-    color table for those.
-    """
-    try:
-        return await asyncio.to_thread(build_block_texture_map, world_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.get("/block-meta-texture-map")
-async def get_block_meta_texture_map(world_path: str = Query(...)) -> dict[str, str]:
-    """Return '{block_id}:{meta}' → texture_key for meta-variant vanilla blocks.
-
-    Covers wool, carpet, stained glass/pane, stained clay, planks, logs, leaves.
-    The frontend checks this before falling back to the plain block-texture-map.
-    """
-    try:
-        return await asyncio.to_thread(build_block_meta_texture_map, world_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
 @router.get("/pipeline-report")
 async def pipeline_report_endpoint(world_path: str = Query(...)) -> dict[str, object]:
     """
@@ -585,104 +466,6 @@ async def pipeline_trace_endpoint(
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-# Icon dumps are ~10-20 MB; cap well above that to reject junk without OOM risk.
-_MAX_DUMP_BYTES = 128 * 1024 * 1024
-
-
-@router.post("/load-dump")
-async def load_dump_endpoint(request: LoadDumpRequest) -> dict[str, object]:
-    """
-    Load a Forge icon dump JSON file produced by the AtlasDumper mod.
-
-    The dump is cached in memory for the lifetime of the Atlas process.
-    Calling this again replaces any previously loaded dump.
-
-    Body: { "path": "/absolute/path/to/icon_dump.json" }
-    """
-    p = Path(request.path).resolve()
-    # Only accept a .json file of sane size — the endpoint takes a raw path and
-    # the server has no auth, so don't let a caller point it at arbitrary files.
-    if p.suffix.lower() != ".json":
-        raise HTTPException(status_code=400, detail="Dump path must be a .json file")
-    if not p.exists() or not p.is_file():
-        raise HTTPException(status_code=404, detail=f"File not found: {request.path}")
-    if p.stat().st_size > _MAX_DUMP_BYTES:
-        raise HTTPException(status_code=400, detail="Dump file is too large")
-
-    ok = await asyncio.to_thread(try_load_dump, p)
-    if not ok:
-        raise HTTPException(
-            status_code=422,
-            detail="Failed to parse dump file — expected a valid atlas-gtnh-icon-dump-v1 JSON",
-        )
-
-    dump = get_dump_resolver()
-    return {
-        "loaded": dump.is_loaded,
-        "path": dump.path,
-        "block_count": dump.block_count,
-        "summary": dump.summary,
-    }
-
-
-@router.get("/dump-status")
-async def dump_status_endpoint() -> dict[str, object]:
-    """Return the current Forge icon dump load status."""
-    dump = get_dump_resolver()
-    return {
-        "loaded": dump.is_loaded,
-        "path": dump.path,
-        "block_count": dump.block_count,
-        "summary": dump.summary,
-    }
-
-
-@router.get("/dump-mismatch")
-async def dump_mismatch_endpoint(world_path: str = Query(...)) -> dict[str, object]:
-    """Compare a world's FML mod list against the loaded icon dump.
-
-    Reports mods present in the world but missing from the dump (with the
-    number of blocks each contributes), version differences, and total-count
-    differences — the usual cause of "no mapping" blocks.
-    """
-    try:
-        return await asyncio.to_thread(compute_dump_mismatch, world_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.post("/missing-block-report")
-async def missing_block_report_endpoint(
-    body: MissingReportBody,
-    world_path: str = Query(...),
-    fmt: str = Query("json", alias="format"),
-) -> Response:
-    """Generate a downloadable diagnostic of every world block missing from the dump.
-
-    Body carries optional client on-map data (occurrences = columns rendered,
-    metas = metadata values seen). Returns JSON (default) or CSV (?format=csv)
-    as a file attachment.
-    """
-    try:
-        report = await asyncio.to_thread(
-            build_missing_block_report, world_path, body.occurrences, body.metas
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
-
-    if fmt == "csv":
-        return Response(
-            content=missing_block_report_csv(report),
-            media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="missing-blocks.csv"'},
-        )
-    return Response(
-        content=json.dumps(report, indent=2),
-        media_type="application/json",
-        headers={"Content-Disposition": 'attachment; filename="missing-blocks.json"'},
-    )
-
-
 @router.get("/debug-texture-resolution")
 async def debug_texture_resolution_endpoint(world_path: str = Query(...)) -> dict[str, object]:
     """Trace the full texture-resolution chain for every block in this world.
@@ -695,50 +478,3 @@ async def debug_texture_resolution_endpoint(world_path: str = Query(...)) -> dic
         return await asyncio.to_thread(debug_texture_resolution, world_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-
-
-@router.get("/textures")
-async def get_texture(key: str = Query(...)) -> Response:
-    """Serve the raw PNG bytes for a texture key such as 'minecraft:stone'.
-
-    The PNG is read directly from the scanned mod JAR; results are cached
-    in-process.  Returns 404 when the texture was not found during scanning.
-    """
-    from app.services.texture_service import get_texture_png
-
-    png = await asyncio.to_thread(get_texture_png, key)
-    if png is None:
-        raise HTTPException(status_code=404, detail=f"Texture not found: {key}")
-    return Response(
-        content=png,
-        media_type="image/png",
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@router.post("/chunks/batch", response_model=ChunkBatchResponse)
-async def get_world_chunks_batch(req: ChunkBatchRequest) -> ChunkBatchResponse:
-    """Read many chunks in one request.
-
-    Coords are grouped by region so each region file is read once.  Absent or
-    empty chunks are omitted; the caller diffs request vs. response to mark
-    them empty.  Parsing runs off the event loop so concurrent requests don't
-    serialize on the single async thread.
-    """
-    if len(req.coords) > MAX_BATCH_CHUNKS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Too many chunks requested ({len(req.coords)} > {MAX_BATCH_CHUNKS})",
-        )
-    chunks = await asyncio.to_thread(get_chunks_batch, req.world_path, req.coords)
-    return ChunkBatchResponse(chunks=chunks)
-
-
-@router.get("/chunks/{cx}/{cz}", response_model=ChunkData)
-async def get_world_chunk(cx: int, cz: int, world_path: str = Query(...)) -> ChunkData:
-    try:
-        return await asyncio.to_thread(get_chunk_data, world_path, cx, cz)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e

@@ -33,6 +33,8 @@ frontend/src-tauri/target/
 
 # Worlds (large binary data, keep out of git)
 worlds/
+# ...but the API source package named worlds/ is code, not world data.
+!backend/app/api/worlds/
 
 # OS
 .DS_Store
