@@ -1,4 +1,4 @@
-import type { ChunkRenderStats } from '../components/WorldMap'
+import type { ChunkRenderStats } from './chunkTileRenderer'
 import { getTextureState, onTextureLoad, type TextureState } from './textureLoader'
 
 export type TexDebugStatus = TextureState | 'no-mapping'
