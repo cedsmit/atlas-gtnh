@@ -61,9 +61,15 @@ def list_dimensions(world_path: str) -> list[DimensionInfo]:
     return dims
 
 
-def _region_coords_from_filename(name: str) -> tuple[int, int]:
+def _region_coords_from_filename(name: str) -> tuple[int, int] | None:
+    """Parse 'r.<x>.<z>.mca' → (x, z), or None for a non-conforming name."""
     parts = name.split(".")
-    return int(parts[1]), int(parts[2])
+    if len(parts) < 3:
+        return None
+    try:
+        return int(parts[1]), int(parts[2])
+    except ValueError:
+        return None
 
 
 def list_regions(world_path: str) -> RegionListResponse:
@@ -71,11 +77,12 @@ def list_regions(world_path: str) -> RegionListResponse:
     if not region_dir.is_dir():
         raise FileNotFoundError(f"No region directory found in: {world_path}")
 
-    regions = [
-        RegionSummary(region_x=rx, region_z=rz, file_name=f.name)
-        for f in sorted(region_dir.glob("*.mca"))
-        for rx, rz in [_region_coords_from_filename(f.name)]
-    ]
+    regions = []
+    for f in sorted(region_dir.glob("*.mca")):
+        coords = _region_coords_from_filename(f.name)
+        if coords is None:
+            continue  # skip oddly-named files instead of 500-ing the whole listing
+        regions.append(RegionSummary(region_x=coords[0], region_z=coords[1], file_name=f.name))
 
     return RegionListResponse(
         world_path=world_path,
@@ -94,7 +101,14 @@ def get_chunk_data(world_path: str, cx: int, cz: int) -> ChunkData:
     if not region_file.exists():
         raise FileNotFoundError(f"Region file not found for chunk ({cx}, {cz})")
 
-    raw = read_chunk_data(region_file, lx, lz)
+    # A malformed/partially-written .mca raises struct/zlib/index errors from the
+    # NBT parser; surface those as a 400 (ValueError) instead of a bare 500.
+    try:
+        raw = read_chunk_data(region_file, lx, lz)
+    except (FileNotFoundError, ValueError):
+        raise
+    except Exception as e:
+        raise ValueError(f"Corrupt chunk ({cx}, {cz}) in {region_file.name}: {e}") from e
     if not raw.sections:
         raise FileNotFoundError(f"Chunk ({cx}, {cz}) has no terrain data yet")
     return ChunkData(

@@ -585,6 +585,10 @@ class LoadDumpRequest(BaseModel):
     path: str  # Absolute path to icon_dump.json
 
 
+# Icon dumps are ~10-20 MB; cap well above that to reject junk without OOM risk.
+_MAX_DUMP_BYTES = 128 * 1024 * 1024
+
+
 @router.post("/load-dump")
 async def load_dump_endpoint(request: LoadDumpRequest) -> dict[str, object]:
     """
@@ -595,15 +599,22 @@ async def load_dump_endpoint(request: LoadDumpRequest) -> dict[str, object]:
 
     Body: { "path": "/absolute/path/to/icon_dump.json" }
     """
-    p = Path(request.path)
-    if not p.exists():
+    p = Path(request.path).resolve()
+    # Only accept a .json file of sane size — the endpoint takes a raw path and
+    # the server has no auth, so don't let a caller point it at arbitrary files.
+    if p.suffix.lower() != ".json":
+        raise HTTPException(status_code=400, detail="Dump path must be a .json file")
+    if not p.exists() or not p.is_file():
         raise HTTPException(status_code=404, detail=f"File not found: {request.path}")
-    if not p.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {request.path}")
+    if p.stat().st_size > _MAX_DUMP_BYTES:
+        raise HTTPException(status_code=400, detail="Dump file is too large")
 
     ok = await asyncio.to_thread(try_load_dump, p)
     if not ok:
-        raise HTTPException(status_code=422, detail="Failed to parse dump file — check that it is a valid atlas-gtnh-icon-dump-v1 JSON")
+        raise HTTPException(
+            status_code=422,
+            detail="Failed to parse dump file — expected a valid atlas-gtnh-icon-dump-v1 JSON",
+        )
 
     dump = get_dump_resolver()
     return {

@@ -1,4 +1,5 @@
 import io
+import logging
 import struct
 import zlib
 from collections import OrderedDict
@@ -10,7 +11,12 @@ from typing import Any
 import nbtlib
 import numpy as np
 
+log = logging.getLogger(__name__)
+
 SECTOR_SIZE = 4096
+# Reject absurdly large .mca files (corrupt / not really a region) before reading
+# the whole thing into memory.  Real region files are a few MB to tens of MB.
+_MAX_REGION_BYTES = 256 * 1024 * 1024
 
 _NDArr = np.ndarray[Any, Any]
 
@@ -28,6 +34,10 @@ _REGION_BYTES_CACHE_MAX = 24  # most-recently-used region files kept resident
 def _read_region_bytes(path: Path) -> bytes:
     """Return the contents of an .mca file, cached by (path, mtime, size)."""
     stat = path.stat()
+    if stat.st_size > _MAX_REGION_BYTES:
+        raise ValueError(
+            f"Region file too large to read ({stat.st_size} bytes): {path.name}"
+        )
     key = str(path)
     with _REGION_BYTES_CACHE_LOCK:
         cached = _REGION_BYTES_CACHE.get(key)
@@ -312,10 +322,22 @@ def _section_arrays(sec: dict[str, Any]) -> tuple[_NDArr, _NDArr] | None:
     return blocks, data
 
 
+def _decode_biomes(biomes_bytes: bytes, chunk_x: int, chunk_z: int) -> list[int]:
+    """256 biome ids, or [] when absent. Logs (and drops) a corrupt non-256 array."""
+    if len(biomes_bytes) == 256:
+        return list(biomes_bytes)
+    if biomes_bytes:
+        log.warning(
+            "chunk (%d,%d): dropping biome array of length %d (expected 256)",
+            chunk_x, chunk_z, len(biomes_bytes),
+        )
+    return []
+
+
 def _parse_chunk_full(raw_nbt: bytes) -> RawChunkData:
     """Parse decompressed chunk NBT into full block data (sections + biomes)."""
     xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(raw_nbt)
-    biomes = list(biomes_bytes) if len(biomes_bytes) == 256 else []
+    biomes = _decode_biomes(biomes_bytes, xpos, zpos)
 
     sections: list[ChunkSection] = []
     for sec in raw_sections:
@@ -385,7 +407,7 @@ _SURFACE_SKIP_IDS: tuple[int, ...] = (51,)
 def _parse_chunk_surface(raw_nbt: bytes) -> RawChunkSurface:
     """Extract the topmost non-air, non-hidden block per column from chunk NBT."""
     xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(raw_nbt)
-    biomes = list(biomes_bytes) if len(biomes_bytes) == 256 else []
+    biomes = _decode_biomes(biomes_bytes, xpos, zpos)
 
     ids = np.zeros(256, dtype=np.uint16)
     metas = np.zeros(256, dtype=np.uint8)

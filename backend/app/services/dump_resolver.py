@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import Container
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -93,7 +94,7 @@ class DumpResult:
 
 
 class ForgeDumpResolver:
-    """Thread-safe after load(); not thread-safe during load()."""
+    """Concurrent-safe: load() is serialised and publishes all fields atomically."""
 
     def __init__(self) -> None:
         # {registry_name_lower: {meta_str: {side_str: icon_name}}}
@@ -102,11 +103,16 @@ class ForgeDumpResolver:
         self._path: str | None = None
         self._summary: dict[str, object] = {}
         self._mods: list[str] = []  # ["modid@version", ...] from the dump
+        self._lock = threading.Lock()  # serialises load() across threads
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def load(self, path: Path) -> bool:
-        """Load a dump file. Returns True on success."""
+        """Load a dump file. Returns True on success.
+
+        Serialised so two concurrent loads can't interleave their field writes
+        and leave the resolver with a mix of two dumps.
+        """
         try:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -118,12 +124,13 @@ class ForgeDumpResolver:
             log.warning("ForgeDumpResolver: unrecognised format in %s", path)
 
         raw: dict[str, dict] = data.get("blocks", {})
-        # Lowercase registry names for case-insensitive lookup
-        self._blocks = {k.lower(): v for k, v in raw.items()}
-        self._loaded = True
-        self._path = str(path)
-        self._summary = data.get("summary", {})
-        self._mods = data.get("mods", []) or []
+        with self._lock:
+            # Lowercase registry names for case-insensitive lookup
+            self._blocks = {k.lower(): v for k, v in raw.items()}
+            self._path = str(path)
+            self._summary = data.get("summary", {})
+            self._mods = data.get("mods", []) or []
+            self._loaded = True  # set last: readers see a fully-populated resolver
         log.info(
             "ForgeDumpResolver: loaded %d blocks from %s (errors=%s)",
             len(self._blocks),

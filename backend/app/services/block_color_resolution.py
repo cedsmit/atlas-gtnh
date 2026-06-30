@@ -4,8 +4,10 @@ Stateless: given a world path, an AssetDatabase, or a block-id map, resolve
 colours and texture keys.  No in-process caching — BlockColorService owns that.
 """
 
+import logging
 import os
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -20,6 +22,8 @@ from app.services.color_cache import (
 from app.services.dump_resolver import get_dump_resolver, resolve_db_key, try_load_dump
 from app.services.legacy_resolver import resolve_legacy_texture
 from app.world.texture_colors import scan_jar, scan_jar_assets
+
+log = logging.getLogger(__name__)
 
 # Prefixes stripped from block names before texture lookup.
 # Order matters — try most specific first.
@@ -768,38 +772,46 @@ def _augment_meta_map_from_dump(
 # on the next world access without a restart.
 
 _dump_attempted_dirs: set[str] = set()
+# Serialises the auto-load: the check-then-add guard below and the resulting
+# try_load_dump() must not interleave across threads (the dump singleton is not
+# safe to rebuild concurrently).
+_dump_attempt_lock = threading.Lock()
 
 
 def _try_auto_load_dump(mc_dir: Path | None) -> None:
     """Try to load the Forge icon dump if not already loaded."""
     dump = get_dump_resolver()
 
-    # Already loaded — nothing to do
+    # Already loaded — nothing to do (lock-free fast path).
     if dump.is_loaded:
         return
 
-    # Env-var override (highest priority)
-    env_path = os.environ.get("ATLAS_ICON_DUMP_PATH", "").strip()
-    if env_path:
-        try_load_dump(env_path)
-        return
-
-    # Instance-relative first (most specific), then the global drop-in spot.
-    candidates: list[Path] = []
-    if mc_dir is not None:
-        candidates.append(mc_dir / "config" / "atlas" / "icon_dump.json")
-    candidates.append(Path.home() / ".atlas_gtnh" / "icon_dump.json")
-
-    # Attempt-once guard avoids re-parsing a file that exists but fails to load.
-    dir_key = str(mc_dir) if mc_dir is not None else "<global>"
-    if dir_key in _dump_attempted_dirs:
-        return
-
-    for candidate in candidates:
-        if candidate.exists():
-            _dump_attempted_dirs.add(dir_key)  # only mark once we actually try a file
-            try_load_dump(candidate)
+    with _dump_attempt_lock:
+        if dump.is_loaded:  # re-check: another thread may have just loaded it
             return
+
+        # Env-var override (highest priority)
+        env_path = os.environ.get("ATLAS_ICON_DUMP_PATH", "").strip()
+        if env_path:
+            try_load_dump(env_path)
+            return
+
+        # Instance-relative first (most specific), then the global drop-in spot.
+        candidates: list[Path] = []
+        if mc_dir is not None:
+            candidates.append(mc_dir / "config" / "atlas" / "icon_dump.json")
+        candidates.append(Path.home() / ".atlas_gtnh" / "icon_dump.json")
+
+        # Attempt-once guard avoids re-parsing a file that exists but fails to load.
+        dir_key = str(mc_dir) if mc_dir is not None else "<global>"
+        if dir_key in _dump_attempted_dirs:
+            return
+
+        for candidate in candidates:
+            if candidate.exists():
+                _dump_attempted_dirs.add(dir_key)  # only mark once we actually try a file
+                try_load_dump(candidate)
+                return
 
 
 # ── Asset database loader ─────────────────────────────────────────────────────
@@ -845,7 +857,7 @@ def _load_asset_db(world_path: str) -> AssetDatabase:
             all_models.update(mods)
             time.sleep(0)
         except Exception:
-            pass
+            log.warning("Failed to scan JAR %s", jar, exc_info=True)
 
     db = AssetDatabase(
         blockstates=all_blockstates,

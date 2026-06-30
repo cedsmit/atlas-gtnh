@@ -253,6 +253,42 @@ def test_get_region_surface_missing(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
+def test_get_chunk_data_corrupt_chunk_returns_400(tmp_path: Path) -> None:
+    # A chunk whose payload is not valid zlib must surface as 400, not a 500.
+    world = tmp_path / "corrupt_world"
+    world.mkdir()
+    (world / "level.dat").touch()
+    region_dir = world / "region"
+    region_dir.mkdir()
+    location_table = bytearray(SECTOR_SIZE)
+    location_table[0:4] = struct.pack(">I", (2 << 8) | 1)
+    corrupt_chunk = bytearray(SECTOR_SIZE)
+    corrupt_chunk[0:4] = struct.pack(">I", 10)
+    corrupt_chunk[4] = 2  # zlib compression
+    corrupt_chunk[5:15] = b"\xff" * 10  # invalid zlib data
+    (region_dir / "r.0.0.mca").write_bytes(
+        bytes(location_table) + bytes(SECTOR_SIZE) + bytes(corrupt_chunk)
+    )
+    response = client.get("/worlds/chunks/0/0", params={"world_path": str(world)})
+    assert response.status_code == 400
+
+
+def test_list_regions_skips_malformed_filenames(tmp_path: Path) -> None:
+    # A non-numeric region filename must be skipped, not 500 the whole listing.
+    world = tmp_path / "mixed_world"
+    world.mkdir()
+    (world / "level.dat").touch()
+    region_dir = world / "region"
+    region_dir.mkdir()
+    (region_dir / "r.0.0.mca").write_bytes(_make_region_file())
+    (region_dir / "r.x.y.mca").write_bytes(_make_region_file())
+    response = client.get("/worlds/regions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    names = [r["file_name"] for r in response.json()["regions"]]
+    assert "r.0.0.mca" in names
+    assert "r.x.y.mca" not in names
+
+
 def test_get_chunks_batch_too_many(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     coords = [[i, 0] for i in range(1025)]

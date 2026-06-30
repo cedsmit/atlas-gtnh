@@ -8,9 +8,12 @@ DB location: ~/.atlas_gtnh/colors.db
 """
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 _DB_PATH = Path.home() / ".atlas_gtnh" / "colors.db"
 
@@ -93,6 +96,7 @@ def load_jar_colors(
             return None
         return {row[0]: (row[1], row[2], row[3]) for row in rows}
     except Exception:
+        log.warning("color cache: failed to load colors for %s", jar_path, exc_info=True)
         return None
 
 
@@ -106,6 +110,7 @@ def get_texture_source_jar(texture_key: str) -> str | None:
             ).fetchone()
         return row[0] if row else None
     except Exception:
+        log.warning("color cache: failed to look up source jar for %s", texture_key, exc_info=True)
         return None
 
 
@@ -144,7 +149,7 @@ def save_jar_colors(
                 rows,
             )
     except Exception:
-        pass
+        log.warning("color cache: failed to save colors for %s", jar_path, exc_info=True)
 
 
 def load_jar_json_assets(
@@ -182,6 +187,7 @@ def load_jar_json_assets(
                 models[key] = parsed
         return blockstates, models
     except Exception:
+        log.warning("color cache: failed to load JSON assets for %s", jar_path, exc_info=True)
         return None
 
 
@@ -215,4 +221,4 @@ def save_jar_json_assets(
                 rows,
             )
     except Exception:
-        pass
+        log.warning("color cache: failed to save JSON assets for %s", jar_path, exc_info=True)

@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 from typing import Any
 
 import nbtlib
+
+log = logging.getLogger(__name__)
 
 
 def _parse_id_list(ids: Any) -> dict[int, str]:
@@ -85,6 +88,7 @@ def read_block_id_map(world_path: Path) -> dict[int, str]:
 
         return {}
     except Exception:
+        log.warning("Failed to read block id map from %s", level_dat, exc_info=True)
         return {}
 
 
@@ -113,4 +117,5 @@ def read_world_modlist(world_path: Path) -> dict[str, str]:
                 result[str(mod_id)] = str(version) if version is not None else ""
         return result
     except Exception:
+        log.warning("Failed to read mod list from %s", level_dat, exc_info=True)
         return {}

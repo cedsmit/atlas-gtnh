@@ -5,13 +5,16 @@ Textures are keyed by the same 'domain:name' strings used in the color cache
 cached in-process; the first read opens the JAR and extracts the PNG once.
 """
 
+import threading
 import zipfile
 from pathlib import Path
 
 from app.services.color_cache import get_texture_source_jar
 
-# In-process cache: texture_key → PNG bytes (None = confirmed missing)
+# In-process cache: texture_key → PNG bytes (None = confirmed missing).
+# _cache_lock serialises the miss path so a key isn't read from disk twice.
 _cache: dict[str, bytes | None] = {}
+_cache_lock = threading.Lock()
 
 
 def get_texture_png(texture_key: str) -> bytes | None:
@@ -24,14 +27,21 @@ def get_texture_png(texture_key: str) -> bytes | None:
     """
     if texture_key in _cache:
         return _cache[texture_key]
+    with _cache_lock:
+        if texture_key in _cache:  # another thread may have just loaded it
+            return _cache[texture_key]
+        png = _load_texture_png(texture_key)
+        _cache[texture_key] = png
+        return png
 
+
+def _load_texture_png(texture_key: str) -> bytes | None:
+    """Read the PNG bytes for *texture_key* from its source JAR (no caching)."""
     source_jar = get_texture_source_jar(texture_key)
     if not source_jar or not Path(source_jar).exists():
-        _cache[texture_key] = None
         return None
 
     if ":" not in texture_key:
-        _cache[texture_key] = None
         return None
 
     domain, name = texture_key.split(":", 1)
@@ -40,7 +50,7 @@ def get_texture_png(texture_key: str) -> bytes | None:
     try:
         with zipfile.ZipFile(source_jar, "r") as zf:
             try:
-                png = zf.read(jar_path)
+                return zf.read(jar_path)
             except KeyError:
                 # Two mismatches to absorb, case-insensitively:
                 #  1. mod JARs (IC2, BuildCraft, …) use camelCase filenames;
@@ -63,13 +73,9 @@ def get_texture_png(texture_key: str) -> bytes | None:
                         subdir = entry
                 chosen = exact or subdir
                 if chosen is None:
-                    _cache[texture_key] = None
                     return None
-                png = zf.read(chosen)
-        _cache[texture_key] = png
-        return png
+                return zf.read(chosen)
     except (zipfile.BadZipFile, OSError):
-        _cache[texture_key] = None
         return None
 
 
