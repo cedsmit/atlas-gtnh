@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
+from app.services.blockcolor.scan_progress import get_scan_progress_tracker
 from app.services.blockcolor.service import (
     build_block_color_map,
     build_block_meta_texture_map,
@@ -13,6 +14,17 @@ from app.services.blockcolor.service import (
 )
 
 router = APIRouter()
+
+
+@router.get("/scan-progress")
+async def get_scan_progress(world_path: str = Query(...)) -> dict[str, object]:
+    """Live mod-JAR scan progress for the loading screen.
+
+    Cheap to call (reads an in-memory snapshot); poll it while the block-color
+    map is still being built so the UI can show which mod is being scanned.
+    """
+    p = get_scan_progress_tracker().get(world_path)
+    return {"total": p.total, "scanned": p.scanned, "current": p.current, "done": p.done}
 
 
 @router.get("/block-names")

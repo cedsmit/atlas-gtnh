@@ -5,6 +5,7 @@ import { useBlockNames } from './api/blockNames'
 import { type DimensionInfo, useDimensions } from './api/dimensions'
 import { useMetaTextureKeys } from './api/metaTextureKeys'
 import { useRegions } from './api/regions'
+import { useScanProgress } from './api/scanProgress'
 import { useTextureKeys } from './api/textureKeys'
 import { DimensionPicker } from './components/DimensionPicker'
 import { DumpMismatchBanner } from './components/DumpMismatchBanner'
@@ -103,6 +104,9 @@ export default function App() {
   } else if (!tex.done) {
     loadingStage = 'textures'
   }
+
+  // Poll mod-JAR scan progress only while the scanning stage is on screen.
+  const { data: scanProgress } = useScanProgress(worldPath, loadingStage === 'scanning')
 
   // ── Auto-select single dimension ───────────────────────────────────────
   useEffect(() => {
@@ -233,6 +237,9 @@ export default function App() {
           texLoaded={tex.loaded}
           texMissing={tex.missing}
           texTotal={tex.total}
+          scanCurrent={scanProgress?.current}
+          scanScanned={scanProgress?.scanned}
+          scanTotal={scanProgress?.total}
           vanillaJarFound={vanillaJarFound}
         />
       ) : !dimensionPath ? (

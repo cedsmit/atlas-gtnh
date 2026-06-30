@@ -16,6 +16,7 @@ from app.services.blockcolor.asset_database import AssetDatabase
 from app.services.blockcolor.blockstate_resolver import resolve_block_texture
 from app.services.blockcolor.dump_resolver import get_dump_resolver, resolve_db_key, try_load_dump
 from app.services.blockcolor.legacy_resolver import resolve_legacy_texture
+from app.services.blockcolor.scan_progress import get_scan_progress_tracker
 from app.services.blockcolor.vanilla_tables import (
     _ACACIA_WOODS,
     _BLOCK_NAME_PREFIXES,
@@ -472,30 +473,36 @@ def _load_asset_db(world_path: str) -> AssetDatabase:
     all_blockstates: dict[str, Any] = {}
     all_models: dict[str, Any] = {}
 
-    for jar in jars:
-        try:
-            # ── Texture colors ────────────────────────────────────────────────
-            cached_colors = load_jar_colors(jar)
-            if cached_colors is not None:
-                all_colors.update(cached_colors)
-            else:
-                fresh = scan_jar(jar)
-                save_jar_colors(jar, fresh)
-                for name, (avg, dom) in fresh.items():
-                    all_colors[name] = dom if dom is not None else avg
+    progress = get_scan_progress_tracker()
+    progress.start(world_path, len(jars))
+    try:
+        for i, jar in enumerate(jars):
+            progress.advance(world_path, jar.stem, i)
+            try:
+                # ── Texture colors ────────────────────────────────────────────
+                cached_colors = load_jar_colors(jar)
+                if cached_colors is not None:
+                    all_colors.update(cached_colors)
+                else:
+                    fresh = scan_jar(jar)
+                    save_jar_colors(jar, fresh)
+                    for name, (avg, dom) in fresh.items():
+                        all_colors[name] = dom if dom is not None else avg
 
-            # ── JSON assets (blockstates + models) ────────────────────────────
-            cached_json = load_jar_json_assets(jar)
-            if cached_json is not None:
-                bs, mods = cached_json
-            else:
-                bs, mods = scan_jar_assets(jar)
-                save_jar_json_assets(jar, bs, mods)
-            all_blockstates.update(bs)
-            all_models.update(mods)
-            time.sleep(0)
-        except Exception:
-            log.warning("Failed to scan JAR %s", jar, exc_info=True)
+                # ── JSON assets (blockstates + models) ────────────────────────
+                cached_json = load_jar_json_assets(jar)
+                if cached_json is not None:
+                    bs, mods = cached_json
+                else:
+                    bs, mods = scan_jar_assets(jar)
+                    save_jar_json_assets(jar, bs, mods)
+                all_blockstates.update(bs)
+                all_models.update(mods)
+                time.sleep(0)
+            except Exception:
+                log.warning("Failed to scan JAR %s", jar, exc_info=True)
+    finally:
+        progress.finish(world_path)
 
     db = AssetDatabase(
         blockstates=all_blockstates,

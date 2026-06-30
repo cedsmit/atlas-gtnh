@@ -10,6 +10,10 @@ interface Props {
   texLoaded?: number
   texMissing?: number
   texTotal?: number
+  /** Mod-JAR scan progress (scanning stage) */
+  scanCurrent?: string
+  scanScanned?: number
+  scanTotal?: number
   /** null = still detecting, true = found, false = not found */
   vanillaJarFound?: boolean | null
 }
@@ -35,6 +39,9 @@ export function LoadingScreen({
   texLoaded = 0,
   texMissing = 0,
   texTotal = 0,
+  scanCurrent = '',
+  scanScanned = 0,
+  scanTotal = 0,
   vanillaJarFound,
 }: Props) {
   const stageIdx = STAGES.indexOf(stage)
@@ -42,7 +49,9 @@ export function LoadingScreen({
   const progress =
     stage === 'textures' && texTotal > 0
       ? (texLoaded + texMissing) / texTotal
-      : null
+      : stage === 'scanning' && scanTotal > 0
+        ? scanScanned / scanTotal
+        : null
 
   const hint =
     stage === 'textures'
@@ -51,14 +60,16 @@ export function LoadingScreen({
         ((texTotal - texLoaded - texMissing) > 0
           ? ` · ${(texTotal - texLoaded - texMissing).toLocaleString()} pending`
           : '')
-      : STAGE_HINT[stage]
+      : stage === 'scanning' && scanTotal > 0
+        ? `${scanCurrent || '…'} · ${scanScanned} / ${scanTotal} mods`
+        : STAGE_HINT[stage]
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-8">
       {/* Stage title */}
-      <div className="text-center">
+      <div className="max-w-lg text-center">
         <h2 className="text-xl font-semibold text-zinc-100">{STAGE_TITLE[stage]}</h2>
-        <p className="mt-1 font-mono text-sm text-zinc-400">{hint}</p>
+        <p className="mt-1 truncate font-mono text-sm text-zinc-400">{hint}</p>
       </div>
 
       {/* Progress bar */}
