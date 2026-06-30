@@ -35,6 +35,89 @@ def get_texture_png(texture_key: str) -> bytes | None:
         return png
 
 
+def get_textures_batch(keys: list[str]) -> dict[str, bytes | None]:
+    """Return PNG bytes for many keys, opening each source JAR only once.
+
+    The initial preload needs hundreds of textures; resolving them one-by-one
+    re-opens (and re-reads the central directory of) the same JAR over and over.
+    Grouping cache-missed keys by their source JAR collapses that to one open
+    per JAR. Already-cached keys are returned straight from the in-process cache.
+    """
+    result: dict[str, bytes | None] = {}
+    misses_by_jar: dict[str, list[str]] = {}
+
+    for key in keys:
+        if key in _cache:
+            result[key] = _cache[key]
+            continue
+        source_jar = get_texture_source_jar(key)
+        if not source_jar or ":" not in key or not Path(source_jar).exists():
+            with _cache_lock:
+                _cache.setdefault(key, None)
+            result[key] = None
+            continue
+        misses_by_jar.setdefault(source_jar, []).append(key)
+
+    for source_jar, jar_keys in misses_by_jar.items():
+        loaded = _read_keys_from_jar(source_jar, jar_keys)
+        with _cache_lock:
+            for key in jar_keys:
+                _cache.setdefault(key, loaded.get(key))
+                result[key] = _cache[key]
+    return result
+
+
+def _fuzzy_zip_entry(namelist_lower: dict[str, str], domain: str, name: str) -> str | None:
+    """Resolve a texture to an actual ZIP entry, case-insensitively.
+
+    *namelist_lower* maps lowercased entry name → original entry name.
+    Absorbs two mismatches: (1) mod JARs (IC2, BuildCraft, …) use camelCase
+    filenames; (2) the color scan stores a filename-only alias for textures that
+    actually live in a subdirectory (e.g. projectred:basalt_brick →
+    assets/projectred/textures/blocks/world/basalt_brick.png).
+    Prefers an exact path match, else any entry under the domain's blocks dir
+    ending in /{name}.png.
+    """
+    target = f"assets/{domain}/textures/blocks/{name}.png".lower()
+    exact = namelist_lower.get(target)
+    if exact is not None:
+        return exact
+    prefix = f"assets/{domain}/textures/blocks/".lower()
+    suffix = f"/{name}.png".lower()
+    for entry_lower, entry in namelist_lower.items():
+        if entry_lower.startswith(prefix) and entry_lower.endswith(suffix):
+            return entry
+    return None
+
+
+def _read_keys_from_jar(source_jar: str, keys: list[str]) -> dict[str, bytes]:
+    """Read several texture PNGs from a single open JAR. Missing keys are omitted.
+
+    The lowercased namelist (needed for the fuzzy fallback) is built at most once
+    per JAR, only if some key isn't found by its exact path.
+    """
+    out: dict[str, bytes] = {}
+    namelist_lower: dict[str, str] | None = None
+    try:
+        with zipfile.ZipFile(source_jar, "r") as zf:
+            for key in keys:
+                domain, name = key.split(":", 1)
+                jar_path = f"assets/{domain}/textures/blocks/{name}.png"
+                try:
+                    out[key] = zf.read(jar_path)
+                    continue
+                except KeyError:
+                    pass
+                if namelist_lower is None:
+                    namelist_lower = {e.lower(): e for e in zf.namelist()}
+                chosen = _fuzzy_zip_entry(namelist_lower, domain, name)
+                if chosen is not None:
+                    out[key] = zf.read(chosen)
+    except (zipfile.BadZipFile, OSError):
+        return out
+    return out
+
+
 def _load_texture_png(texture_key: str) -> bytes | None:
     """Read the PNG bytes for *texture_key* from its source JAR (no caching)."""
     source_jar = get_texture_source_jar(texture_key)
@@ -52,29 +135,9 @@ def _load_texture_png(texture_key: str) -> bytes | None:
             try:
                 return zf.read(jar_path)
             except KeyError:
-                # Two mismatches to absorb, case-insensitively:
-                #  1. mod JARs (IC2, BuildCraft, …) use camelCase filenames;
-                #  2. the color scan stores a filename-only alias for textures that
-                #     actually live in a subdirectory (e.g. projectred:basalt_brick
-                #     → assets/projectred/textures/blocks/world/basalt_brick.png).
-                # Prefer an exact path match, else any entry under this domain's
-                # blocks dir ending in /{name}.png.
-                target_lower = jar_path.lower()
-                prefix = f"assets/{domain}/textures/blocks/".lower()
-                suffix = f"/{name}.png".lower()
-                exact: str | None = None
-                subdir: str | None = None
-                for entry in zf.namelist():
-                    el = entry.lower()
-                    if el == target_lower:
-                        exact = entry
-                        break
-                    if subdir is None and el.startswith(prefix) and el.endswith(suffix):
-                        subdir = entry
-                chosen = exact or subdir
-                if chosen is None:
-                    return None
-                return zf.read(chosen)
+                namelist_lower = {e.lower(): e for e in zf.namelist()}
+                chosen = _fuzzy_zip_entry(namelist_lower, domain, name)
+                return zf.read(chosen) if chosen is not None else None
     except (zipfile.BadZipFile, OSError):
         return None
 

@@ -76,19 +76,51 @@ export function allSettled(keys: string[]): boolean {
   })
 }
 
+// Keys per batch request. A handful of these replaces hundreds of <img> GETs,
+// while still being granular enough to keep the loading progress bar moving.
+const BATCH_SIZE = 100
+
 /**
  * Pre-load a set of textures.  Already-loading or loaded keys are skipped.
- * *worldPath* is forwarded to the backend texture endpoint.
+ * Keys are fetched from the backend in batches (one round-trip per ~100 keys,
+ * each JAR opened once server-side) rather than one image request per key.
  */
 export function warmTextures(keys: string[], worldPath: string): void {
+  const fresh: string[] = []
   for (const key of keys) {
     if (_cache.has(key)) continue
+    _cache.set(key, { state: 'pending', image: null })
+    fresh.push(key)
+  }
 
-    const entry: Entry = { state: 'pending', image: null }
-    _cache.set(key, entry)
+  for (let i = 0; i < fresh.length; i += BATCH_SIZE) {
+    void _loadBatch(fresh.slice(i, i + BATCH_SIZE), worldPath)
+  }
+}
 
+/** Fetch one batch of texture keys and decode each returned data-URL. */
+async function _loadBatch(keys: string[], worldPath: string): Promise<void> {
+  let data: Record<string, string> = {}
+  try {
+    const res = await fetch(`${API_BASE}/worlds/textures-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ world_path: worldPath, keys }),
+    })
+    if (res.ok) data = (await res.json()) as Record<string, string>
+  } catch {
+    // Network error: every key in this batch falls through to 'missing' below.
+  }
+
+  for (const key of keys) {
+    const entry = _cache.get(key)
+    if (!entry) continue
+    const dataUrl = data[key]
+    if (!dataUrl) {
+      entry.state = 'missing'
+      continue
+    }
     const img = new Image()
-    img.crossOrigin = 'anonymous'
     img.onload = () => {
       entry.state = 'loaded'
       entry.image = img
@@ -98,10 +130,8 @@ export function warmTextures(keys: string[], worldPath: string): void {
       entry.state = 'missing'
       _scheduleNotify()
     }
-    img.src =
-      `${API_BASE}/worlds/textures` +
-      `?key=${encodeURIComponent(key)}` +
-      `&world_path=${encodeURIComponent(worldPath)}` +
-      `&_v=2`
+    img.src = dataUrl
   }
+  // Surface the keys marked 'missing' (and any all-miss batch) right away.
+  _scheduleNotify()
 }
