@@ -35,9 +35,7 @@ def _read_region_bytes(path: Path) -> bytes:
     """Return the contents of an .mca file, cached by (path, mtime, size)."""
     stat = path.stat()
     if stat.st_size > _MAX_REGION_BYTES:
-        raise ValueError(
-            f"Region file too large to read ({stat.st_size} bytes): {path.name}"
-        )
+        raise ValueError(f"Region file too large to read ({stat.st_size} bytes): {path.name}")
     key = str(path)
     with _REGION_BYTES_CACHE_LOCK:
         cached = _REGION_BYTES_CACHE.get(key)
@@ -88,6 +86,7 @@ class RawChunkSurface:
 
     All per-column lists are 256 long, indexed x + z*16 to match biomes.
     """
+
     chunk_x: int
     chunk_z: int
     ids: list[int]  # topmost non-air block id per column (0 = empty column)
@@ -329,7 +328,9 @@ def _decode_biomes(biomes_bytes: bytes, chunk_x: int, chunk_z: int) -> list[int]
     if biomes_bytes:
         log.warning(
             "chunk (%d,%d): dropping biome array of length %d (expected 256)",
-            chunk_x, chunk_z, len(biomes_bytes),
+            chunk_x,
+            chunk_z,
+            len(biomes_bytes),
         )
     return []
 

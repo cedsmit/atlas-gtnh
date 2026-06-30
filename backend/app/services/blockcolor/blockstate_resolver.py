@@ -13,6 +13,7 @@ Supports:
   - Texture variable (#var)    resolution through parent chain
   - Top-face extraction        (up > top > end > all > side > particle)
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from app.services.blockcolor.asset_database import AssetDatabase
 
 # ── Failure-reason tags ───────────────────────────────────────────────────────
 
+# fmt: off
 REASON_NO_BLOCKSTATE          = "no_blockstate"
 REASON_FORGE_BUILTIN          = "forge_builtin_renderer"
 REASON_NO_VARIANT             = "no_variant_for_meta"
@@ -29,6 +31,7 @@ REASON_MODEL_NOT_FOUND        = "model_not_found"
 REASON_TEXTURE_VAR_UNRESOLVED = "texture_variable_unresolved"
 REASON_TEXTURE_NOT_IN_DB      = "texture_not_in_db"
 REASON_BAD_FORMAT             = "bad_blockstate_format"
+# fmt: on
 
 # Top-face texture variable names, checked in priority order.
 _TOP_FACE_VARS = ("up", "top", "end", "all", "side", "side_all", "particle", "cross")
@@ -59,6 +62,7 @@ class ResolveResult:
 
 
 # ── Main pipeline ─────────────────────────────────────────────────────────────
+
 
 def resolve_block_texture(registry_name: str, meta: int, db: AssetDatabase) -> ResolveResult:
     """
@@ -141,6 +145,7 @@ def resolve_block_texture(registry_name: str, meta: int, db: AssetDatabase) -> R
 
 # ── Batch failure report ──────────────────────────────────────────────────────
 
+
 def generate_pipeline_report(id_map: dict[int, str], db: AssetDatabase) -> dict[str, Any]:
     """
     Run the blockstate pipeline for every block and categorize outcomes.
@@ -174,8 +179,9 @@ def generate_pipeline_report(id_map: dict[int, str], db: AssetDatabase) -> dict[
 
 # ── Blockstate variant selection ──────────────────────────────────────────────
 
+
 def _select_model_ref(
-    blockstate: dict, meta: int
+    blockstate: dict[str, Any], meta: int
 ) -> tuple[str | None, dict[str, str], str | None]:
     """
     Select the model ref and any inline textures from a blockstate JSON.
@@ -205,9 +211,16 @@ def _select_model_ref(
 
     # Try variant keys in priority order.
     for key in (
-        "normal", "",
-        str(meta), f"meta={meta}", f"damage={meta}", f"type={meta}",
-        "facing=north", "facing=south", "powered=false", "open=false",
+        "normal",
+        "",
+        str(meta),
+        f"meta={meta}",
+        f"damage={meta}",
+        f"type={meta}",
+        "facing=north",
+        "facing=south",
+        "powered=false",
+        "open=false",
         "variant=normal",
     ):
         entry = variants.get(key)
@@ -226,11 +239,11 @@ def _select_model_ref(
 
 
 def _select_forge_model_ref(
-    blockstate: dict, meta: int
+    blockstate: dict[str, Any], meta: int
 ) -> tuple[str | None, dict[str, str], str | None]:
     """Handle Forge blockstate format (forge_marker: 1)."""
-    defaults: dict = blockstate.get("defaults") or {}
-    variants: dict = blockstate.get("variants") or {}
+    defaults: dict[str, Any] = blockstate.get("defaults") or {}
+    variants: dict[str, Any] = blockstate.get("variants") or {}
 
     # Meta-specific keys first.
     for key in (str(meta), f"meta={meta}", f"type={meta}", f"damage={meta}"):
@@ -251,7 +264,8 @@ def _select_forge_model_ref(
     # Use defaults alone (no variant data contributed anything).
     model = defaults.get("model")
     textures: dict[str, str] = {
-        k: v for k, v in (defaults.get("textures") or {}).items()
+        k: v
+        for k, v in (defaults.get("textures") or {}).items()
         if isinstance(k, str) and isinstance(v, str)
     }
     if model in ("builtin/entity", "builtin/generated"):
@@ -269,8 +283,8 @@ def _select_forge_model_ref(
 
 
 def _extract_forge_ref_and_textures(
-    entry: list | dict | None,
-    defaults: dict,
+    entry: list[Any] | dict[str, Any] | None,
+    defaults: dict[str, Any],
 ) -> tuple[str | None, dict[str, str], str | None]:
     if isinstance(entry, list):
         entry = entry[0] if entry else {}
@@ -279,7 +293,8 @@ def _extract_forge_ref_and_textures(
     merged = {**defaults, **entry}
     model = merged.get("model")
     textures: dict[str, str] = {
-        k: v for k, v in (merged.get("textures") or {}).items()
+        k: v
+        for k, v in (merged.get("textures") or {}).items()
         if isinstance(k, str) and isinstance(v, str)
     }
     if model in ("builtin/entity", "builtin/generated"):
@@ -287,7 +302,7 @@ def _extract_forge_ref_and_textures(
     return model, textures, None
 
 
-def _extract_vanilla_ref(entry: list | dict | None) -> str | None:
+def _extract_vanilla_ref(entry: list[Any] | dict[str, Any] | None) -> str | None:
     if isinstance(entry, list):
         entry = entry[0] if entry else {}
     if isinstance(entry, dict):
@@ -299,6 +314,7 @@ def _extract_vanilla_ref(entry: list | dict | None) -> str | None:
 
 
 # ── Model chain resolution ────────────────────────────────────────────────────
+
 
 def _normalize_model_ref(ref: str, default_domain: str) -> str:
     """
@@ -352,7 +368,8 @@ def _build_texture_map(
         return None, f"{REASON_MODEL_NOT_FOUND}:{model_key}"
 
     own: dict[str, str] = {
-        k: v for k, v in (model.get("textures") or {}).items()
+        k: v
+        for k, v in (model.get("textures") or {}).items()
         if isinstance(k, str) and isinstance(v, str)
     }
     parent_str: str = (model.get("parent") or "").strip().lower()
@@ -378,6 +395,7 @@ def _build_texture_map(
 
 
 # ── Texture variable resolution ───────────────────────────────────────────────
+
 
 def _get_top_texture_path(texture_map: dict[str, str]) -> tuple[str | None, str | None]:
     for var_name in _TOP_FACE_VARS:

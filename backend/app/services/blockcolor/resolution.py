@@ -36,16 +36,11 @@ from app.world.texture_colors import scan_jar, scan_jar_assets
 log = logging.getLogger(__name__)
 
 
-
-
-
 def _camel_to_snake(s: str) -> str:
     """Convert camelCase portion of a registry name to snake_case.
     'colorizedLeaves2' → 'colorized_leaves2'
     """
-    return re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s).lower()
-
-
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
 
 
 def find_minecraft_dir(world_path: Path) -> Path | None:
@@ -71,7 +66,7 @@ def _collect_jars(mc_dir: Path) -> list[Path]:
     # GTNH players use many launchers — each stores the JAR in a different location.
     appdata = Path(os.environ.get("APPDATA", ""))
     userprofile = Path(os.environ.get("USERPROFILE", str(Path.home())))
-    # Maven path used by all modern launchers: com/mojang/minecraft/1.7.10/minecraft-1.7.10-client.jar
+    # Maven path used by all modern launchers (com/mojang/minecraft/1.7.10/...).
     _client_rel = Path("com") / "mojang" / "minecraft" / "1.7.10" / "minecraft-1.7.10-client.jar"
 
     vanilla_candidates: list[Path] = [
@@ -109,8 +104,6 @@ def _collect_jars(mc_dir: Path) -> list[Path]:
     return jars
 
 
-
-
 def _resolve_texture_key(
     registry_name: str,
     texture_colors: dict[str, tuple[int, int, int]],
@@ -136,9 +129,11 @@ def _resolve_texture_key(
     if ":" not in registry_name:
         return None
 
+    # fmt: off
     raw_domain = norm_name.split(":", 1)[0]
     orig_name  = registry_name.split(":", 1)[1]
     lower_name = orig_name.lower()
+    # fmt: on
 
     # Many mods use pipe-delimited mod-category namespaces (BuildCraft|Factory,
     # BuildCraft|Transport, …) but their JAR assets live under the base name only
@@ -185,8 +180,8 @@ def _resolve_texture_key(
     #    GT  registers "gt.blockCasings"; texture might be "casings_top".
     for prefix in _BLOCK_NAME_PREFIXES:
         if lower_name.startswith(prefix) and len(lower_name) > len(prefix):
-            tail = lower_name[len(prefix):]
-            tail_orig = orig_name[len(prefix):]
+            tail = lower_name[len(prefix) :]
+            tail_orig = orig_name[len(prefix) :]
             result = _try_bases(clean_domain, tail, tail_orig)
             if result:
                 return result
@@ -281,8 +276,6 @@ def _build_texture_key_map(
 # Maps meta value → texture-key suffix for vanilla blocks that differ per meta.
 
 
-
-
 def _build_meta_texture_map_for_world(id_map: dict[int, str]) -> dict[str, str]:
     """Return '{block_id}:{meta}' → texture-key for all known meta-variant blocks."""
     name_to_id: dict[str, int] = {v: k for k, v in id_map.items()}
@@ -341,12 +334,23 @@ def _build_meta_texture_map_for_world(id_map: dict[int, str]) -> dict[str, str]:
     # ProjectRed Exploration — not in the Forge dump (Scala/CCL); meta order from
     # the mod's decorative-stone / ore enums. Verify against a world export.
     _PR_STONE = [
-        "marble", "marble_brick", "basalt", "basalt_cobble", "basalt_brick",
-        "ruby_block", "sapphire_block", "peridot_block",
+        "marble",
+        "marble_brick",
+        "basalt",
+        "basalt_cobble",
+        "basalt_brick",
+        "ruby_block",
+        "sapphire_block",
+        "peridot_block",
     ]
     _PR_ORE = [
-        "ruby_ore", "sapphire_ore", "peridot_ore", "copper_ore",
-        "tin_ore", "silver_ore", "electrotine_ore",
+        "ruby_ore",
+        "sapphire_ore",
+        "peridot_ore",
+        "copper_ore",
+        "tin_ore",
+        "silver_ore",
+        "electrotine_ore",
     ]
     for m, tex in enumerate(_PR_STONE):
         add("ProjRed|Exploration:projectred.exploration.stone", m, f"projectred:{tex}")

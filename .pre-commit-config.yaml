@@ -3,21 +3,21 @@ repos:
     hooks:
       - id: ruff-check
         name: ruff lint
-        entry: uv run ruff check --fix
+        entry: uv run --directory backend ruff check --fix
         language: system
         types: [python]
         pass_filenames: false
 
       - id: ruff-format
         name: ruff format
-        entry: uv run ruff format
+        entry: uv run --directory backend ruff format
         language: system
         types: [python]
         pass_filenames: false
 
       - id: mypy
         name: mypy
-        entry: uv run mypy app
+        entry: uv run --directory backend mypy app
         language: system
         pass_filenames: false
         always_run: true

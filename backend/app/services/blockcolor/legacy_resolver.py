@@ -8,6 +8,7 @@ and selecting the highest-scoring match from the available texture database.
 No per-block overrides are used here.  The _OVERRIDES dict in vanilla_tables.py
 handles the truly exceptional cases (minecraft grass, GT ores, Chisel path separators).
 """
+
 from __future__ import annotations
 
 import re
@@ -18,6 +19,7 @@ from typing import Any
 # Tried most-specific first.  Each prefix is stripped once (single) and also
 # tried in combination with a second prefix (double) to handle names like
 # "tile.blockCharger" → strip "tile." → "blockCharger" → strip "block" → "charger".
+# fmt: off
 _NAME_PREFIXES: list[str] = [
     "gt.block",    # GregTech: "gt.blockOres" → "ores"
     "gt.tile",     # GregTech tile entities
@@ -26,11 +28,13 @@ _NAME_PREFIXES: list[str] = [
     "tile.",       # AE2: "tile.OreQuartz" → "OreQuartz"
     "block",       # IC2, TE, BC: "blockGenerator" → "generator"
 ]
+# fmt: on
 
 # ── Suffix scoring ─────────────────────────────────────────────────────────────
 # Base (suffix, score) before family-specific adjustments.
 # Higher score = more preferred for a top-down map view.
 # _top is the explicit top face; "" (no suffix) is often the primary texture.
+# fmt: off
 _SUFFIX_BASE_SCORES: list[tuple[str, int]] = [
     ("_top",       50),
     ("",           45),
@@ -69,6 +73,7 @@ _SUFFIX_BASE_SCORES: list[tuple[str, int]] = [
     ("4",           2),
     ("5",           1),
 ]
+# fmt: on
 
 # ── Bad-match penalties ────────────────────────────────────────────────────────
 # Subtracted from a candidate's score when the texture key name contains these
@@ -80,6 +85,7 @@ _SUFFIX_BASE_SCORES: list[tuple[str, int]] = [
 # A penalised key can still win if it is the ONLY match (penalty may push score
 # negative, but we compare relative to other candidates — if all have the same
 # penalty it doesn't matter).
+# fmt: off
 _BAD_MATCH_PENALTIES: list[tuple[str, int]] = [
     ("_item",         -100),
     ("item_",         -100),
@@ -102,6 +108,7 @@ _BAD_MATCH_PENALTIES: list[tuple[str, int]] = [
     ("_fluid_flow",    -55),
     ("_fluid_still",   -35),
 ]
+# fmt: on
 
 # ── Block family detection ─────────────────────────────────────────────────────
 # Pattern → family name.  Matched against the full lower-case registry name
@@ -110,11 +117,14 @@ _FAMILY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Logs and wood — bark (_side) is more map-readable than cross-section rings (_top)
     (re.compile(r"\b(log|plank|wood)\b"), "log"),
     # Machines / tech — distinctive top face is most informative from directly above
-    (re.compile(
-        r"\b(machine|generator|furnace|reactor|pump|miner|laser|assembl"
-        r"|refin|distill|electrol|motor|compressor|centrifuge|extruder"
-        r"|bending|wiremill|amplifier|drain)\b"
-    ), "machine"),
+    (
+        re.compile(
+            r"\b(machine|generator|furnace|reactor|pump|miner|laser|assembl"
+            r"|refin|distill|electrol|motor|compressor|centrifuge|extruder"
+            r"|bending|wiremill|amplifier|drain)\b"
+        ),
+        "machine",
+    ),
     # Ores — plain texture (no suffix) is usually correct
     (re.compile(r"\b(ore|mineral)\b"), "ore"),
     # Fluid containers — avoid still/flow animation textures
@@ -122,6 +132,7 @@ _FAMILY_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 ]
 
 # Suffix score adjustments per family (delta added to base suffix score)
+# fmt: off
 _FAMILY_SUFFIX_ADJUST: dict[str, dict[str, int]] = {
     "log": {
         "_side":   +18,   # bark texture more distinctive on map
@@ -142,13 +153,16 @@ _FAMILY_SUFFIX_ADJUST: dict[str, dict[str, int]] = {
         "_fluid_flow":  -80,
     },
 }
+# fmt: on
 
 # Ambiguity threshold: if best minus second-best score ≤ this, mark as ambiguous
 _AMBIGUITY_GAP = 8
 
 # Confidence thresholds (based on combined form_score + suffix_score of best match)
+# fmt: off
 _CONFIDENCE_HIGH   = 120   # strongly-normalised form + good suffix
 _CONFIDENCE_MEDIUM = 75    # some normalisation, plausible suffix
+# fmt: on
 
 
 def _camel_to_snake(s: str) -> str:
@@ -177,7 +191,7 @@ def _bad_match_penalty(key_name: str) -> int:
 class LegacyResult:
     texture_key: str | None
     failure_reason: str
-    confidence: str = "low"          # "high" | "medium" | "low"
+    confidence: str = "low"  # "high" | "medium" | "low"
     is_ambiguous: bool = False
     candidates_tried: int = 0
     best_score: int = -1
@@ -263,8 +277,7 @@ def resolve_legacy_texture(
 
     # Build suffix score table with family adjustments applied
     suffix_scores: list[tuple[str, int]] = [
-        (suf, base + family_adjust.get(suf, 0))
-        for suf, base in _SUFFIX_BASE_SCORES
+        (suf, base + family_adjust.get(suf, 0)) for suf, base in _SUFFIX_BASE_SCORES
     ]
 
     # ── Form collection ────────────────────────────────────────────────────────
@@ -312,8 +325,8 @@ def resolve_legacy_texture(
     for prefix in _NAME_PREFIXES:
         if not lower_name.startswith(prefix) or len(lower_name) <= len(prefix):
             continue
-        tail_l = lower_name[len(prefix):]
-        tail_o = orig_name[len(prefix):] if len(orig_name) > len(prefix) else tail_l
+        tail_l = lower_name[len(prefix) :]
+        tail_o = orig_name[len(prefix) :] if len(orig_name) > len(prefix) else tail_l
         _add_form(tail_l, tail_o, 85)
 
         tail_no_num = re.sub(r"\d+$", "", tail_l)
@@ -322,14 +335,10 @@ def resolve_legacy_texture(
 
         # Double-prefix-stripped forms
         for prefix2 in _NAME_PREFIXES:
-            if (
-                prefix2 == prefix
-                or not tail_l.startswith(prefix2)
-                or len(tail_l) <= len(prefix2)
-            ):
+            if prefix2 == prefix or not tail_l.startswith(prefix2) or len(tail_l) <= len(prefix2):
                 continue
-            tail2_l = tail_l[len(prefix2):]
-            tail2_o = tail_o[len(prefix2):] if len(tail_o) > len(prefix2) else tail2_l
+            tail2_l = tail_l[len(prefix2) :]
+            tail2_o = tail_o[len(prefix2) :] if len(tail_o) > len(prefix2) else tail2_l
             if not tail2_l:
                 continue
             _add_form(tail2_l, tail2_o, 100)
@@ -393,14 +402,14 @@ def resolve_legacy_texture(
 
     # Top candidates for diagnostics (cap at 8)
     top_candidates: list[dict[str, object]] = [
-        {"key": k, "score": s, "notes": _describe_penalty(k)}
-        for k, s in sorted_hits[:8]
+        {"key": k, "score": s, "notes": _describe_penalty(k)} for k, s in sorted_hits[:8]
     ]
 
     # Trace lines
     trace_lines = [
         f"Resolved: {best_key} (score={best_score}, confidence={confidence}"
-        + (", AMBIGUOUS" if is_ambiguous else "") + ")",
+        + (", AMBIGUOUS" if is_ambiguous else "")
+        + ")",
         f"Family: {family or 'generic'} | forms tried: {len(form_scores)} | "
         f"candidates: {candidate_count} | hits: {len(sorted_hits)}",
     ]

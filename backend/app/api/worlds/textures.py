@@ -18,6 +18,7 @@ router = APIRouter()
 @router.get("/block-names")
 async def get_block_names(world_path: str = Query(...)) -> dict[int, str]:
     from app.world.block_registry import read_block_id_map
+
     return read_block_id_map(Path(world_path))
 
 

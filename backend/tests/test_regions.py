@@ -222,9 +222,7 @@ def test_get_chunks_batch(tmp_path: Path) -> None:
 
 def test_get_chunks_batch_empty_coords(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
-    response = client.post(
-        "/worlds/chunks/batch", json={"world_path": str(world), "coords": []}
-    )
+    response = client.post("/worlds/chunks/batch", json={"world_path": str(world), "coords": []})
     assert response.status_code == 200
     assert response.json()["chunks"] == []
 

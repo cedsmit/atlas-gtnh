@@ -246,7 +246,8 @@ async def debug_top_blocks(cx: int, cz: int, world_path: str = Query(...)) -> di
     ]
 
     return {
-        "cx": cx, "cz": cz,
+        "cx": cx,
+        "cz": cz,
         "top_blocks": top_blocks,
     }
 
@@ -290,7 +291,12 @@ async def debug_chunk_nbt(cx: int, cz: int, world_path: str = Query(...)) -> dic
 
     sections_tag = level.get("Sections")
     result: dict[str, object] = {
-        "cx": cx, "cz": cz, "rx": rx, "rz": rz, "lx": lx, "lz": lz,
+        "cx": cx,
+        "cz": cz,
+        "rx": rx,
+        "rz": rz,
+        "lx": lx,
+        "lz": lz,
         "level_keys": sorted(level.keys()),
         "has_sections": sections_tag is not None,
         "sections_count": len(sections_tag) if sections_tag else 0,
@@ -337,7 +343,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
 
     for bid, name in sorted(id_map.items()):
         if bid in color_map:
-            rgb = tuple(color_map[bid])  # type: ignore[arg-type]
+            rgb = tuple(color_map[bid])
             resolved_rows.append((bid, name, rgb, True))  # type: ignore[arg-type]
         else:
             # Simple hash fallback — same formula as frontend blockColorRGB
@@ -348,7 +354,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
             x = c * (1 - abs(h % 2 - 1))
             m = 0.45 - c / 2
             if h < 1:
-                r, g, b = c, x, 0
+                r, g, b = c, x, 0.0
             elif h < 2:
                 r, g, b = x, c, 0
             elif h < 3:
@@ -380,7 +386,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
             f'<span style="color:#aaa;width:50px;flex-shrink:0">{bid}</span>'
             f'<span style="color:#ddd;flex:1;font-size:11px">{name}</span>'
             f'<span style="color:#888;width:60px;font-size:11px">{hex_col}</span>'
-            f'{badge}'
+            f"{badge}"
             f"</div>"
         )
 

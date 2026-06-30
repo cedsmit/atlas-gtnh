@@ -21,6 +21,7 @@ Side numbering in Forge 1.7.10:
 Side priority for top-down map rendering: top (1) first, then cardinal
 sides for wall/pillar blocks, bottom last.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,8 +89,8 @@ class DumpResult:
     resolved: bool
     texture_key: str | None = None
     side_used: int = -1
-    is_ambiguous: bool = False   # True when sides carry different icons
-    meta_exact: bool = False     # False if we fell back to meta 0
+    is_ambiguous: bool = False  # True when sides carry different icons
+    meta_exact: bool = False  # False if we fell back to meta 0
     trace: list[str] = field(default_factory=list)
 
 
@@ -123,7 +124,7 @@ class ForgeDumpResolver:
         if data.get("format") != "atlas-gtnh-icon-dump-v1":
             log.warning("ForgeDumpResolver: unrecognised format in %s", path)
 
-        raw: dict[str, dict] = data.get("blocks", {})
+        raw: dict[str, dict[str, dict[str, str]]] = data.get("blocks", {})
         with self._lock:
             # Lowercase registry names for case-insensitive lookup
             self._blocks = {k.lower(): v for k, v in raw.items()}
@@ -206,7 +207,7 @@ class ForgeDumpResolver:
         side_data = block_data.get(meta_str)
         meta_exact = side_data is not None
 
-        if not meta_exact:
+        if side_data is None:
             side_data = block_data.get("0")
             if side_data is None:
                 trace.append(f"Meta {meta} not in dump, no meta-0 fallback")
@@ -244,9 +245,7 @@ class ForgeDumpResolver:
             trace=trace,
         )
 
-    def get_all_meta_icons(
-        self, registry_name: str
-    ) -> dict[int, str] | None:
+    def get_all_meta_icons(self, registry_name: str) -> dict[int, str] | None:
         """
         Return {meta: top_icon_name} for all metas present in the dump.
         Used to build meta-texture maps for complex blocks (GT machines, etc).
