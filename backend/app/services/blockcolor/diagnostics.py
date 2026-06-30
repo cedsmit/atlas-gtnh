@@ -6,19 +6,19 @@ the debug / missing-block-report endpoints.
 
 from pathlib import Path
 
-from app.services.block_color_resolution import (
+from app.services.blockcolor.blockstate_resolver import resolve_block_texture
+from app.services.blockcolor.dump_resolver import get_dump_resolver, resolve_db_key
+from app.services.blockcolor.legacy_resolver import resolve_legacy_texture
+from app.services.blockcolor.resolution import (
     _collect_jars,
     _resolve_texture_key,
     _resolve_unified,
     _try_auto_load_dump,
     find_minecraft_dir,
 )
-from app.services.block_color_service import get_block_color_service
-from app.services.blockstate_resolver import resolve_block_texture
+from app.services.blockcolor.service import get_block_color_service
+from app.services.blockcolor.vanilla_tables import _OVERRIDES, _VANILLA_TEXTURE_KEYS
 from app.services.color_cache import load_jar_colors, save_jar_colors
-from app.services.dump_resolver import get_dump_resolver, resolve_db_key
-from app.services.legacy_resolver import resolve_legacy_texture
-from app.services.vanilla_tables import _OVERRIDES, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map, read_world_modlist
 from app.world.texture_colors import scan_jar
 

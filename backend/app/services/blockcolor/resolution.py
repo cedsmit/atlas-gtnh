@@ -12,17 +12,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-from app.services.asset_database import AssetDatabase
-from app.services.blockstate_resolver import resolve_block_texture
-from app.services.color_cache import (
-    load_jar_colors,
-    load_jar_json_assets,
-    save_jar_colors,
-    save_jar_json_assets,
-)
-from app.services.dump_resolver import get_dump_resolver, resolve_db_key, try_load_dump
-from app.services.legacy_resolver import resolve_legacy_texture
-from app.services.vanilla_tables import (
+from app.services.blockcolor.asset_database import AssetDatabase
+from app.services.blockcolor.blockstate_resolver import resolve_block_texture
+from app.services.blockcolor.dump_resolver import get_dump_resolver, resolve_db_key, try_load_dump
+from app.services.blockcolor.legacy_resolver import resolve_legacy_texture
+from app.services.blockcolor.vanilla_tables import (
     _ACACIA_WOODS,
     _BLOCK_NAME_PREFIXES,
     _FALLBACK_SUFFIXES,
@@ -30,6 +24,12 @@ from app.services.vanilla_tables import (
     _OVERRIDES,
     _PLANK_WOODS,
     _WOOL_COLORS,
+)
+from app.services.color_cache import (
+    load_jar_colors,
+    load_jar_json_assets,
+    save_jar_colors,
+    save_jar_json_assets,
 )
 from app.world.texture_colors import scan_jar, scan_jar_assets
 

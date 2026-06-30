@@ -1,6 +1,6 @@
 """Static vanilla / override lookup tables for block colour & texture resolution.
 
-Pure data extracted from block_color_resolution so the resolver module is logic,
+Pure data extracted from resolution.py so that module is logic,
 not hundreds of lines of dict literals.
 """
 

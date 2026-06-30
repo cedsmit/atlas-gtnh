@@ -5,7 +5,7 @@ Resolves texture keys for old mods that do not ship blockstate JSON files
 by generating all plausible texture key candidates from naming conventions
 and selecting the highest-scoring match from the available texture database.
 
-No per-block overrides are used here.  The _OVERRIDES dict in block_color_resolution.py
+No per-block overrides are used here.  The _OVERRIDES dict in vanilla_tables.py
 handles the truly exceptional cases (minecraft grass, GT ores, Chisel path separators).
 """
 from __future__ import annotations
@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from typing import Any
-
 
 # ── Name prefix stripping ─────────────────────────────────────────────────────
 # Tried most-specific first.  Each prefix is stripped once (single) and also

@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.services.asset_database import AssetDatabase
+from app.services.blockcolor.asset_database import AssetDatabase
 
 # ── Failure-reason tags ───────────────────────────────────────────────────────
 

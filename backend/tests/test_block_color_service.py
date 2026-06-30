@@ -6,7 +6,7 @@ between tests — which is the point of moving the per-world caches into an obje
 
 from pathlib import Path
 
-from app.services import block_color_service as bcs
+from app.services.blockcolor import service as bcs
 
 
 def test_registry_returns_same_instance_per_world() -> None:

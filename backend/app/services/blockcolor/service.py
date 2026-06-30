@@ -2,22 +2,22 @@
 
 Owns one world's derived asset state (the scanned AssetDatabase plus the
 block-id → colour / texture-key / meta-texture-key maps) behind a single lock.
-Pure resolution helpers live in block_color_resolution; diagnostic/report
-functions live in block_color_diagnostics.
+Pure resolution helpers live in resolution.py; diagnostic/report
+functions live in diagnostics.py.
 """
 
 import threading
 from pathlib import Path
 
-from app.services.asset_database import AssetDatabase
-from app.services.block_color_resolution import (
+from app.services.blockcolor.asset_database import AssetDatabase
+from app.services.blockcolor.resolution import (
     _augment_meta_map_from_dump,
     _build_color_map,
     _build_meta_texture_map_for_world,
     _build_texture_key_map,
     _load_asset_db,
 )
-from app.services.vanilla_tables import _VANILLA_COLORS, _VANILLA_TEXTURE_KEYS
+from app.services.blockcolor.vanilla_tables import _VANILLA_COLORS, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map
 
 

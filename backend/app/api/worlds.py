@@ -20,7 +20,7 @@ from app.models.world import (
     WorldValidateRequest,
     WorldValidateResponse,
 )
-from app.services.block_color_diagnostics import (
+from app.services.blockcolor.diagnostics import (
     build_missing_block_report,
     compute_dump_mismatch,
     debug_pipeline_report,
@@ -28,13 +28,13 @@ from app.services.block_color_diagnostics import (
     missing_block_report_csv,
     trace_block_pipeline,
 )
-from app.services.block_color_resolution import find_minecraft_dir
-from app.services.block_color_service import (
+from app.services.blockcolor.dump_resolver import get_dump_resolver, try_load_dump
+from app.services.blockcolor.resolution import find_minecraft_dir
+from app.services.blockcolor.service import (
     build_block_color_map,
     build_block_meta_texture_map,
     build_block_texture_map,
 )
-from app.services.dump_resolver import get_dump_resolver, try_load_dump
 from app.services.region_service import (
     get_chunk_data,
     get_chunks_batch,
