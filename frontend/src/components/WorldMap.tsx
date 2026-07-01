@@ -26,6 +26,7 @@ import { FilterPipelineInfo } from './FilterPipelineInfo'
 import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 import { showBlockInspector } from './blockInspector'
 import { attachMapInput } from './mapInput'
+import { MapScene } from './mapScene'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
 
@@ -169,41 +170,14 @@ export function WorldMap({
 
     const unsubTextures = onTextureLoad(() => { st.texVersion++; st.forceFrame = true })
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false })
-    renderer.setSize(W, H)
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.outputColorSpace = THREE.SRGBColorSpace
-    container.appendChild(renderer.domElement)
-    renderer.domElement.style.cursor = 'grab'
-
-    const scene   = new THREE.Scene()
-    scene.background = new THREE.Color(0x0f0f0f)
+    const mapScene = new MapScene(container, W, H)
+    const { scene, chunkGeo, regionGeo, regionMat, chunkGroup } = mapScene
+    const updateCam  = () => mapScene.updateCam(st.cam, W, H)
+    const updateGrid = () => mapScene.updateGrid(st.cam, W, H)
     const outlines = new ChunkOutlineOverlay(scene)
-
-    const cam      = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 2000)
-    const chunkGeo = new THREE.PlaneGeometry(16, 16)
-
-    function updateCam() {
-      const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale), halfH = H / (2 * scale)
-      cam.left = -halfW; cam.right = halfW; cam.top = halfH; cam.bottom = -halfH
-      cam.position.set(cx, -cz, 500)
-      cam.lookAt(cx, -cz, 0)
-      cam.updateProjectionMatrix()
-    }
-
     const regionMeshes = new Map<string, THREE.Mesh>()
-    const regionGeo    = new THREE.PlaneGeometry(512, 512)
-    const regionMat    = new THREE.MeshBasicMaterial({ color: 0x1a1a24 })
-
     // CPU cache of rendered chunk tiles, demoted from the GPU on eviction.
     const tileCache = new TileImageCache(TILE_CACHE_MAX)
-
-    // All chunk meshes live in this group so the whole detail layer can be shown
-    // or hidden with one flag when crossing the LOD threshold — zooming out keeps
-    // chunks resident (just hidden) so zooming back in is instant.
-    const chunkGroup = new THREE.Group()
-    scene.add(chunkGroup)
 
     function clearChunkCache() {
       for (const entry of st.cache.values()) {
@@ -288,59 +262,6 @@ export function WorldMap({
     syncRegionsRef.current = syncRegions
     fitCameraRef.current   = fitCamera
     syncRegions()
-
-    // ── Grid lines ──
-    const MAX_GV = 8000
-    const gridBuf  = new Float32Array(MAX_GV * 3); const gridAttr = new THREE.BufferAttribute(gridBuf,  3)
-    gridAttr.setUsage(THREE.DynamicDrawUsage)
-    const gridGeo  = new THREE.BufferGeometry(); gridGeo.setAttribute('position', gridAttr)
-    const regionGridMat = new THREE.LineBasicMaterial({ color: 0x2e2e48 })
-    const regionGridLines = new THREE.LineSegments(gridGeo, regionGridMat)
-    regionGridLines.frustumCulled = false; scene.add(regionGridLines)
-
-    const chunkGridBuf  = new Float32Array(MAX_GV * 3); const chunkGridAttr = new THREE.BufferAttribute(chunkGridBuf, 3)
-    chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
-    const chunkGridGeo  = new THREE.BufferGeometry(); chunkGridGeo.setAttribute('position', chunkGridAttr)
-    const chunkGridMat = new THREE.LineBasicMaterial({ color: 0x1c1c2e })
-    const chunkGridLines = new THREE.LineSegments(chunkGridGeo, chunkGridMat)
-    chunkGridLines.frustumCulled = false; scene.add(chunkGridLines)
-
-    function updateGrid() {
-      const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale), halfH = H / (2 * scale)
-      const rL = Math.floor((cx - halfW) / 512) - 1, rR = Math.ceil((cx + halfW) / 512) + 1
-      const rT = Math.floor((cz - halfH) / 512) - 1, rB = Math.ceil((cz + halfH) / 512) + 1
-
-      let vi = 0
-      for (let rx = rL; rx <= rR && vi < MAX_GV - 6; rx++) {
-        const x = rx * 512
-        gridBuf[vi++]=x; gridBuf[vi++]=-(rT*512-512); gridBuf[vi++]=0.5
-        gridBuf[vi++]=x; gridBuf[vi++]=-(rB*512+512); gridBuf[vi++]=0.5
-      }
-      for (let rz = rT; rz <= rB && vi < MAX_GV - 6; rz++) {
-        const y = -(rz * 512)
-        gridBuf[vi++]=(rL*512-512); gridBuf[vi++]=y; gridBuf[vi++]=0.5
-        gridBuf[vi++]=(rR*512+512); gridBuf[vi++]=y; gridBuf[vi++]=0.5
-      }
-      gridAttr.needsUpdate = true; gridGeo.setDrawRange(0, vi / 3)
-
-      let ci = 0
-      if (scale >= 3) {
-        const cL = Math.floor((cx - halfW) / 16) - 1, cR = Math.ceil((cx + halfW) / 16) + 1
-        const cT = Math.floor((cz - halfH) / 16) - 1, cB = Math.ceil((cz + halfH) / 16) + 1
-        for (let chx = cL; chx <= cR && ci < MAX_GV - 6; chx++) {
-          const x = chx * 16
-          chunkGridBuf[ci++]=x; chunkGridBuf[ci++]=-(cT*16-16); chunkGridBuf[ci++]=0.5
-          chunkGridBuf[ci++]=x; chunkGridBuf[ci++]=-(cB*16+16); chunkGridBuf[ci++]=0.5
-        }
-        for (let chz = cT; chz <= cB && ci < MAX_GV - 6; chz++) {
-          const y = -(chz * 16)
-          chunkGridBuf[ci++]=(cL*16-16); chunkGridBuf[ci++]=y; chunkGridBuf[ci++]=0.5
-          chunkGridBuf[ci++]=(cR*16+16); chunkGridBuf[ci++]=y; chunkGridBuf[ci++]=0.5
-        }
-      }
-      chunkGridAttr.needsUpdate = true; chunkGridGeo.setDrawRange(0, ci / 3)
-    }
 
     // ── Chunk rendering (time-sliced; called from the RAF loop) ──
     // Paints one fetched chunk's canvas, uploads it, and places its mesh.
@@ -1038,7 +959,7 @@ export function WorldMap({
       }
 
       updateGrid()
-      renderer.render(scene, cam)
+      mapScene.render()
 
       st.lastCam.cx = cx
       st.lastCam.cz = cz
@@ -1052,7 +973,7 @@ export function WorldMap({
     rafId = requestAnimationFrame(loop)
 
     // ── Input ──
-    const el = renderer.domElement
+    const el = mapScene.domElement
 
     async function onContextMenu(e: MouseEvent) {
       await showBlockInspector({
@@ -1069,7 +990,7 @@ export function WorldMap({
 
     const resizeObs = new ResizeObserver(() => {
       W = container.clientWidth || 800; H = container.clientHeight || 600
-      renderer.setSize(W, H); updateCam(); st.forceFrame = true
+      mapScene.resize(W, H); updateCam(); st.forceFrame = true
     })
     resizeObs.observe(container)
     updateCam()
@@ -1090,12 +1011,7 @@ export function WorldMap({
       detachInput()
       clearChunkCache()   // also removes outlines and clears chunkPixels
       for (const [key, m] of regionMeshes) revertRegionTile(key, m)  // dispose tile materials
-      regionMat.dispose()
-      chunkGeo.dispose(); regionGeo.dispose()
-      gridGeo.dispose();  chunkGridGeo.dispose()
-      regionGridMat.dispose(); chunkGridMat.dispose()
-      renderer.dispose()
-      renderer.domElement.remove()
+      mapScene.dispose()
     }
   }, [dimensionPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
