@@ -72,6 +72,11 @@ class DeleteChunksRequest(BaseModel):
     chunks: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...] to delete for regen
 
 
+class DeleteExceptRequest(BaseModel):
+    world_path: str  # dimension path
+    keep: list[tuple[int, int]]  # chunks to KEEP; every other generated chunk is deleted
+
+
 class CopyChunksRequest(BaseModel):
     src_world: str  # source dimension path
     dst_world: str  # destination dimension path

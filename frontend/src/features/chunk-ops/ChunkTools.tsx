@@ -1,7 +1,7 @@
 import { type MouseEvent, type RefObject, useRef, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
-import { deleteChunks } from './api/chunkOps'
+import { deleteChunks, deleteChunksExcept } from './api/chunkOps'
 
 export interface ChunkSelection {
   cx0: number
@@ -49,6 +49,7 @@ export function ChunkTools({
   const [selection, setSelection] = useState<ChunkSelection | null>(null)
   const [drag, setDrag] = useState<DragBox | null>(null)
   const [confirming, setConfirming] = useState<'delete' | null>(null)
+  const [invert, setInvert] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -110,13 +111,22 @@ export function ChunkTools({
     setBusy(true)
     setResult(null)
     try {
-      const r = await deleteChunks(dimensionPath, chunks)
-      engineRef.current?.invalidateChunks(chunks) // live-refresh; no reload needed
-      setResult(
-        `Deleted ${r.deleted ?? 0} chunk(s)` +
-          (r.missing ? `, ${r.missing} already empty` : '') +
-          '. Reload the world in Minecraft to regenerate them.',
-      )
+      if (invert) {
+        const r = await deleteChunksExcept(dimensionPath, chunks)
+        engineRef.current?.refreshView() // whole map changed — refresh everything
+        setResult(
+          `Deleted ${r.deleted ?? 0} chunk(s), kept ${r.kept ?? chunks.length}. ` +
+            'Reload the world in Minecraft to regenerate them.',
+        )
+      } else {
+        const r = await deleteChunks(dimensionPath, chunks)
+        engineRef.current?.invalidateChunks(chunks) // live-refresh; no reload needed
+        setResult(
+          `Deleted ${r.deleted ?? 0} chunk(s)` +
+            (r.missing ? `, ${r.missing} already empty` : '') +
+            '. Reload the world in Minecraft to regenerate them.',
+        )
+      }
       clearSelection()
     } catch (e) {
       setResult(`Error: ${errMsg(e)}`)
@@ -172,20 +182,42 @@ export function ChunkTools({
             </span>
             <span className="text-zinc-400">{count} chunks selected</span>
 
+            <label className="flex items-center gap-1 text-zinc-300">
+              <input
+                type="checkbox"
+                checked={invert}
+                onChange={(e) => {
+                  setInvert(e.target.checked)
+                  setConfirming(null)
+                }}
+                disabled={busy}
+              />
+              Invert (keep selection, delete the rest)
+            </label>
+
             {confirming === 'delete' ? (
               <div className="flex flex-col gap-1 rounded border border-red-700 bg-red-950/60 p-2">
-                <span className="text-red-300">Delete {count} chunk(s) for regeneration?</span>
+                <span className="text-red-300">
+                  {invert
+                    ? `Delete the ENTIRE dimension EXCEPT these ${count} chunk(s)?`
+                    : `Delete ${count} chunk(s) for regeneration?`}
+                </span>
                 <span className="text-amber-300">
                   ⚠ Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
-                  regenerates these chunks on next load.
+                  regenerates the deleted chunks on next load.
                 </span>
+                {invert && (
+                  <span className="text-red-400">
+                    This wipes everything outside your selection — double-check it covers your base.
+                  </span>
+                )}
                 <div className="flex gap-1">
                   <button
                     onClick={runDelete}
                     disabled={busy}
                     className="flex-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
                   >
-                    {busy ? 'Working…' : 'Delete'}
+                    {busy ? 'Working…' : invert ? 'Delete the rest' : 'Delete'}
                   </button>
                   <button
                     onClick={() => setConfirming(null)}
@@ -203,7 +235,7 @@ export function ChunkTools({
                   disabled={busy}
                   className="flex-1 rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
                 >
-                  Delete → regenerate
+                  {invert ? 'Delete all EXCEPT selection' : 'Delete → regenerate'}
                 </button>
                 <button
                   onClick={clearSelection}

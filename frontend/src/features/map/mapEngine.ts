@@ -73,6 +73,9 @@ export class MapEngine {
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
    *  live (e.g. after a delete), without a full reload. Set in the constructor. */
   invalidateChunks!: (chunks: [number, number][]) => void
+  /** Re-fetch/redraw the whole visible map (chunks + region tiles) live, e.g.
+   *  after a bulk delete-except. Keeps the current camera. Set in constructor. */
+  refreshView!: () => void
 
   constructor(deps: MapEngineDeps) {
     const {
@@ -1003,6 +1006,12 @@ export class MapEngine {
         if (mesh && st.regionTiled.has(rkey)) revertRegionTile(rkey, mesh)
         st.regionFailed.delete(rkey)
       }
+      st.forceFrame = true
+    }
+    this.refreshView = () => {
+      for (const [key, mesh] of regionMeshes) revertRegionTile(key, mesh)
+      clearRegionTiles() // reset region scheduling so visible tiles re-queue fresh
+      clearChunkCache() // drop the chunk layer; it re-fetches from the changed save
       st.forceFrame = true
     }
 

@@ -12,6 +12,7 @@ the ``.mca`` files): the world root for the overworld, or ``<world>/DIMx``.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from app.world.region_writer import (
@@ -22,6 +23,8 @@ from app.world.region_writer import (
 )
 
 log = logging.getLogger(__name__)
+
+_RE_REGION = re.compile(r"r\.(-?\d+)\.(-?\d+)\.mca$")
 
 
 def _group_by_region(chunks: list[tuple[int, int]]) -> dict[tuple[int, int], list[tuple[int, int]]]:
@@ -63,6 +66,45 @@ def delete_chunks(dim_path: str, chunks: list[tuple[int, int]]) -> dict[str, obj
             log.info("delete_chunks: rewrote %s (%d remaining)", path.name, len(records))
 
     return {"deleted": deleted, "missing": missing, "regions": touched}
+
+
+def delete_chunks_except(dim_path: str, keep: list[tuple[int, int]]) -> dict[str, object]:
+    """Delete every generated chunk EXCEPT those in *keep* (the inverse of a
+    selection) so Minecraft regenerates the rest. Scans every region file in the
+    dimension. Very destructive — the caller must confirm strongly.
+    """
+    region_dir = Path(dim_path) / "region"
+    keep_set = {(int(cx), int(cz)) for cx, cz in keep}
+    deleted = 0
+    touched: list[str] = []
+    if not region_dir.is_dir():
+        return {"deleted": 0, "kept": len(keep_set), "regions": []}
+
+    for path in sorted(region_dir.glob("*.mca")):
+        m = _RE_REGION.search(path.name)
+        if not m:
+            continue
+        rx, rz = int(m.group(1)), int(m.group(2))
+        records = read_region_records(path)
+        if not records:
+            continue
+        keep_local = {
+            local_index(cx % 32, cz % 32)
+            for (cx, cz) in keep_set
+            if cx >> 5 == rx and cz >> 5 == rz
+        }
+        remove = [i for i in records if i not in keep_local]
+        if not remove:
+            continue
+        for i in remove:
+            del records[i]
+        backup_region(path)
+        write_region_records(path, records)
+        deleted += len(remove)
+        touched.append(path.name)
+        log.info("delete-except %s: removed %d, kept %d", path.name, len(remove), len(records))
+
+    return {"deleted": deleted, "kept": len(keep_set), "regions": touched}
 
 
 def copy_chunks(src_dim: str, dst_dim: str, chunks: list[tuple[int, int]]) -> dict[str, object]:

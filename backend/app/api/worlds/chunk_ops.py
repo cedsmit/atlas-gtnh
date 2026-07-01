@@ -9,8 +9,8 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.region import CopyChunksRequest, DeleteChunksRequest
-from app.services.chunk_ops_service import copy_chunks, delete_chunks
+from app.models.region import CopyChunksRequest, DeleteChunksRequest, DeleteExceptRequest
+from app.services.chunk_ops_service import copy_chunks, delete_chunks, delete_chunks_except
 
 router = APIRouter()
 
@@ -26,6 +26,19 @@ async def post_delete_chunks(req: DeleteChunksRequest) -> dict[str, object]:
         )
     try:
         return await asyncio.to_thread(delete_chunks, req.world_path, req.chunks)
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/chunks/delete-except")
+async def post_delete_chunks_except(req: DeleteExceptRequest) -> dict[str, object]:
+    """Delete every generated chunk EXCEPT the given ones (inverse selection)."""
+    try:
+        return await asyncio.to_thread(delete_chunks_except, req.world_path, req.keep)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except PermissionError as e:

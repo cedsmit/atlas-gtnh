@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.services.chunk_ops_service import copy_chunks, delete_chunks
+from app.services.chunk_ops_service import copy_chunks, delete_chunks, delete_chunks_except
 from app.world.region_writer import (
     local_index,
     make_record,
@@ -36,6 +36,20 @@ def test_delete_chunks_service(tmp_path: Path) -> None:
     assert result["missing"] == 1
     assert _has_chunk(dim, 5, 5)
     assert not _has_chunk(dim, 6, 6)
+
+
+def test_delete_chunks_except_service(tmp_path: Path) -> None:
+    dim = tmp_path / "world"
+    _write_chunk(dim, 5, 5, b"base" * 100)  # keep
+    _write_chunk(dim, 6, 6, b"other" * 100)  # same region, delete
+    _write_chunk(dim, 40, 40, b"far" * 100)  # different region, delete
+
+    result = delete_chunks_except(str(dim), [(5, 5)])
+    assert result["deleted"] == 2
+    assert result["kept"] == 1
+    assert _has_chunk(dim, 5, 5)
+    assert not _has_chunk(dim, 6, 6)
+    assert not _has_chunk(dim, 40, 40)
 
 
 def test_copy_chunks_service(tmp_path: Path) -> None:
