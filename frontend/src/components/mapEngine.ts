@@ -67,6 +67,9 @@ interface MapEngineDeps {
 
 export class MapEngine {
   private _cleanup!: () => void
+  private _st!: { cam: { cx: number; cz: number; scale: number }; forceFrame: boolean }
+  private _mapScene!: MapScene
+  private _getDims!: () => { w: number; h: number }
 
   constructor(deps: MapEngineDeps) {
     const {
@@ -969,6 +972,12 @@ export class MapEngine {
       minScale: MIN_SCALE, maxScale: MAX_SCALE, onContextMenu,
     })
 
+    // Expose the bits the chunk-tools selection UI needs (screen↔world math and
+    // the highlight overlay) without threading them through React.
+    this._st = st
+    this._mapScene = mapScene
+    this._getDims = () => ({ w: W, h: H })
+
     this._cleanup = () => {
       destroyed = true
       unsubTextures()
@@ -985,5 +994,30 @@ export class MapEngine {
 
   dispose(): void {
     this._cleanup()
+  }
+
+  /** Current camera centre/zoom + viewport size, for screen↔world conversion. */
+  getViewport(): { cx: number; cz: number; scale: number; w: number; h: number } {
+    const { w, h } = this._getDims()
+    return { cx: this._st.cam.cx, cz: this._st.cam.cz, scale: this._st.cam.scale, w, h }
+  }
+
+  /** Highlight a chunk rectangle (inclusive chunk coords), or clear it with null. */
+  setSelection(sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null): void {
+    if (!sel) {
+      this._mapScene.setSelectionRect(null)
+    } else {
+      const minCx = Math.min(sel.cx0, sel.cx1)
+      const maxCx = Math.max(sel.cx0, sel.cx1)
+      const minCz = Math.min(sel.cz0, sel.cz1)
+      const maxCz = Math.max(sel.cz0, sel.cz1)
+      this._mapScene.setSelectionRect({
+        minX: minCx * 16,
+        minZ: minCz * 16,
+        maxX: (maxCx + 1) * 16,
+        maxZ: (maxCz + 1) * 16,
+      })
+    }
+    this._st.forceFrame = true
   }
 }

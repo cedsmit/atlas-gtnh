@@ -5,6 +5,7 @@ import type { RegionSummary } from '../api/regions'
 import { textureDebugStore } from '../lib/textureDebugStore'
 import { type BlockRenderRegistry, createResolvedRegistry } from '../lib/blockRenderRegistry'
 import { type RenderConfig, presetToConfig, BUILT_IN_PRESETS } from '../lib/renderPresets'
+import { ChunkTools } from './ChunkTools'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
 import { MapEngine } from './mapEngine'
 
@@ -58,6 +59,7 @@ export function WorldMap({
   const regionsRef     = useRef(regions); regionsRef.current = regions
   const syncRegionsRef = useRef<(() => void) | null>(null)
   const fitCameraRef   = useRef<(() => void) | null>(null)
+  const engineRef      = useRef<MapEngine | null>(null)
 
   // Enable/disable debug store when prop changes
   useEffect(() => {
@@ -76,7 +78,11 @@ export function WorldMap({
       metaTextureKeysRef, blockNamesRef, registryRef, regionsRef,
       syncRegionsRef, fitCameraRef,
     })
-    return () => engine.dispose()
+    engineRef.current = engine
+    return () => {
+      engine.dispose()
+      engineRef.current = null
+    }
   }, [dimensionPath]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { syncRegionsRef.current?.() }, [regions])
@@ -102,6 +108,7 @@ export function WorldMap({
         className="pointer-events-auto absolute hidden rounded border border-zinc-600 bg-black/80 px-2 py-1 font-mono text-xs text-zinc-200"
         style={{ maxWidth: 280 }}
       />
+      <ChunkTools engineRef={engineRef} />
     </div>
   )
 }

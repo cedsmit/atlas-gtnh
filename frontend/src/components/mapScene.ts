@@ -37,6 +37,10 @@ export class MapScene {
   private readonly chunkGridGeo = new THREE.BufferGeometry()
   private readonly chunkGridMat = new THREE.LineBasicMaterial({ color: 0x1c1c2e })
 
+  private readonly selectionGeo = new THREE.BufferGeometry()
+  private readonly selectionMat = new THREE.LineBasicMaterial({ color: 0x66ccff, depthTest: false })
+  private selectionLine!: THREE.LineLoop
+
   constructor(container: HTMLElement, w: number, h: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
     this.renderer.setSize(w, h)
@@ -60,6 +64,27 @@ export class MapScene {
     const chunkGridLines = new THREE.LineSegments(this.chunkGridGeo, this.chunkGridMat)
     chunkGridLines.frustumCulled = false
     this.scene.add(chunkGridLines)
+
+    // Chunk-selection highlight: a unit square outline positioned/scaled per use.
+    this.selectionGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]), 3),
+    )
+    this.selectionLine = new THREE.LineLoop(this.selectionGeo, this.selectionMat)
+    this.selectionLine.frustumCulled = false
+    this.selectionLine.visible = false
+    this.scene.add(this.selectionLine)
+  }
+
+  /** Draw (or hide, when null) a highlight rectangle over a world-space area. */
+  setSelectionRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+    if (!rect) {
+      this.selectionLine.visible = false
+      return
+    }
+    this.selectionLine.position.set(rect.minX, -rect.minZ, 1)
+    this.selectionLine.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
+    this.selectionLine.visible = true
   }
 
   get domElement(): HTMLCanvasElement {
@@ -143,6 +168,8 @@ export class MapScene {
     this.chunkGridGeo.dispose()
     this.regionGridMat.dispose()
     this.chunkGridMat.dispose()
+    this.selectionGeo.dispose()
+    this.selectionMat.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
   }
