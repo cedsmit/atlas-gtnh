@@ -25,6 +25,7 @@ import {
 import { FilterPipelineInfo } from './FilterPipelineInfo'
 import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 import { showBlockInspector } from './blockInspector'
+import { attachMapInput } from './mapInput'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
 
@@ -1053,44 +1054,6 @@ export function WorldMap({
     // ── Input ──
     const el = renderer.domElement
 
-    function onMouseDown(e: MouseEvent) {
-      st.isDragging = true; st.lastMouse = { x: e.clientX, y: e.clientY }
-      el.style.cursor = 'grabbing'
-    }
-    function onMouseMove(e: MouseEvent) {
-      const rect = el.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      st.mouseWorldX = st.cam.cx + (mx - W / 2) / st.cam.scale
-      st.mouseWorldZ = st.cam.cz + (my - H / 2) / st.cam.scale
-
-      if (!st.isDragging || !st.lastMouse) return
-      st.cam.cx -= (e.clientX - st.lastMouse.x) / st.cam.scale
-      st.cam.cz -= (e.clientY - st.lastMouse.y) / st.cam.scale
-      st.lastMouse = { x: e.clientX, y: e.clientY }
-      st.pending.length = 0; st.pendingSet.clear()
-      updateCam()
-    }
-    function onMouseLeave() {
-      st.mouseWorldX = null
-      st.mouseWorldZ = null
-    }
-    function onMouseUp() {
-      st.isDragging = false; st.lastMouse = null
-      el.style.cursor = 'grab'
-    }
-    function onDblClick(e: MouseEvent) {
-      e.preventDefault()
-      const input = prompt('Go to coordinates — enter X, Z:')
-      if (!input) return
-      const parts = input.split(',').map((p) => parseFloat(p.trim()))
-      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        st.cam.cx = parts[0]; st.cam.cz = parts[1]
-        st.cam.scale = Math.max(st.cam.scale, MIN_SCALE)
-        updateCam()
-      }
-    }
-
     async function onContextMenu(e: MouseEvent) {
       await showBlockInspector({
         event: e, el, inspector, w: W, h: H,
@@ -1104,22 +1067,6 @@ export function WorldMap({
       })
     }
 
-    function hideInspector() { inspector.style.display = 'none' }
-
-    function onWheel(e: WheelEvent) {
-      e.preventDefault()
-      const rect   = el.getBoundingClientRect()
-      const mx     = e.clientX - rect.left, my = e.clientY - rect.top
-      const worldX = st.cam.cx + (mx - W/2) / st.cam.scale
-      const worldZ = st.cam.cz + (my - H/2) / st.cam.scale
-      const factor = e.deltaY < 0 ? 1.25 : 1 / 1.25
-      st.cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, st.cam.scale * factor))
-      st.cam.cx    = worldX - (mx - W/2) / st.cam.scale
-      st.cam.cz    = worldZ - (my - H/2) / st.cam.scale
-      st.pending.length = 0; st.pendingSet.clear()
-      updateCam()
-    }
-
     const resizeObs = new ResizeObserver(() => {
       W = container.clientWidth || 800; H = container.clientHeight || 600
       renderer.setSize(W, H); updateCam(); st.forceFrame = true
@@ -1127,19 +1074,11 @@ export function WorldMap({
     resizeObs.observe(container)
     updateCam()
 
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'f' || e.key === 'F' || e.key === 'Home') fitCamera()
-    }
-
-    el.addEventListener('mousedown',     onMouseDown)
-    window.addEventListener('mousemove', onMouseMove)
-    window.addEventListener('mouseup',   onMouseUp)
-    el.addEventListener('mouseleave',    onMouseLeave)
-    el.addEventListener('wheel',         onWheel,       { passive: false })
-    el.addEventListener('dblclick',      onDblClick)
-    el.addEventListener('contextmenu',   onContextMenu)
-    window.addEventListener('mousedown', hideInspector)
-    window.addEventListener('keydown',   onKeyDown)
+    const detachInput = attachMapInput({
+      el, inspector, state: st, updateCam, fitCamera,
+      getDims: () => ({ w: W, h: H }),
+      minScale: MIN_SCALE, maxScale: MAX_SCALE, onContextMenu,
+    })
 
     return () => {
       destroyed = true
@@ -1148,15 +1087,7 @@ export function WorldMap({
       fitCameraRef.current   = null
       cancelAnimationFrame(rafId)
       resizeObs.disconnect()
-      el.removeEventListener('mousedown',     onMouseDown)
-      window.removeEventListener('mousemove', onMouseMove)
-      window.removeEventListener('mouseup',   onMouseUp)
-      el.removeEventListener('mouseleave',    onMouseLeave)
-      el.removeEventListener('wheel',         onWheel)
-      el.removeEventListener('dblclick',      onDblClick)
-      el.removeEventListener('contextmenu',   onContextMenu)
-      window.removeEventListener('mousedown', hideInspector)
-      window.removeEventListener('keydown',   onKeyDown)
+      detachInput()
       clearChunkCache()   // also removes outlines and clears chunkPixels
       for (const [key, m] of regionMeshes) revertRegionTile(key, m)  // dispose tile materials
       regionMat.dispose()
