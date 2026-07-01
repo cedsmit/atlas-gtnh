@@ -37,9 +37,11 @@ export class MapScene {
   private readonly chunkGridGeo = new THREE.BufferGeometry()
   private readonly chunkGridMat = new THREE.LineBasicMaterial({ color: 0x1c1c2e })
 
-  private readonly selectionGeo = new THREE.BufferGeometry()
+  private readonly rectGeo = new THREE.BufferGeometry()
   private readonly selectionMat = new THREE.LineBasicMaterial({ color: 0x66ccff, depthTest: false })
+  private readonly previewMat = new THREE.LineBasicMaterial({ color: 0x66ff88, depthTest: false })
   private selectionLine!: THREE.LineLoop
+  private previewLine!: THREE.LineLoop
 
   constructor(container: HTMLElement, w: number, h: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
@@ -65,26 +67,42 @@ export class MapScene {
     chunkGridLines.frustumCulled = false
     this.scene.add(chunkGridLines)
 
-    // Chunk-selection highlight: a unit square outline positioned/scaled per use.
-    this.selectionGeo.setAttribute(
+    // Selection (sky) + paste-preview (green) highlights: a shared unit-square
+    // outline, positioned/scaled per use.
+    this.rectGeo.setAttribute(
       'position',
       new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]), 3),
     )
-    this.selectionLine = new THREE.LineLoop(this.selectionGeo, this.selectionMat)
-    this.selectionLine.frustumCulled = false
-    this.selectionLine.visible = false
-    this.scene.add(this.selectionLine)
+    this.selectionLine = new THREE.LineLoop(this.rectGeo, this.selectionMat)
+    this.previewLine = new THREE.LineLoop(this.rectGeo, this.previewMat)
+    for (const line of [this.selectionLine, this.previewLine]) {
+      line.frustumCulled = false
+      line.visible = false
+      this.scene.add(line)
+    }
   }
 
-  /** Draw (or hide, when null) a highlight rectangle over a world-space area. */
-  setSelectionRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+  private static place(
+    line: THREE.LineLoop,
+    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null,
+  ): void {
     if (!rect) {
-      this.selectionLine.visible = false
+      line.visible = false
       return
     }
-    this.selectionLine.position.set(rect.minX, -rect.minZ, 1)
-    this.selectionLine.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
-    this.selectionLine.visible = true
+    line.position.set(rect.minX, -rect.minZ, 1)
+    line.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
+    line.visible = true
+  }
+
+  /** Draw (or hide, when null) the selection highlight over a world-space area. */
+  setSelectionRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+    MapScene.place(this.selectionLine, rect)
+  }
+
+  /** Draw (or hide, when null) the paste-preview highlight over a world-space area. */
+  setPreviewRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+    MapScene.place(this.previewLine, rect)
   }
 
   get domElement(): HTMLCanvasElement {
@@ -168,8 +186,9 @@ export class MapScene {
     this.chunkGridGeo.dispose()
     this.regionGridMat.dispose()
     this.chunkGridMat.dispose()
-    this.selectionGeo.dispose()
+    this.rectGeo.dispose()
     this.selectionMat.dispose()
+    this.previewMat.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
   }

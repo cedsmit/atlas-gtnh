@@ -1039,22 +1039,27 @@ export class MapEngine {
     return { cx: this._st.cam.cx, cz: this._st.cam.cz, scale: this._st.cam.scale, w, h }
   }
 
-  /** Highlight a chunk rectangle (inclusive chunk coords), or clear it with null. */
+  /** Highlight the selection rectangle (inclusive chunk coords), or clear with null. */
   setSelection(sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null): void {
-    if (!sel) {
-      this._mapScene.setSelectionRect(null)
-    } else {
-      const minCx = Math.min(sel.cx0, sel.cx1)
-      const maxCx = Math.max(sel.cx0, sel.cx1)
-      const minCz = Math.min(sel.cz0, sel.cz1)
-      const maxCz = Math.max(sel.cz0, sel.cz1)
-      this._mapScene.setSelectionRect({
-        minX: minCx * 16,
-        minZ: minCz * 16,
-        maxX: (maxCx + 1) * 16,
-        maxZ: (maxCz + 1) * 16,
-      })
-    }
+    this._mapScene.setSelectionRect(chunkRect(sel))
     this._st.forceFrame = true
+  }
+
+  /** Highlight the paste-preview rectangle (inclusive chunk coords), or clear with null. */
+  setPreview(sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null): void {
+    this._mapScene.setPreviewRect(chunkRect(sel))
+    this._st.forceFrame = true
+  }
+}
+
+function chunkRect(
+  sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null,
+): { minX: number; minZ: number; maxX: number; maxZ: number } | null {
+  if (!sel) return null
+  return {
+    minX: Math.min(sel.cx0, sel.cx1) * 16,
+    minZ: Math.min(sel.cz0, sel.cz1) * 16,
+    maxX: (Math.max(sel.cx0, sel.cx1) + 1) * 16,
+    maxZ: (Math.max(sel.cz0, sel.cz1) + 1) * 16,
   }
 }
