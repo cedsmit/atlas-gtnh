@@ -59,6 +59,15 @@ export class TileImageCache {
     }
   }
 
+  /** Close and drop a single entry if present (e.g. after the chunk was edited). */
+  delete(key: string): void {
+    const e = this.map.get(key)
+    if (e) {
+      e.bitmap.close()
+      this.map.delete(key)
+    }
+  }
+
   /** Close and drop every entry. */
   clear(): void {
     for (const e of this.map.values()) e.bitmap.close()

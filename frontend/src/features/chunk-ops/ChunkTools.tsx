@@ -106,14 +106,16 @@ export function ChunkTools({
 
   async function runDelete() {
     if (!selection) return
+    const chunks = expand(selection)
     setBusy(true)
     setResult(null)
     try {
-      const r = await deleteChunks(dimensionPath, expand(selection))
+      const r = await deleteChunks(dimensionPath, chunks)
+      engineRef.current?.invalidateChunks(chunks) // live-refresh; no reload needed
       setResult(
         `Deleted ${r.deleted ?? 0} chunk(s)` +
           (r.missing ? `, ${r.missing} already empty` : '') +
-          '. Reload the world in Minecraft to regenerate.',
+          '. Reload the world in Minecraft to regenerate them.',
       )
       clearSelection()
     } catch (e) {

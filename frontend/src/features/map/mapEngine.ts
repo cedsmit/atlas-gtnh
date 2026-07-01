@@ -70,6 +70,9 @@ export class MapEngine {
   private _st!: { cam: { cx: number; cz: number; scale: number }; forceFrame: boolean }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
+  /** Drop cached state for the given chunks so the map re-fetches/redraws them
+   *  live (e.g. after a delete), without a full reload. Set in the constructor. */
+  invalidateChunks!: (chunks: [number, number][]) => void
 
   constructor(deps: MapEngineDeps) {
     const {
@@ -977,6 +980,31 @@ export class MapEngine {
     this._st = st
     this._mapScene = mapScene
     this._getDims = () => ({ w: W, h: H })
+    this.invalidateChunks = (chunks) => {
+      const regions = new Set<string>()
+      for (const [cx, cz] of chunks) {
+        const key = `${cx},${cz}`
+        const entry = st.cache.get(key)
+        if (entry instanceof THREE.Mesh) {
+          disposeLiveChunk(key, entry)
+        } else {
+          st.cache.delete(key)
+          st.dataCache.delete(key)
+          st.texVersionAtRender.delete(key)
+          st.chunkPixels.delete(key)
+          outlines.remove(key)
+        }
+        tileCache.delete(key) // drop the stale CPU bitmap so it can't be restored
+        regions.add(`${cx >> 5},${cz >> 5}`)
+      }
+      // Re-render each affected region's overview tile so it reflects the change.
+      for (const rkey of regions) {
+        const mesh = regionMeshes.get(rkey)
+        if (mesh && st.regionTiled.has(rkey)) revertRegionTile(rkey, mesh)
+        st.regionFailed.delete(rkey)
+      }
+      st.forceFrame = true
+    }
 
     this._cleanup = () => {
       destroyed = true
