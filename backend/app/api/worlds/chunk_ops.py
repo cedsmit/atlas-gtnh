@@ -28,6 +28,8 @@ async def post_delete_chunks(req: DeleteChunksRequest) -> dict[str, object]:
         return await asyncio.to_thread(delete_chunks, req.world_path, req.chunks)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -43,5 +45,7 @@ async def post_copy_chunks(req: CopyChunksRequest) -> dict[str, object]:
         return await asyncio.to_thread(copy_chunks, req.src_world, req.dst_world, req.chunks)
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

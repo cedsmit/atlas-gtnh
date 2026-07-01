@@ -17,8 +17,10 @@ where length counts the compression byte + payload.
 
 from __future__ import annotations
 
+import os
 import shutil
 import struct
+import time
 import zlib
 from pathlib import Path
 
@@ -91,7 +93,31 @@ def write_region_records(path: Path, records: dict[int, tuple[bytes, int]]) -> N
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_bytes(bytes(loc) + bytes(ts_table) + bytes(body))
-    tmp.replace(path)
+    _replace_with_retry(tmp, path)
+
+
+def _replace_with_retry(tmp: Path, path: Path) -> None:
+    """Atomically move *tmp* over *path*, retrying transient Windows locks.
+
+    On Windows os.replace fails with PermissionError (WinError 5) if the target
+    is open — usually the antivirus/search-indexer briefly scanning the freshly
+    written temp file, occasionally Minecraft holding a loaded world. Retry a few
+    times with backoff; if it never clears, surface a clear, actionable error and
+    leave the original file untouched (the temp is removed).
+    """
+    last: Exception | None = None
+    for attempt in range(6):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:
+            last = exc
+            time.sleep(0.15 * (attempt + 1))
+    tmp.unlink(missing_ok=True)
+    raise PermissionError(
+        f"Access denied writing {path.name}. Close Minecraft (the world must not be "
+        f"loaded) and pause antivirus scanning of the save folder, then try again."
+    ) from last
 
 
 def make_record(nbt_bytes: bytes) -> bytes:
