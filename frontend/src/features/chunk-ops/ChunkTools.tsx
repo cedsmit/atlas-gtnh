@@ -1,6 +1,7 @@
 import { type MouseEvent, type RefObject, useRef, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
+import { CopyPanel } from './CopyPanel'
 import { deleteChunks, deleteChunksExcept } from './api/chunkOps'
 
 export interface ChunkSelection {
@@ -41,15 +42,18 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 export function ChunkTools({
   engineRef,
   dimensionPath,
+  worldPath,
 }: {
   engineRef: RefObject<MapEngine | null>
   dimensionPath: string
+  worldPath: string
 }) {
   const [active, setActive] = useState(false)
   const [selection, setSelection] = useState<ChunkSelection | null>(null)
   const [drag, setDrag] = useState<DragBox | null>(null)
   const [confirming, setConfirming] = useState<'delete' | null>(null)
   const [invert, setInvert] = useState(false)
+  const [copyOpen, setCopyOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -94,6 +98,7 @@ export function ChunkTools({
   function clearSelection() {
     setSelection(null)
     setConfirming(null)
+    setCopyOpen(false)
     engineRef.current?.setSelection(null)
   }
 
@@ -182,69 +187,91 @@ export function ChunkTools({
             </span>
             <span className="text-zinc-400">{count} chunks selected</span>
 
-            <label className="flex items-center gap-1 text-zinc-300">
-              <input
-                type="checkbox"
-                checked={invert}
-                onChange={(e) => {
-                  setInvert(e.target.checked)
-                  setConfirming(null)
-                }}
-                disabled={busy}
+            {copyOpen ? (
+              <CopyPanel
+                chunks={expand(selection)}
+                srcDim={dimensionPath}
+                srcWorld={worldPath}
+                engineRef={engineRef}
+                onClose={() => setCopyOpen(false)}
               />
-              Invert (keep selection, delete the rest)
-            </label>
-
-            {confirming === 'delete' ? (
-              <div className="flex flex-col gap-1 rounded border border-red-700 bg-red-950/60 p-2">
-                <span className="text-red-300">
-                  {invert
-                    ? `Delete the ENTIRE dimension EXCEPT these ${count} chunk(s)?`
-                    : `Delete ${count} chunk(s) for regeneration?`}
-                </span>
-                <span className="text-amber-300">
-                  ⚠ Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
-                  regenerates the deleted chunks on next load.
-                </span>
-                {invert && (
-                  <span className="text-red-400">
-                    This wipes everything outside your selection — double-check it covers your base.
-                  </span>
-                )}
-                <div className="flex gap-1">
-                  <button
-                    onClick={runDelete}
-                    disabled={busy}
-                    className="flex-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
-                  >
-                    {busy ? 'Working…' : invert ? 'Delete the rest' : 'Delete'}
-                  </button>
-                  <button
-                    onClick={() => setConfirming(null)}
-                    disabled={busy}
-                    className="flex-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
             ) : (
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setConfirming('delete')}
-                  disabled={busy}
-                  className="flex-1 rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
-                >
-                  {invert ? 'Delete all EXCEPT selection' : 'Delete → regenerate'}
-                </button>
-                <button
-                  onClick={clearSelection}
-                  disabled={busy}
-                  className="rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
-                >
-                  Clear
-                </button>
-              </div>
+              <>
+                <label className="flex items-center gap-1 text-zinc-300">
+                  <input
+                    type="checkbox"
+                    checked={invert}
+                    onChange={(e) => {
+                      setInvert(e.target.checked)
+                      setConfirming(null)
+                    }}
+                    disabled={busy}
+                  />
+                  Invert (keep selection, delete the rest)
+                </label>
+
+                {confirming === 'delete' ? (
+                  <div className="flex flex-col gap-1 rounded border border-red-700 bg-red-950/60 p-2">
+                    <span className="text-red-300">
+                      {invert
+                        ? `Delete the ENTIRE dimension EXCEPT these ${count} chunk(s)?`
+                        : `Delete ${count} chunk(s) for regeneration?`}
+                    </span>
+                    <span className="text-amber-300">
+                      ⚠ Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
+                      regenerates the deleted chunks on next load.
+                    </span>
+                    {invert && (
+                      <span className="text-red-400">
+                        This wipes everything outside your selection — double-check it covers your
+                        base.
+                      </span>
+                    )}
+                    <div className="flex gap-1">
+                      <button
+                        onClick={runDelete}
+                        disabled={busy}
+                        className="flex-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
+                      >
+                        {busy ? 'Working…' : invert ? 'Delete the rest' : 'Delete'}
+                      </button>
+                      <button
+                        onClick={() => setConfirming(null)}
+                        disabled={busy}
+                        className="flex-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => setConfirming('delete')}
+                      disabled={busy}
+                      className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {invert ? 'Delete all EXCEPT selection' : 'Delete → regenerate'}
+                    </button>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setCopyOpen(true)}
+                        disabled={busy}
+                        className="flex-1 rounded bg-sky-800 px-2 py-1 text-sky-100 hover:bg-sky-700 disabled:opacity-50"
+                      >
+                        Copy…
+                      </button>
+                      <button
+                        onClick={clearSelection}
+                        disabled={busy}
+                        className="rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
             )}
           </div>
         )}

@@ -37,11 +37,32 @@ export function deleteChunksExcept(
   return post('/worlds/chunks/delete-except', { world_path: worldPath, keep })
 }
 
-/** Copy chunks from one dimension to another at the same coordinates. */
+/** Copy chunks to another dimension, shifted by [dx, dz] chunks (default same coords). */
 export function copyChunks(
   srcWorld: string,
   dstWorld: string,
   chunks: [number, number][],
+  offset: [number, number] = [0, 0],
 ): Promise<ChunkOpResult> {
-  return post('/worlds/chunks/copy', { src_world: srcWorld, dst_world: dstWorld, chunks })
+  return post('/worlds/chunks/copy', {
+    src_world: srcWorld,
+    dst_world: dstWorld,
+    chunks,
+    offset,
+  })
+}
+
+/** Create a new world seeded from the source's level.dat and paste the chunks in. */
+export function createWorld(
+  srcWorld: string,
+  newWorldPath: string,
+  chunks: [number, number][],
+  offset: [number, number] = [0, 0],
+): Promise<ChunkOpResult> {
+  return post('/worlds/chunks/create-world', {
+    src_world: srcWorld,
+    new_world_path: newWorldPath,
+    chunks,
+    offset,
+  })
 }

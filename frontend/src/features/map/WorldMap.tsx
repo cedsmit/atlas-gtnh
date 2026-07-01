@@ -30,6 +30,7 @@ export function WorldMap({
   blockColors,
   textureKeys,
   metaTextureKeys,
+  worldPath,
   blockNames,
   registry: registryProp,
   config: configProp,
@@ -108,7 +109,7 @@ export function WorldMap({
         className="pointer-events-auto absolute hidden rounded border border-zinc-600 bg-black/80 px-2 py-1 font-mono text-xs text-zinc-200"
         style={{ maxWidth: 280 }}
       />
-      <ChunkTools engineRef={engineRef} dimensionPath={dimensionPath} />
+      <ChunkTools engineRef={engineRef} dimensionPath={dimensionPath} worldPath={worldPath ?? ''} />
     </div>
   )
 }
