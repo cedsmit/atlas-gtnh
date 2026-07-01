@@ -193,6 +193,18 @@ _OVERRIDES: dict[str, str] = {
     "thaumcraft:blockcosmeticopaque": "thaumcraft:arcane_stone",
     # Taint blocks use underscore-separated names
     "thaumcraft:blocktaint": "thaumcraft:taint_crust",
+    # Warded blocks mimic their warded contents via TileEntity (icon is blank);
+    # the warding paving stone is the closest real texture.
+    "thaumcraft:blockwarded": "thaumcraft:paving_stone_warding",
+    # Flux goo is a visible purple liquid; its icon name has no block prefix.
+    "thaumcraft:blockfluxgoo": "thaumcraft:fluxgoo",
+    # ── ExtraUtilities colored blocks ─────────────────────────────────────────
+    # Rendered in-game as grayscale "bw_(...)" textures with a color multiplier;
+    # the vanilla source texture is the closest static equivalent.
+    "extrautilities:color_stone": "minecraft:stone",
+    "extrautilities:colorstonebrick": "minecraft:stonebrick",
+    "extrautilities:colorwoodplanks": "minecraft:planks_oak",
+    "extrautilities:color_lightgem": "minecraft:glowstone",
     # ── Botania ───────────────────────────────────────────────────────────────
     # Botania stores textures with digit appended directly (no underscore):
     # "livingrock0.png" not "livingrock_0.png". Auto-resolver generates underscore form.
