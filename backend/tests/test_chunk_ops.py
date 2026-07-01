@@ -1,9 +1,20 @@
+import io
+import struct
+import zlib
 from pathlib import Path
 
+import nbtlib
+import pytest
 from fastapi.testclient import TestClient
+from nbtlib import Compound, Double, Int, List, String
 
 from app.main import app
-from app.services.chunk_ops_service import copy_chunks, delete_chunks, delete_chunks_except
+from app.services.chunk_ops_service import (
+    copy_chunks,
+    create_world,
+    delete_chunks,
+    delete_chunks_except,
+)
 from app.world.region_writer import (
     local_index,
     make_record,
@@ -24,6 +35,53 @@ def _write_chunk(dim: Path, cx: int, cz: int, payload: bytes, ts: int = 1) -> No
 def _has_chunk(dim: Path, cx: int, cz: int) -> bool:
     path = dim / "region" / f"r.{cx >> 5}.{cz >> 5}.mca"
     return local_index(cx % 32, cz % 32) in read_region_records(path)
+
+
+def _write_nbt_chunk(dim: Path, cx: int, cz: int) -> None:
+    """Write a chunk with a real (minimal) NBT payload for offset-remap tests."""
+    level = Compound(
+        {
+            "xPos": Int(cx),
+            "zPos": Int(cz),
+            "TileEntities": List[Compound](
+                [
+                    Compound(
+                        {
+                            "x": Int(cx * 16 + 2),
+                            "y": Int(64),
+                            "z": Int(cz * 16 + 3),
+                            "id": String("Chest"),
+                        }
+                    )
+                ]
+            ),
+            "Entities": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Pos": List[Double](
+                                [Double(cx * 16 + 1.5), Double(70.0), Double(cz * 16 + 4.5)]
+                            )
+                        }
+                    )
+                ]
+            ),
+        }
+    )
+    buf = io.BytesIO()
+    nbtlib.File({"Level": level}).write(buf, byteorder="big")
+    path = dim / "region" / f"r.{cx >> 5}.{cz >> 5}.mca"
+    records = read_region_records(path)
+    records[local_index(cx % 32, cz % 32)] = (make_record(buf.getvalue()), 1)
+    write_region_records(path, records)
+
+
+def _read_level(dim: Path, cx: int, cz: int) -> Compound:
+    path = dim / "region" / f"r.{cx >> 5}.{cz >> 5}.mca"
+    rec, _ = read_region_records(path)[local_index(cx % 32, cz % 32)]
+    length = struct.unpack_from(">I", rec, 0)[0]
+    raw = zlib.decompress(rec[5 : 4 + length])
+    return nbtlib.File.parse(io.BytesIO(raw), byteorder="big")["Level"]
 
 
 def test_delete_chunks_service(tmp_path: Path) -> None:
@@ -67,6 +125,49 @@ def test_copy_chunks_service(tmp_path: Path) -> None:
         read_region_records(dst / "region" / "r.0.0.mca")[idx]
         == read_region_records(src / "region" / "r.0.0.mca")[idx]
     )
+
+
+def test_copy_offset_remaps_coords(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    _write_nbt_chunk(src, 5, 5)
+    # Same-world paste shifted +2 chunks x, +3 chunks z → dest chunk (7, 8).
+    result = copy_chunks(str(src), str(src), [(5, 5)], offset=(2, 3))
+    assert result["copied"] == 1
+
+    lv = _read_level(src, 7, 8)
+    assert int(lv["xPos"]) == 7
+    assert int(lv["zPos"]) == 8
+    assert int(lv["TileEntities"][0]["x"]) == 5 * 16 + 2 + 2 * 16
+    assert int(lv["TileEntities"][0]["z"]) == 5 * 16 + 3 + 3 * 16
+    assert float(lv["Entities"][0]["Pos"][0]) == 5 * 16 + 1.5 + 2 * 16
+    assert float(lv["Entities"][0]["Pos"][2]) == 5 * 16 + 4.5 + 3 * 16
+    # source chunk untouched
+    assert int(_read_level(src, 5, 5)["xPos"]) == 5
+
+
+def test_create_world_clones_level_dat(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "level.dat").write_bytes(b"LEVELDATA")
+    _write_nbt_chunk(src, 5, 5)
+
+    new = tmp_path / "newworld"
+    result = create_world(str(src), str(new), [(5, 5)])
+    assert result["copied"] == 1
+    assert (new / "level.dat").read_bytes() == b"LEVELDATA"
+    assert _has_chunk(new, 5, 5)
+
+
+def test_create_world_refuses_nonempty(tmp_path: Path) -> None:
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "level.dat").write_bytes(b"L")
+    _write_nbt_chunk(src, 0, 0)
+    new = tmp_path / "existing"
+    new.mkdir()
+    (new / "something").write_text("x")
+    with pytest.raises(ValueError):
+        create_world(str(src), str(new), [(0, 0)])
 
 
 def test_copy_rejects_same_world(tmp_path: Path) -> None:

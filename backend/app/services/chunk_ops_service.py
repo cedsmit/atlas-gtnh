@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 from pathlib import Path
 
+from app.world.chunk_transform import remap_chunk_record
 from app.world.region_writer import (
     backup_region,
     local_index,
@@ -117,43 +119,96 @@ def delete_chunks_except(dim_path: str, keep: list[tuple[int, int]]) -> dict[str
     return {"deleted": deleted, "kept": len(keep_set), "regions": touched}
 
 
-def copy_chunks(src_dim: str, dst_dim: str, chunks: list[tuple[int, int]]) -> dict[str, object]:
-    """Copy *chunks* from *src_dim* to *dst_dim* at the same coordinates.
+def copy_chunks(
+    src_dim: str,
+    dst_dim: str,
+    chunks: list[tuple[int, int]],
+    offset: tuple[int, int] = (0, 0),
+) -> dict[str, object]:
+    """Copy *chunks* from *src_dim* to *dst_dim*, shifted by *offset* (dx, dz) chunks.
 
-    Byte-exact transplant of the compressed region record (preserves GTNH
-    Blocks16/Data16 sections, tile entities, etc.). Missing source chunks are
-    skipped and counted. Destination region files are created as needed.
+    With no offset the compressed record is transplanted byte-exact (preserves
+    GTNH Blocks16/Data16, tile entities, etc.). With an offset the chunk NBT is
+    remapped (xPos/zPos + TileEntity/Entity/TileTick positions). Same-world paste
+    is allowed only when an offset is given. Missing source chunks are skipped.
     """
+    dx, dz = offset
     src_dir = Path(src_dim) / "region"
     dst_dir = Path(dst_dim) / "region"
-    if src_dir.resolve() == dst_dir.resolve():
-        raise ValueError("source and destination are the same world/dimension")
+    same_world = src_dir.resolve() == dst_dir.resolve()
+    if same_world and dx == 0 and dz == 0:
+        raise ValueError("source and destination are the same location")
     _ensure_closed(dst_dim)  # only the destination is written
 
+    # Pre-read every source region so a same-world offset paste reads the
+    # originals, never chunks we've just written this call.
+    src_cache: dict[tuple[int, int], dict[int, tuple[bytes, int]]] = {}
+    for cx, cz in chunks:
+        rk = (cx >> 5, cz >> 5)
+        if rk not in src_cache:
+            src_cache[rk] = read_region_records(src_dir / f"r.{rk[0]}.{rk[1]}.mca")
+
+    # Group the writes by destination region (dest coord = source + offset).
+    dst_groups: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
+    for cx, cz in chunks:
+        dcx, dcz = cx + dx, cz + dz
+        dst_groups.setdefault((dcx >> 5, dcz >> 5), []).append((cx, cz, dcx, dcz))
+
+    dx_blocks, dz_blocks = dx * 16, dz * 16
     copied = missing = 0
     touched: list[str] = []
 
-    for (rx, rz), group in _group_by_region(chunks).items():
-        src_records = read_region_records(src_dir / f"r.{rx}.{rz}.mca")
-        if not src_records:
-            missing += len(group)
-            continue
-        dst_path = dst_dir / f"r.{rx}.{rz}.mca"
+    for (drx, drz), items in dst_groups.items():
+        dst_path = dst_dir / f"r.{drx}.{drz}.mca"
         dst_records = read_region_records(dst_path)
         changed = False
-        for cx, cz in group:
-            idx = local_index(cx % 32, cz % 32)
-            rec = src_records.get(idx)
-            if rec is None:
+        for scx, scz, dcx, dcz in items:
+            entry = src_cache[(scx >> 5, scz >> 5)].get(local_index(scx % 32, scz % 32))
+            if entry is None:
                 missing += 1
                 continue
-            dst_records[idx] = rec
+            record, ts = entry
+            if dx or dz:
+                record = remap_chunk_record(record, dcx, dcz, dx_blocks, dz_blocks)
+            dst_records[local_index(dcx % 32, dcz % 32)] = (record, ts)
             copied += 1
             changed = True
         if changed:
-            backup_region(dst_path)  # no-op if the dest region is brand new
+            backup_region(dst_path)
             write_region_records(dst_path, dst_records)
             touched.append(dst_path.name)
-            log.info("copy_chunks: wrote %d chunks into %s", len(group), dst_path.name)
+            log.info("copy_chunks: wrote %d chunks into %s", len(items), dst_path.name)
 
     return {"copied": copied, "missing": missing, "regions": touched}
+
+
+def create_world(
+    src_dim: str,
+    new_world_path: str,
+    chunks: list[tuple[int, int]],
+    offset: tuple[int, int] = (0, 0),
+) -> dict[str, object]:
+    """Create a new world at *new_world_path* seeded from the source world's
+    level.dat (so seed + block-ID registry match), then paste *chunks* into it.
+
+    The destination folder must not already exist or must be empty.
+    """
+    src_dim_p = Path(src_dim)
+    if (src_dim_p / "level.dat").is_file():
+        src_root, dim_sub = src_dim_p, ""  # overworld dimension == world root
+    else:
+        src_root, dim_sub = src_dim_p.parent, src_dim_p.name  # <world>/DIMx
+    level_dat = src_root / "level.dat"
+    if not level_dat.is_file():
+        raise FileNotFoundError(f"level.dat not found for source world ({src_root})")
+
+    new_root = Path(new_world_path)
+    if new_root.exists() and any(new_root.iterdir()):
+        raise ValueError(f"destination folder is not empty: {new_world_path}")
+    new_root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(level_dat, new_root / "level.dat")
+
+    dst_dim = new_root / dim_sub if dim_sub else new_root
+    result = copy_chunks(src_dim, str(dst_dim), chunks, offset)
+    result["world"] = str(new_root)
+    return result

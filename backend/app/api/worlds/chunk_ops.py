@@ -9,8 +9,18 @@ import asyncio
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.region import CopyChunksRequest, DeleteChunksRequest, DeleteExceptRequest
-from app.services.chunk_ops_service import copy_chunks, delete_chunks, delete_chunks_except
+from app.models.region import (
+    CopyChunksRequest,
+    CreateWorldRequest,
+    DeleteChunksRequest,
+    DeleteExceptRequest,
+)
+from app.services.chunk_ops_service import (
+    copy_chunks,
+    create_world,
+    delete_chunks,
+    delete_chunks_except,
+)
 
 router = APIRouter()
 
@@ -49,13 +59,34 @@ async def post_delete_chunks_except(req: DeleteExceptRequest) -> dict[str, objec
 
 @router.post("/chunks/copy")
 async def post_copy_chunks(req: CopyChunksRequest) -> dict[str, object]:
-    """Copy chunks from one save to another at the same coordinates (byte-exact)."""
+    """Copy chunks from one save to another (same coords, or shifted by offset)."""
     if len(req.chunks) > MAX_CHUNKS:
         raise HTTPException(
             status_code=400, detail=f"Too many chunks ({len(req.chunks)} > {MAX_CHUNKS})"
         )
     try:
-        return await asyncio.to_thread(copy_chunks, req.src_world, req.dst_world, req.chunks)
+        return await asyncio.to_thread(
+            copy_chunks, req.src_world, req.dst_world, req.chunks, req.offset
+        )
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/chunks/create-world")
+async def post_create_world(req: CreateWorldRequest) -> dict[str, object]:
+    """Create a new world seeded from the source's level.dat and paste chunks in."""
+    if len(req.chunks) > MAX_CHUNKS:
+        raise HTTPException(
+            status_code=400, detail=f"Too many chunks ({len(req.chunks)} > {MAX_CHUNKS})"
+        )
+    try:
+        return await asyncio.to_thread(
+            create_world, req.src_world, req.new_world_path, req.chunks, req.offset
+        )
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except PermissionError as e:

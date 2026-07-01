@@ -80,7 +80,15 @@ class DeleteExceptRequest(BaseModel):
 class CopyChunksRequest(BaseModel):
     src_world: str  # source dimension path
     dst_world: str  # destination dimension path
-    chunks: list[tuple[int, int]]  # copied at the same coordinates
+    chunks: list[tuple[int, int]]  # source chunk coords
+    offset: tuple[int, int] = (0, 0)  # (dx, dz) chunk offset applied at the destination
+
+
+class CreateWorldRequest(BaseModel):
+    src_world: str  # source dimension path
+    new_world_path: str  # new world folder to create (must be empty/absent)
+    chunks: list[tuple[int, int]]
+    offset: tuple[int, int] = (0, 0)
 
 
 class DimensionInfo(BaseModel):
