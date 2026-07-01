@@ -8,6 +8,7 @@ import {
 } from '../blocks/blockColors'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig } from '../blocks/renderPresets'
+import { computeHillshade } from './chunkTileRenderer'
 import { getTexture } from '../textures/textureLoader'
 
 export interface BlockInspectorContext {
@@ -166,42 +167,9 @@ export async function showBlockInspector(
   const wY = neighborY(-1, 0)
   const eY = neighborY(1, 0)
 
-  // Mirror of renderChunkImage step 5 (NW-light hillshade + AO).
-  let bright = 0,
-    dark = 0
-  if (nY >= 0) {
-    const d = inY - nY
-    if (d > 0) bright += d
-    else dark += -d * 0.3
-  }
-  if (wY >= 0) {
-    const d = inY - wY
-    if (d > 0) bright += d * 0.65
-    else dark += -d * 0.2
-  }
-  if (sY >= 0) {
-    const d = sY - inY
-    if (d > 0) dark += d
-    else bright += -d * 0.15
-  }
-  if (eY >= 0) {
-    const d = eY - inY
-    if (d > 0) dark += d * 0.65
-    else bright += -d * 0.1
-  }
-  const steep = Math.max(
-    nY >= 0 ? Math.abs(inY - nY) : 0,
-    sY >= 0 ? Math.abs(inY - sY) : 0,
-    wY >= 0 ? Math.abs(inY - wY) : 0,
-    eY >= 0 ? Math.abs(inY - eY) : 0
-  )
+  // Exactly what the renderer applied — shared implementation.
   const elevMode = config.elevationMode
-  const str = config.elevationStrength
-  const ao = Math.max(0, ((steep - 2) * str) / 80)
-  const maxB = elevMode === 'strong' ? 0.48 : 0.28
-  const maxD = elevMode === 'strong' ? 0.78 : 0.42
-  const brightA = elevMode === 'off' ? 0 : Math.min((bright * str) / 9, maxB)
-  const darkA = elevMode === 'off' ? 0 : Math.min((dark * str) / 9 + ao, maxD)
+  const { brightA, darkA } = computeHillshade(inY, nY, sY, wY, eY, config)
 
   const fmtY = (v: number) =>
     v >= 0 ? `${v - inY >= 0 ? '+' : ''}${v - inY}` : '?'

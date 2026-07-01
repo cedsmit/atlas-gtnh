@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { ChunkData } from './api/chunks'
-import { computeEdgeHeights } from './chunkTileRenderer'
+import { computeEdgeHeights, computeHillshade } from './chunkTileRenderer'
 
 // Minimal chunk: one 16-high section at section y=4 (abs Y 64-79).
 // Block id 1 = solid (registry default). Heights vary per column below.
@@ -61,5 +61,49 @@ describe('computeEdgeHeights', () => {
     const chunk = makeChunk((_x, _z, y) => (y <= 5 ? 1 : y === 9 ? 2 : 0))
     const heights = computeEdgeHeights(chunk, 'n', reg, config)
     expect(heights[0]).toBe(64 + 5)
+  })
+})
+
+describe('computeHillshade', () => {
+  const cfg = { elevationMode: 'normal', elevationStrength: 1.0 } as never
+
+  it('is zero on flat ground', () => {
+    const { brightA, darkA } = computeHillshade(72, 72, 72, 72, 72, cfg)
+    expect(brightA).toBe(0)
+    expect(darkA).toBe(0)
+  })
+
+  it('is zero when shading is off', () => {
+    const off = { elevationMode: 'off', elevationStrength: 1.0 } as never
+    const s = computeHillshade(72, 60, 90, 60, 90, off)
+    expect(s.brightA).toBe(0)
+    expect(s.darkA).toBe(0)
+  })
+
+  it('treats unknown neighbors (-1) as no contribution', () => {
+    const { brightA, darkA } = computeHillshade(72, -1, -1, -1, -1, cfg)
+    expect(brightA).toBe(0)
+    expect(darkA).toBe(0)
+  })
+
+  it('caps a deep architectural drop like a small step (regression: W-7)', () => {
+    // Floor tile at Y72 with a 7-block drop to its west (edge of a lower
+    // room). Uncapped this saturated the bright clamp (+28%); capped it must
+    // shade no stronger than a 2-block step, ~14% + mild AO.
+    const deep = computeHillshade(72, 72, 72, 65, 72, cfg)
+    const step2 = computeHillshade(72, 72, 72, 70, 72, cfg)
+    expect(deep.brightA).toBeCloseTo(step2.brightA, 5)
+    expect(deep.brightA).toBeLessThan(0.15)
+  })
+
+  it('caps the shadow beside a tall wall', () => {
+    // Floor beside a 9-block wall to the south and east (base corner).
+    const { darkA } = computeHillshade(72, 72, 81, 72, 81, cfg)
+    expect(darkA).toBeLessThanOrEqual(0.35)
+  })
+
+  it('keeps natural 1-block terrain steps shaded', () => {
+    const { brightA } = computeHillshade(72, 71, 72, 72, 72, cfg)
+    expect(brightA).toBeGreaterThan(0.05)
   })
 })

@@ -86,6 +86,81 @@ export function computeEdgeHeights(
   return out
 }
 
+// ── Hillshade ────────────────────────────────────────────────────────────────
+// Directional hillshade with NW light: N and W faces are lit, S and E are in
+// shadow, plus ambient occlusion near steep drops. Shared by the renderer and
+// the block inspector so the tooltip always reports exactly what was drawn.
+//
+// Per-direction height deltas are capped at DELTA_CAP so man-made vertical
+// transitions (base walls, room drops — often 7-10 blocks) shade like a gentle
+// JourneyMap-style step instead of saturating the clamp into a white/black
+// wash. Natural terrain (1-2 block steps) is unaffected.
+const DELTA_CAP = 2
+
+export function computeHillshade(
+  blockY: number,
+  nY: number,
+  sY: number,
+  wY: number,
+  eY: number,
+  config: Pick<RenderConfig, 'elevationMode' | 'elevationStrength'>
+): { brightA: number; darkA: number } {
+  const elevMode = config.elevationMode
+  if (elevMode === 'off' || elevMode === 'debug-heightmap') {
+    return { brightA: 0, darkA: 0 }
+  }
+  const str = config.elevationStrength
+  const cap = (d: number) => Math.min(d, DELTA_CAP)
+
+  // N/W contribute bright (facing NW light); S/E contribute dark (in shadow).
+  // Each direction also adds a lesser counter-contribution for smooth transitions.
+  let bright = 0,
+    dark = 0
+  if (nY >= 0) {
+    const d = blockY - nY
+    if (d > 0)
+      bright += cap(d) // N-face: lit by NW sun
+    else dark += cap(-d) * 0.3 // below N cliff: partial shadow
+  }
+  if (wY >= 0) {
+    const d = blockY - wY
+    if (d > 0)
+      bright += cap(d) * 0.65 // W-face: secondary lit direction
+    else dark += cap(-d) * 0.2
+  }
+  if (sY >= 0) {
+    const d = sY - blockY
+    if (d > 0)
+      dark += cap(d) // S-slope above: full shadow
+    else bright += cap(-d) * 0.15 // S below: minor bright
+  }
+  if (eY >= 0) {
+    const d = eY - blockY
+    if (d > 0)
+      dark += cap(d) * 0.65 // E-slope: secondary shadow
+    else bright += cap(-d) * 0.1
+  }
+
+  // Ambient occlusion: extra darkening at cliff edges (steep drops in any direction)
+  const steep = Math.max(
+    nY >= 0 ? Math.abs(blockY - nY) : 0,
+    sY >= 0 ? Math.abs(blockY - sY) : 0,
+    wY >= 0 ? Math.abs(blockY - wY) : 0,
+    eY >= 0 ? Math.abs(blockY - eY) : 0
+  )
+  const ao = Math.max(0, ((steep - 2) * str) / 80)
+
+  // Normalize and clamp. NORM=9 with capped deltas: a full step reaches ~22%
+  // at str=1. 'strong' keeps higher ceilings so Topo can still go near-black.
+  const NORM = 9
+  const maxB = elevMode === 'strong' ? 0.48 : 0.22
+  const maxD = elevMode === 'strong' ? 0.78 : 0.35
+  return {
+    brightA: Math.min((bright * str) / NORM, maxB),
+    darkA: Math.min((dark * str) / NORM + ao, maxD),
+  }
+}
+
 // ── Chunk pixel renderer ───────────────────────────────────────────────────
 export function renderChunkImage(
   data: ChunkData,
@@ -551,62 +626,22 @@ export function renderChunkImage(
       }
 
       // ── Step 5: elevation shading ────────────────────────────────
-      // Directional hillshade with NW light: N and W faces are lit, S and E are in shadow.
-      // Separate bright/dark channels are accumulated then clamped independently.
-      // Ambient occlusion adds uniform darkening near steep height drops.
+      // Directional NW-light hillshade + AO — see computeHillshade.
       const elevMode = config.elevationMode
       if (elevMode !== 'off') {
-        const str = config.elevationStrength
         if (elevMode === 'debug-heightmap') {
           const [hr, hg, hb] = elevColor(blockY)
           ctx.fillStyle = `rgba(${hr},${hg},${hb},0.55)`
           ctx.fillRect(px, pz, CELL, CELL)
         } else {
-          // N/W contribute bright (facing NW light); S/E contribute dark (in shadow).
-          // Each direction also adds a lesser counter-contribution for smooth transitions.
-          let bright = 0,
-            dark = 0
-          if (nY >= 0) {
-            const d = blockY - nY
-            if (d > 0)
-              bright += d // N-face: lit by NW sun
-            else dark += -d * 0.3 // below N cliff: partial shadow
-          }
-          if (wY >= 0) {
-            const d = blockY - wY
-            if (d > 0)
-              bright += d * 0.65 // W-face: secondary lit direction
-            else dark += -d * 0.2
-          }
-          if (sY >= 0) {
-            const d = sY - blockY
-            if (d > 0)
-              dark += d // S-slope above: full shadow
-            else bright += -d * 0.15 // S below: minor bright
-          }
-          if (eY >= 0) {
-            const d = eY - blockY
-            if (d > 0)
-              dark += d * 0.65 // E-slope: secondary shadow
-            else bright += -d * 0.1
-          }
-
-          // Ambient occlusion: extra darkening at cliff edges (steep drops in any direction)
-          const steep = Math.max(
-            nY >= 0 ? Math.abs(blockY - nY) : 0,
-            sY >= 0 ? Math.abs(blockY - sY) : 0,
-            wY >= 0 ? Math.abs(blockY - wY) : 0,
-            eY >= 0 ? Math.abs(blockY - eY) : 0
+          const { brightA, darkA } = computeHillshade(
+            blockY,
+            nY,
+            sY,
+            wY,
+            eY,
+            config
           )
-          const ao = Math.max(0, ((steep - 2) * str) / 80)
-
-          // Normalize and clamp. NORM=9: a 3-block cliff → ~33% shade at str=1.
-          // maxD 0.78 lets Topo (str=2.5) reach near-black on cliffs.
-          const NORM = 9
-          const maxB = elevMode === 'strong' ? 0.48 : 0.28
-          const maxD = elevMode === 'strong' ? 0.78 : 0.42
-          const brightA = Math.min((bright * str) / NORM, maxB)
-          const darkA = Math.min((dark * str) / NORM + ao, maxD)
           if (brightA > 0.01) {
             ctx.fillStyle = `rgba(255,255,255,${brightA})`
             ctx.fillRect(px, pz, CELL, CELL)
