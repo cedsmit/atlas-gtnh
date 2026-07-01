@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import { Bug, FolderOpen, Mountain, Palette, Search, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { validateWorld } from '../features/world/api/worlds'
@@ -108,7 +109,12 @@ export function MenuBar({
 
         {fileOpen && (
           <div className="absolute left-0 top-full z-50 min-w-52 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
-            <Item onClick={() => void openWorld()}>Open World…</Item>
+            <Item onClick={() => void openWorld()}>
+              <span className="inline-flex items-center gap-1.5">
+                <FolderOpen className="h-4 w-4 shrink-0" aria-hidden />
+                Open World…
+              </span>
+            </Item>
 
             {recentWorlds.length > 0 && (
               <>
@@ -167,7 +173,8 @@ export function MenuBar({
       {worldPath && (
         <div className="ml-auto flex items-stretch">
           {onSetPreset && selectedPresetId && (
-            <div className="flex items-stretch border-l border-zinc-800">
+            <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-2">
+              <Palette className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
               <select
                 value={selectedPresetId}
                 onChange={(e) => onSetPreset(e.target.value)}
@@ -181,7 +188,8 @@ export function MenuBar({
             </div>
           )}
           {onSetElevOverride && (
-            <div className="flex items-stretch border-l border-zinc-800">
+            <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-2">
+              <Mountain className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
               <select
                 value={elevOverride ?? 'preset'}
                 onChange={(e) => onSetElevOverride(e.target.value as ElevOverride)}
@@ -251,12 +259,13 @@ export function MenuBar({
             <div className="flex items-stretch border-l border-zinc-800">
               <button
                 onClick={onToggleDebug}
-                className={`flex items-center px-4 text-sm transition-colors ${
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
                   debugOpen
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 }`}
               >
+                <Bug className="h-4 w-4 shrink-0" aria-hidden />
                 Debug
               </button>
             </div>
@@ -265,12 +274,13 @@ export function MenuBar({
             <div className="flex items-stretch border-l border-zinc-800">
               <button
                 onClick={onToggleInspect}
-                className={`flex items-center px-4 text-sm transition-colors ${
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
                   inspectOpen
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 }`}
               >
+                <Search className="h-4 w-4 shrink-0" aria-hidden />
                 Inspect
               </button>
             </div>
@@ -281,13 +291,14 @@ export function MenuBar({
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 border-l border-zinc-800 bg-red-950/40 px-3">
+          <TriangleAlert className="h-4 w-4 shrink-0 text-red-400" aria-hidden />
           <span className="text-xs text-red-400">{error}</span>
           <button
             onClick={() => setError(null)}
             className="text-zinc-600 transition-colors hover:text-zinc-300"
             aria-label="Dismiss"
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden />
           </button>
         </div>
       )}

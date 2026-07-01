@@ -1,3 +1,11 @@
+import {
+  ArrowLeft,
+  Grid3x3,
+  Info,
+  Layers,
+  Loader2,
+  TriangleAlert,
+} from 'lucide-react'
 import { useState } from 'react'
 
 import { type ChunkSection, useChunkData } from '../map/api/chunks'
@@ -72,9 +80,19 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
   const [selectedY, setSelectedY] = useState<number | null>(null)
 
   if (isLoading)
-    return <p className="text-sm text-gray-400">Loading chunk data…</p>
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm text-gray-400">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        Loading chunk data…
+      </p>
+    )
   if (error)
-    return <p className="text-sm text-red-400">{(error as Error).message}</p>
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm text-red-400">
+        <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+        {(error as Error).message}
+      </p>
+    )
   if (!data) return null
 
   const activeY = selectedY ?? data.sections[0]?.y ?? 0
@@ -86,11 +104,13 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
       <div className="flex items-center gap-3">
         <button
           onClick={onBack}
-          className="rounded px-2 py-1 text-sm text-gray-400 hover:bg-gray-700 hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-gray-400 hover:bg-gray-700 hover:text-white"
         >
-          ← Back
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+          Back
         </button>
-        <h2 className="text-lg font-semibold">
+        <h2 className="inline-flex items-center gap-1.5 text-lg font-semibold">
+          <Grid3x3 className="h-4 w-4 shrink-0" aria-hidden />
           Chunk ({cx}, {cz})
         </h2>
         <span className="text-sm text-gray-400">
@@ -99,7 +119,8 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
       </div>
 
       {data.sections.length === 0 ? (
-        <p className="text-sm text-gray-500">
+        <p className="inline-flex items-center gap-1.5 text-sm text-gray-500">
+          <Layers className="h-4 w-4 shrink-0" aria-hidden />
           No block sections in this chunk.
         </p>
       ) : (
@@ -131,7 +152,8 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
               </div>
               <div className="flex flex-col gap-2 text-sm">
                 <div className="rounded border border-gray-700 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <Grid3x3 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     Section stats
                   </p>
                   <p>
@@ -148,7 +170,8 @@ export function ChunkViewer({ worldPath, cx, cz, onBack }: Props) {
                   </p>
                 </div>
                 <div className="rounded border border-gray-700 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  <p className="mb-2 inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     Chunk info
                   </p>
                   <p>

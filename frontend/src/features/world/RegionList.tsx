@@ -1,3 +1,5 @@
+import { Loader2, Map, TriangleAlert } from 'lucide-react'
+
 import { type RegionSummary, useRegions } from '../map/api/regions'
 
 interface Props {
@@ -16,11 +18,26 @@ export function RegionList({
   const { data, isLoading, error } = useRegions(worldPath)
 
   if (isLoading)
-    return <p className="text-sm text-gray-400">Loading regions…</p>
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm text-gray-400">
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        Loading regions…
+      </p>
+    )
   if (error)
-    return <p className="text-sm text-red-400">{(error as Error).message}</p>
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm text-red-400">
+        <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+        {(error as Error).message}
+      </p>
+    )
   if (!data?.regions.length)
-    return <p className="text-sm text-gray-400">No regions found.</p>
+    return (
+      <p className="inline-flex items-center gap-1.5 text-sm text-gray-400">
+        <Map className="h-4 w-4 shrink-0" aria-hidden />
+        No regions found.
+      </p>
+    )
 
   return (
     <div className="flex flex-col gap-1">
@@ -33,12 +50,13 @@ export function RegionList({
           <button
             key={r.file_name}
             onClick={() => onSelect(r.region_x, r.region_z)}
-            className={`rounded px-3 py-2 text-left text-sm transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded px-3 py-2 text-left text-sm transition-colors ${
               active
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
             }`}
           >
+            <Map className="h-4 w-4 shrink-0" aria-hidden />
             {r.file_name}
           </button>
         )

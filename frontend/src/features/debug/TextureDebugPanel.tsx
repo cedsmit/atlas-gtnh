@@ -1,3 +1,4 @@
+import { Bug, Check, ChevronDown, ChevronRight, Copy, Loader2, Search, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { API_BASE } from '../../shared/api'
@@ -238,13 +239,17 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
     <div className="flex h-full w-[480px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm font-semibold text-zinc-200">Texture Debug</span>
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-200">
+          <Bug className="h-4 w-4" aria-hidden />
+          Texture Debug
+        </span>
         <div className="flex items-center gap-2">
           <button
             onClick={dumpToConsole}
-            className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+            className="inline-flex items-center gap-1 rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
             title="Dump full block list to browser console"
           >
+            <Bug className="h-3.5 w-3.5" aria-hidden />
             console.log
           </button>
           {worldPath && (
@@ -252,17 +257,19 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
               <button
                 onClick={() => void traceResolution()}
                 disabled={tracing}
-                className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-40"
                 title="Trace texture resolution chain to console"
               >
+                {tracing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Search className="h-3.5 w-3.5" aria-hidden />}
                 {tracing ? '…trace' : 'trace'}
               </button>
               <button
                 onClick={() => void fetchPipelineReport()}
                 disabled={pipelineLoading}
-                className="rounded bg-indigo-900 px-2 py-0.5 font-mono text-[10px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded bg-indigo-900 px-2 py-0.5 font-mono text-[10px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
                 title="Run blockstate resolution pipeline and show failure category report"
               >
+                {pipelineLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <Search className="h-3.5 w-3.5" aria-hidden />}
                 {pipelineLoading ? '…pipeline' : 'pipeline'}
               </button>
             </>
@@ -272,7 +279,7 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
             className="text-zinc-500 transition-colors hover:text-zinc-200"
             aria-label="Close"
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden />
           </button>
         </div>
       </div>
@@ -389,8 +396,9 @@ function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onCl
         <button
           onClick={onClose}
           className="text-indigo-600 hover:text-indigo-300"
+          aria-label="Close pipeline report"
         >
-          ✕
+          <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
 
@@ -423,7 +431,7 @@ function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onCl
       <div className="mb-2 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-1 text-[10px]">
         {report.forge_dump_loaded ? (
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-            <span className="text-sky-400">✓ Forge dump loaded</span>
+            <span className="inline-flex items-center gap-1 text-sky-400"><Check className="h-3.5 w-3.5" aria-hidden /> Forge dump loaded</span>
             <span className="text-zinc-500">{report.forge_dump_block_count.toLocaleString()} blocks</span>
             {report.forge_dump_path && (
               <span className="truncate text-zinc-600" title={report.forge_dump_path}>
@@ -432,8 +440,8 @@ function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onCl
             )}
           </div>
         ) : (
-          <span className="text-amber-500">
-            ✗ Forge dump not loaded — build &amp; install AtlasDumper mod, run GTNH once
+          <span className="inline-flex items-center gap-1 text-amber-500">
+            <X className="h-3.5 w-3.5 shrink-0" aria-hidden /> Forge dump not loaded — build &amp; install AtlasDumper mod, run GTNH once
           </span>
         )}
       </div>
@@ -475,8 +483,8 @@ function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onCl
             <summary className="flex cursor-pointer items-baseline gap-2 list-none">
               <span className="text-amber-400 tabular-nums">{count.toLocaleString()}</span>
               <span className="text-zinc-300">{CATEGORY_LABELS[category] ?? category}</span>
-              <span className="ml-auto text-[10px] text-zinc-600 group-open:hidden">▶</span>
-              <span className="ml-auto text-[10px] text-zinc-600 hidden group-open:inline">▼</span>
+              <ChevronRight className="ml-auto h-3.5 w-3.5 text-zinc-600 group-open:hidden" aria-hidden />
+              <ChevronDown className="ml-auto hidden h-3.5 w-3.5 text-zinc-600 group-open:inline" aria-hidden />
             </summary>
             {examples.length > 0 && (
               <div className="ml-4 mt-1 flex flex-col gap-0.5">
@@ -500,8 +508,8 @@ function PipelineReportPanel({ report, onClose }: { report: PipelineReport; onCl
                   {METHOD_LABEL[tag] ?? tag}
                 </span>
                 <span className="text-[10px] text-zinc-500">{exs.length} shown</span>
-                <span className="ml-auto text-[10px] text-zinc-600 group-open:hidden">▶</span>
-                <span className="ml-auto text-[10px] text-zinc-600 hidden group-open:inline">▼</span>
+                <ChevronRight className="ml-auto h-3.5 w-3.5 text-zinc-600 group-open:hidden" aria-hidden />
+                <ChevronDown className="ml-auto hidden h-3.5 w-3.5 text-zinc-600 group-open:inline" aria-hidden />
               </summary>
               <div className="ml-4 mt-1 flex flex-col gap-0.5">
                 {exs.map((ex) => (
@@ -538,10 +546,11 @@ function RenderProof({ rt }: { rt: RenderTotals }) {
       }`}
     >
       {/* Headline */}
-      <div className={`font-semibold ${isWorking ? 'text-emerald-400' : 'text-red-400'}`}>
+      <div className={`inline-flex items-center gap-1.5 font-semibold ${isWorking ? 'text-emerald-400' : 'text-red-400'}`}>
+        {isWorking ? <Check className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <X className="h-3.5 w-3.5 shrink-0" aria-hidden />}
         {isWorking
-          ? `✓ Textures rendering — ${pct}% of blocks use drawImage`
-          : '✗ drawImage = 0 — renderer is using flat colors only'}
+          ? `Textures rendering — ${pct}% of blocks use drawImage`
+          : 'drawImage = 0 — renderer is using flat colors only'}
       </div>
 
       {/* Counter row */}
@@ -683,7 +692,7 @@ function DebugRow({
                 status === 'no-mapping'? 'text-amber-700' : 'text-zinc-700'
               }`}
             >
-              {status === 'pending' ? '…' : status === 'missing' ? '✗' : status === 'no-mapping' ? '?' : ''}
+              {status === 'pending' ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : status === 'missing' ? <X className="h-3.5 w-3.5" aria-hidden /> : status === 'no-mapping' ? '?' : ''}
             </div>
           )}
         </div>
@@ -745,17 +754,19 @@ function DebugRow({
                 <button
                   onClick={() => void traceBlockPipeline()}
                   disabled={tracing}
-                  className="rounded bg-indigo-900 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
+                  className="inline-flex items-center gap-1 rounded bg-indigo-900 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
                   title="Trace blockstate pipeline to console"
                 >
+                  {tracing ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden /> : <Search className="h-3 w-3" aria-hidden />}
                   {tracing ? '…' : 'trace'}
                 </button>
               )}
               <button
                 onClick={() => void copyJson()}
-                className="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
                 title="Copy suggested JSON rule to clipboard"
               >
+                {copied ? <Check className="h-3 w-3" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />}
                 {copied ? 'copied!' : 'copy JSON'}
               </button>
             </div>

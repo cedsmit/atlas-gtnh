@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { LocateFixed } from 'lucide-react'
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
 import type { RegionSummary } from './api/regions'
@@ -96,10 +97,10 @@ export function WorldMap({
       />
       <button
         onClick={() => fitCameraRef.current?.()}
-        className="absolute right-2 top-2 rounded bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300 hover:bg-black/80"
+        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded bg-black/60 px-2 py-1 font-mono text-xs text-zinc-300 hover:bg-black/80"
         title="Fit camera to world (F / Home)"
       >
-        ⌖ fit
+        <LocateFixed className="h-3.5 w-3.5" aria-hidden /> fit
       </button>
       {debugMode && (
         <FilterPipelineInfo filter={configProp?.textureFilter ?? 'pixel'} />

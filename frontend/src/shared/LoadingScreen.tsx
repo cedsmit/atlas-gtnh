@@ -1,3 +1,5 @@
+import { Check, TriangleAlert, Loader2 } from 'lucide-react'
+
 export type LoadingStage =
   | 'scanning'
   | 'registry'
@@ -130,15 +132,13 @@ export function LoadingScreen({
                 : 'border-zinc-700 bg-zinc-900 text-zinc-500'
           }`}
         >
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              vanillaJarFound === true
-                ? 'bg-emerald-400'
-                : vanillaJarFound === false
-                  ? 'bg-amber-400'
-                  : 'animate-pulse bg-zinc-500'
-            }`}
-          />
+          {vanillaJarFound === true ? (
+            <Check className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          ) : vanillaJarFound === false ? (
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          ) : (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+          )}
           {vanillaJarFound === true
             ? 'Vanilla JAR found — full block textures'
             : vanillaJarFound === false

@@ -1,3 +1,4 @@
+import { BoxSelect, Copy, Loader2, Trash2, TriangleAlert, X } from 'lucide-react'
 import { type MouseEvent, type RefObject, useRef, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
@@ -170,11 +171,12 @@ export function ChunkTools({
       <div className="absolute left-2 top-2 z-20 flex w-64 flex-col gap-1 rounded bg-black/70 p-2 font-mono text-xs text-zinc-200">
         <button
           onClick={toggle}
-          className={`rounded px-2 py-1 ${
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 ${
             active ? 'bg-sky-600 text-white' : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
           }`}
         >
-          {active ? '◉ Selecting chunks' : '▢ Select chunks'}
+          <BoxSelect className="h-4 w-4 shrink-0" aria-hidden />
+          {active ? 'Selecting chunks' : 'Select chunks'}
         </button>
 
         {active && !selection && <span className="text-zinc-400">drag to select</span>}
@@ -217,8 +219,9 @@ export function ChunkTools({
                         ? `Delete the ENTIRE dimension EXCEPT these ${count} chunk(s)?`
                         : `Delete ${count} chunk(s) for regeneration?`}
                     </span>
-                    <span className="text-amber-300">
-                      ⚠ Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
+                    <span className="inline-flex items-center gap-1 text-amber-300">
+                      <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+                      Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
                       regenerates the deleted chunks on next load.
                     </span>
                     {invert && (
@@ -231,15 +234,21 @@ export function ChunkTools({
                       <button
                         onClick={runDelete}
                         disabled={busy}
-                        className="flex-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
                       >
+                        {busy ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        )}
                         {busy ? 'Working…' : invert ? 'Delete the rest' : 'Delete'}
                       </button>
                       <button
                         onClick={() => setConfirming(null)}
                         disabled={busy}
-                        className="flex-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
                       >
+                        <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         Cancel
                       </button>
                     </div>
@@ -249,23 +258,26 @@ export function ChunkTools({
                     <button
                       onClick={() => setConfirming('delete')}
                       disabled={busy}
-                      className="rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
                     >
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                       {invert ? 'Delete all EXCEPT selection' : 'Delete → regenerate'}
                     </button>
                     <div className="flex gap-1">
                       <button
                         onClick={() => setCopyOpen(true)}
                         disabled={busy}
-                        className="flex-1 rounded bg-sky-800 px-2 py-1 text-sky-100 hover:bg-sky-700 disabled:opacity-50"
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-sky-800 px-2 py-1 text-sky-100 hover:bg-sky-700 disabled:opacity-50"
                       >
+                        <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         Copy…
                       </button>
                       <button
                         onClick={clearSelection}
                         disabled={busy}
-                        className="rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
                       >
+                        <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
                         Clear
                       </button>
                     </div>

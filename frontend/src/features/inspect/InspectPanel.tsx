@@ -1,3 +1,4 @@
+import { Palette, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
@@ -117,13 +118,16 @@ export function InspectPanel({ blockColors, blockNames, textureKeys, onClose }: 
     <div className="flex h-full w-96 shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm font-semibold text-zinc-200">Block Colors</span>
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-200">
+          <Palette className="h-4 w-4" aria-hidden />
+          Block Colors
+        </span>
         <button
           onClick={onClose}
           className="text-zinc-500 transition-colors hover:text-zinc-200"
           aria-label="Close"
         >
-          ✕
+          <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
 

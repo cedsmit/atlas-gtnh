@@ -1,3 +1,5 @@
+import { Palette } from 'lucide-react'
+
 import type { TextureFilter } from '../blocks/renderPresets'
 
 // Debug-mode overlay describing the active texture-filter pipeline.
@@ -11,7 +13,10 @@ export function FilterPipelineInfo({ filter }: { filter: TextureFilter }) {
   const upscaled    = isJM   ? 'yes — 2× bilinear' : 'no'
   return (
     <div className="pointer-events-none absolute bottom-2 right-2 rounded border border-zinc-700 bg-black/80 px-2 py-1.5 font-mono text-[10px] text-zinc-300">
-      <div className="mb-0.5 font-semibold text-zinc-200">Filter pipeline: {filter}</div>
+      <div className="mb-0.5 inline-flex items-center gap-1 font-semibold text-zinc-200">
+        <Palette className="h-3.5 w-3.5" aria-hidden />
+        Filter pipeline: {filter}
+      </div>
       <table className="border-separate" style={{ borderSpacing: '0 1px' }}>
         <tbody>
           <Row label="canvas"    value={canvasSize} />

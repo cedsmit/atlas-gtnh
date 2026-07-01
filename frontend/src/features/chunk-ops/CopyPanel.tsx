@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import { Copy, FolderOpen, Loader2, TriangleAlert, X } from 'lucide-react'
 import { type RefObject, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
@@ -65,31 +66,42 @@ export function CopyPanel({
 
   return (
     <div className="flex flex-col gap-1 rounded border border-sky-800 bg-sky-950/50 p-2">
-      <span className="text-sky-200">Copy {chunks.length} chunk(s) to another world</span>
+      <span className="inline-flex items-center gap-1 text-sky-200">
+        <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        Copy {chunks.length} chunk(s) to another world
+      </span>
       <button
         onClick={pickDest}
         disabled={busy}
-        className="truncate rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+        className="inline-flex items-center gap-1 truncate rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
       >
-        {dest ? `Dest: ${base(dest)}` : 'Pick destination world…'}
+        <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="truncate">{dest ? `Dest: ${base(dest)}` : 'Pick destination world…'}</span>
       </button>
-      <span className="text-amber-300">
-        ⚠ Destination must be the same modpack version and closed in Minecraft. Overwrites its
+      <span className="inline-flex items-center gap-1 text-amber-300">
+        <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+        Destination must be the same modpack version and closed in Minecraft. Overwrites its
         chunks at the same coordinates.
       </span>
       <div className="flex gap-1">
         <button
           onClick={runCopy}
           disabled={!dest || busy}
-          className="flex-1 rounded bg-sky-700 px-2 py-1 text-white hover:bg-sky-600 disabled:opacity-50"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-sky-700 px-2 py-1 text-white hover:bg-sky-600 disabled:opacity-50"
         >
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+          ) : (
+            <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          )}
           {busy ? 'Copying…' : 'Copy'}
         </button>
         <button
           onClick={onClose}
           disabled={busy}
-          className="flex-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+          className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
         >
+          <X className="h-3.5 w-3.5 shrink-0" aria-hidden />
           Close
         </button>
       </div>

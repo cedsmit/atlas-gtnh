@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import { FolderOpen, Loader2, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 
 import { validateWorld } from './api/worlds'
@@ -42,12 +43,18 @@ export function WorldPicker({ onWorldSelected }: Props) {
       <button
         onClick={handlePick}
         disabled={loading}
-        className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
       >
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+        ) : (
+          <FolderOpen className="h-4 w-4" aria-hidden />
+        )}
         {loading ? 'Validating…' : 'Select World Folder'}
       </button>
       {error && (
-        <p className="text-sm text-red-400" role="alert">
+        <p className="inline-flex items-center gap-1.5 text-sm text-red-400" role="alert">
+          <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
           {error}
         </p>
       )}

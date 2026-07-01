@@ -1,3 +1,4 @@
+import { TriangleAlert, X } from 'lucide-react'
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { downloadMissingBlockReport, useDumpMismatch } from './api/dumpMismatch'
@@ -83,7 +84,10 @@ export function DumpMismatchBanner({ worldPath }: Props) {
       <div className="flex items-start gap-2">
         <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${s.dot}`} />
         <div className="flex-1">
-          <div className={`font-semibold ${s.title}`}>{title}</div>
+          <div className={`inline-flex items-center gap-1.5 font-semibold ${s.title}`}>
+            <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
+            {title}
+          </div>
           <div className="mt-0.5 text-zinc-400">
             World has {data.world_mod_count} mods; dump has {data.dump_mod_count}.
             {missingTotal > 0 && (
@@ -173,7 +177,7 @@ export function DumpMismatchBanner({ worldPath }: Props) {
           aria-label="Dismiss"
           title="Dismiss"
         >
-          ✕
+          <X className="h-4 w-4" aria-hidden />
         </button>
       </div>
     </div>

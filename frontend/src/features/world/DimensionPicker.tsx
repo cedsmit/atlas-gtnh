@@ -1,3 +1,5 @@
+import { Flame, Globe, Layers, Moon, X } from 'lucide-react'
+
 import type { DimensionInfo } from './api/dimensions'
 
 interface Props {
@@ -16,6 +18,13 @@ function dimColor(id: string): string {
   return 'bg-sky-500'
 }
 
+function DimIcon({ id }: { id: string }) {
+  if (id === '') return <Globe className="h-4 w-4 shrink-0" aria-hidden />
+  if (id === 'DIM-1') return <Flame className="h-4 w-4 shrink-0" aria-hidden />
+  if (id === 'DIM1') return <Moon className="h-4 w-4 shrink-0" aria-hidden />
+  return <Layers className="h-4 w-4 shrink-0" aria-hidden />
+}
+
 export function DimensionPicker({
   worldPath,
   dimensions,
@@ -30,7 +39,8 @@ export function DimensionPicker({
       <div className="w-full max-w-md rounded border border-zinc-700 bg-zinc-900 shadow-2xl">
         {/* Header */}
         <div className="border-b border-zinc-800 px-5 py-4">
-          <h2 className="text-sm font-semibold text-zinc-100">
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-100">
+            <Layers className="h-4 w-4 shrink-0" aria-hidden />
             Select Dimension
           </h2>
           <p className="mt-0.5 truncate text-xs text-zinc-500">{folderName}</p>
@@ -47,6 +57,7 @@ export function DimensionPicker({
                 <span
                   className={`h-2.5 w-2.5 shrink-0 rounded-full ${dimColor(dim.id)}`}
                 />
+                <DimIcon id={dim.id} />
                 <span className="flex-1 text-sm text-zinc-200">{dim.name}</span>
                 <span className="text-xs text-zinc-500">
                   {dim.region_count} region{dim.region_count !== 1 ? 's' : ''}
@@ -60,8 +71,9 @@ export function DimensionPicker({
         <div className="border-t border-zinc-800 px-5 py-3 text-right">
           <button
             onClick={onCancel}
-            className="text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+            className="inline-flex items-center gap-1.5 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
           >
+            <X className="h-4 w-4 shrink-0" aria-hidden />
             Cancel
           </button>
         </div>

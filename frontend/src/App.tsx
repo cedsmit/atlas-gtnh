@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Loader2 } from 'lucide-react'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
 import { useBlockNames } from './features/blocks/api/blockNames'
@@ -286,7 +287,8 @@ export default function App() {
                 onClose={() => setInspectOpen(false)}
               />
             ) : (
-              <div className="flex h-full w-96 shrink-0 flex-col items-center justify-center border-l border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
+              <div className="flex h-full w-96 shrink-0 flex-col items-center justify-center gap-1.5 border-l border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Loading block data…
               </div>
             )
