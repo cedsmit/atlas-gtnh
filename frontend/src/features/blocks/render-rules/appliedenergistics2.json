@@ -42,8 +42,12 @@
     "appliedenergistics2:tile.BlockSpatialPylon": { "category": "solid" },
     "appliedenergistics2:tile.BlockSpatialIOPort": { "category": "solid" },
     "appliedenergistics2:tile.BlockMEChest": { "category": "solid" },
-    "appliedenergistics2:tile.BlockMEBus": { "category": "overlay" },
-    "appliedenergistics2:tile.BlockCable": { "category": "overlay" },
+    "appliedenergistics2:tile.BlockCableBus": {
+      "category": "overlay",
+      "mapRenderMode": "marker",
+      "mapColor": "#8577a8",
+      "blockTags": ["cable"]
+    },
     "appliedenergistics2:tile.BlockCharger": { "category": "solid" },
     "appliedenergistics2:tile.BlockInscriber": { "category": "solid" },
     "appliedenergistics2:tile.BlockWireless": { "category": "solid" },

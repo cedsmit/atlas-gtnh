@@ -195,6 +195,14 @@ export class BlockRenderRegistry {
     string,
     { def: BlockRenderDefinition; source: string }
   >()
+  // Wildcard entries — JSON keys containing a single '*', e.g.
+  // "harvestcraft:pam*Crop" matches all 60 Pam's crop blocks. Exact names win.
+  private readonly byPattern: {
+    prefix: string
+    suffix: string
+    def: BlockRenderDefinition
+    source: string
+  }[] = []
 
   constructor() {
     for (const [rawId, def] of Object.entries(VANILLA_BY_ID)) {
@@ -207,18 +215,38 @@ export class BlockRenderRegistry {
     const source = json.source ?? 'json'
     for (const [name, partial] of Object.entries(json.blocks)) {
       if (!partial.category) continue
-      this.byName.set(name, { def: partial as BlockRenderDefinition, source })
+      const star = name.indexOf('*')
+      if (star >= 0) {
+        this.byPattern.push({
+          prefix: name.slice(0, star),
+          suffix: name.slice(star + 1),
+          def: partial as BlockRenderDefinition,
+          source,
+        })
+      } else {
+        this.byName.set(name, { def: partial as BlockRenderDefinition, source })
+      }
     }
   }
 
   /**
    * Resolve name-keyed entries into numeric IDs using the world's FML block
-   * name registry.  JSON entries override built-in numeric entries.
+   * name registry.  JSON entries override built-in numeric entries; exact
+   * names win over wildcard patterns.
    * Call once per world load after all loadJson() calls.
    */
   resolveNames(blockNames: Record<number, string>): void {
     for (const [rawId, name] of Object.entries(blockNames)) {
-      const entry = this.byName.get(name)
+      let entry = this.byName.get(name)
+      if (!entry) {
+        const p = this.byPattern.find(
+          (p) =>
+            name.length >= p.prefix.length + p.suffix.length &&
+            name.startsWith(p.prefix) &&
+            name.endsWith(p.suffix)
+        )
+        if (p) entry = { def: p.def, source: p.source }
+      }
       if (entry) {
         this.byId.set(Number(rawId), {
           ...entry.def,

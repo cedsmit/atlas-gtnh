@@ -6,6 +6,24 @@
     "BuildCraft|Factory:markerBlock": { "category": "ignore" },
     "witchery:witchsapling": { "category": "ignore" },
 
+    "GalacticraftCore:tile.breatheableAir": { "category": "ignore" },
+    "GalacticraftCore:tile.brightAir": { "category": "ignore" },
+    "GalacticraftCore:tile.brightBreathableAir": { "category": "ignore" },
+    "Botania:fakeAir": { "category": "ignore" },
+    "WitchingGadgets:WG_CustomAir": { "category": "ignore" },
+    "ThaumicTinkerer:fireAir": { "category": "ignore" },
+    "ProjRed|Illumination:projectred.illumination.airousLight": {
+      "category": "ignore"
+    },
+    "EnderIO:blockLightNode": { "category": "ignore" },
+    "FloodLights:tilePhantomLight": { "category": "ignore" },
+    "HardcoreEnderExpansion:corrupted_energy_*": { "category": "ignore" },
+    "Thaumcraft:blockFluxGas": { "category": "ignore" },
+    "Thaumcraft:blockPortalEldritch": { "category": "ignore" },
+    "Thaumcraft:blockEldritchNothing": { "category": "ignore" },
+
+    "ForgeMultipart:block": { "category": "ignore" },
+
     "Botania:flower": { "category": "overlay", "blockTags": ["flower"] },
     "Botania:specialFlower": { "category": "overlay", "blockTags": ["flower"] },
     "Botania:mushroom": { "category": "overlay", "blockTags": ["flower"] },
@@ -19,6 +37,7 @@
     "Botania:manaGlass": { "category": "transparent", "alphaMode": "blend" },
     "Botania:elfGlass": { "category": "transparent", "alphaMode": "blend" },
 
+    "harvestcraft:pam*Crop": { "category": "overlay", "blockTags": ["flower"] },
     "harvestcraft:pamaquaferntall": {
       "category": "overlay",
       "blockTags": ["tallgrass"]

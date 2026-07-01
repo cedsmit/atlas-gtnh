@@ -435,16 +435,11 @@ export function renderChunkImage(
       const overlays = overlayLists[i]
       if (overlays) {
         for (const [ovId, ovMeta] of overlays) {
-          const ovKey =
-            metaTextureKeys?.[`${ovId}:${ovMeta}`] ??
-            textureKeys?.[ovId] ??
-            null
-          const ovImg = ovKey ? getTexture(ovKey) : null
-          if (!ovImg) continue
-
           const ovDef = registry.lookup(ovId)
 
-          // Only use mapRenderMode:'marker' when useMarkers is enabled (no preset enables this yet).
+          // Only use mapRenderMode:'marker' when useMarkers is enabled.
+          // Markers draw BEFORE the texture check: textureless multiparts
+          // (AE2 cable bus) can only ever render as a marker dot.
           const effectiveRenderMode = config.useMarkers
             ? (ovDef.mapRenderMode ?? 'overlay')
             : 'overlay'
@@ -462,6 +457,13 @@ export function renderChunkImage(
             drawImage++
             continue
           }
+
+          const ovKey =
+            metaTextureKeys?.[`${ovId}:${ovMeta}`] ??
+            textureKeys?.[ovId] ??
+            null
+          const ovImg = ovKey ? getTexture(ovKey) : null
+          if (!ovImg) continue
 
           const ovIsGrass = config.biomeTint && ovDef.tint === 'grass'
           const ovIsFoliage = config.biomeTint && ovDef.tint === 'foliage'

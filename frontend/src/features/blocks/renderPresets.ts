@@ -314,7 +314,9 @@ export function presetToConfig(
     contourMode: preset.contourMode,
     colorSaturation: preset.colorSaturation,
     biomeTint: overrides.biomeTint ?? preset.biomeTint,
-    useMarkers: false,
+    // Marker dots for textureless multiparts (AE2 cable bus) and marked
+    // blocks — enabled wherever the preset shows cable infrastructure.
+    useMarkers: preset.showCables,
     showFallbackMagenta:
       overrides.showFallbackMagenta ?? preset.showFallbackMagenta,
     textureFilter: overrides.textureFilter ?? preset.textureFilter,
