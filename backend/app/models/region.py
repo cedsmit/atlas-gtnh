@@ -67,6 +67,17 @@ class ChunkBatchResponse(BaseModel):
     chunks: list[ChunkData]
 
 
+class DeleteChunksRequest(BaseModel):
+    world_path: str  # dimension path (its region/ holds the .mca files)
+    chunks: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...] to delete for regen
+
+
+class CopyChunksRequest(BaseModel):
+    src_world: str  # source dimension path
+    dst_world: str  # destination dimension path
+    chunks: list[tuple[int, int]]  # copied at the same coordinates
+
+
 class DimensionInfo(BaseModel):
     id: str  # e.g. "", "DIM-1", "DIM1", "DIM42"
     name: str  # e.g. "Overworld", "Nether", "The End"
