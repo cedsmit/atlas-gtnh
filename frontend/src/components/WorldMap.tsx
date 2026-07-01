@@ -24,26 +24,9 @@ import {
   upscaleCanvas,
 } from '../lib/chunkTileRenderer'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
+import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
-
-// ── Chunk debug outline overlay ────────────────────────────────────────────
-type ChunkOutlineState = 'queued' | 'rendering' | 'loaded' | 'empty' | 'tainted' | 'error'
-
-const _outlineUnitGeo = new THREE.BufferGeometry()
-_outlineUnitGeo.setAttribute(
-  'position',
-  new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]), 3),
-)
-
-const _outlineMats: Record<ChunkOutlineState, THREE.LineBasicMaterial> = {
-  queued:    new THREE.LineBasicMaterial({ color: 0x3399ff, depthTest: false }),
-  rendering: new THREE.LineBasicMaterial({ color: 0xffcc00, depthTest: false }),
-  loaded:    new THREE.LineBasicMaterial({ color: 0x33ee33, depthTest: false }),
-  empty:     new THREE.LineBasicMaterial({ color: 0x888888, depthTest: false }),
-  tainted:   new THREE.LineBasicMaterial({ color: 0xcc44ff, depthTest: false }),
-  error:     new THREE.LineBasicMaterial({ color: 0xff3333, depthTest: false }),
-}
 
 // ── Constants ──────────────────────────────────────────────────────────────
 // All tunables live in lib/viewerConfig.ts; aliased here to short local names.
@@ -142,7 +125,6 @@ export function WorldMap({
       lastConfig:         null as RenderConfig | null,
       lastDebugMode:      false,
       chunkPixels:        new Map<string, number>(),
-      outlineMap:         new Map<string, THREE.LineLoop>(),
       resolving:          new Set<string>(),
       pendingSet:         new Set<string>(),
       pending:            [] as Array<[number, number, string]>,
@@ -195,6 +177,7 @@ export function WorldMap({
 
     const scene   = new THREE.Scene()
     scene.background = new THREE.Color(0x0f0f0f)
+    const outlines = new ChunkOutlineOverlay(scene)
 
     const cam      = new THREE.OrthographicCamera(-W/2, W/2, H/2, -H/2, 0.1, 2000)
     const chunkGeo = new THREE.PlaneGeometry(16, 16)
@@ -229,8 +212,7 @@ export function WorldMap({
           ;(entry.material as THREE.MeshBasicMaterial).dispose()
         }
       }
-      for (const line of st.outlineMap.values()) scene.remove(line)
-      st.outlineMap.clear()
+      outlines.clear()
       st.chunkPixels.clear()
       st.cache.clear()
       st.texVersionAtRender.clear()
@@ -243,17 +225,6 @@ export function WorldMap({
       st.activeBatches  = 0
       st.liveChunks     = 0
       tileCache.clear()
-    }
-
-    function setOutlineState(key: string, mcx: number, mcz: number, state: ChunkOutlineState) {
-      const old = st.outlineMap.get(key)
-      if (old) scene.remove(old)
-      if (!debugModeRef.current) { st.outlineMap.delete(key); return }
-      const line = new THREE.LineLoop(_outlineUnitGeo, _outlineMats[state])
-      line.position.set(mcx * 16, -(mcz * 16), 1)
-      line.scale.set(16, 16, 1)
-      scene.add(line)
-      st.outlineMap.set(key, line)
     }
 
     function fitCamera() {
@@ -462,7 +433,7 @@ export function WorldMap({
           ` tex=${chunkTex.uuid}` +
           ` → outline=${outlineState}`,
         )
-        setOutlineState(key, mcx, mcz, outlineState)
+        outlines.set(key, mcx, mcz, outlineState, debugModeRef.current)
       }
 
       st.cache.set(key, mesh)
@@ -501,7 +472,7 @@ export function WorldMap({
       // pass leaves it alone until the look actually changes.
       st.texVersionAtRender.set(key, st.texVersion)
       st.liveChunks++
-      if (debugModeRef.current) setOutlineState(key, mcx, mcz, 'loaded')
+      if (debugModeRef.current) outlines.set(key, mcx, mcz, 'loaded', debugModeRef.current)
     }
 
     // Drop a live chunk mesh without caching it (used for stale restored tiles
@@ -517,8 +488,7 @@ export function WorldMap({
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
       st.chunkPixels.delete(key)
-      const line = st.outlineMap.get(key)
-      if (line) { scene.remove(line); st.outlineMap.delete(key) }
+      outlines.remove(key)
       st.liveChunks--
     }
 
@@ -553,8 +523,7 @@ export function WorldMap({
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
       st.chunkPixels.delete(key)
-      const line = st.outlineMap.get(key)
-      if (line) { scene.remove(line); st.outlineMap.delete(key) }
+      outlines.remove(key)
       st.liveChunks--
     }
 
@@ -617,7 +586,7 @@ export function WorldMap({
       const dbg = debugModeRef.current
       if (dbg) {
         console.log(`[atlas:chunk] fetching  batch ×${items.length}`)
-        for (const [mcx, mcz, key] of items) setOutlineState(key, mcx, mcz, 'rendering')
+        for (const [mcx, mcz, key] of items) outlines.set(key, mcx, mcz, 'rendering', debugModeRef.current)
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
@@ -636,13 +605,13 @@ export function WorldMap({
           if (returned.has(key)) continue
           st.resolving.delete(key)
           st.cache.set(key, 'empty')
-          if (dbg) setOutlineState(key, mcx, mcz, 'empty')
+          if (dbg) outlines.set(key, mcx, mcz, 'empty', debugModeRef.current)
         }
       } catch (err) {
         for (const [mcx, mcz, key] of items) {
           st.resolving.delete(key)
           st.cache.set(key, 'error')
-          if (dbg) setOutlineState(key, mcx, mcz, 'error')
+          if (dbg) outlines.set(key, mcx, mcz, 'error', debugModeRef.current)
         }
         if (dbg) console.error('[atlas:chunk] batch exception', err)
       } finally {
@@ -692,7 +661,7 @@ export function WorldMap({
       st.pending.push([mcx, mcz, key])
       if (debugModeRef.current) {
         console.log(`[atlas:chunk] queued   ${mcx},${mcz}`)
-        setOutlineState(key, mcx, mcz, 'queued')
+        outlines.set(key, mcx, mcz, 'queued', debugModeRef.current)
       }
       drainQueue()
       return true
@@ -894,14 +863,13 @@ export function WorldMap({
             if (entry instanceof THREE.Mesh) {
               const px = st.chunkPixels.get(key) ?? -2
               const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
-              setOutlineState(key, mcx, mcz, s)
+              outlines.set(key, mcx, mcz, s, debugModeRef.current)
             } else if (entry === 'error') {
-              setOutlineState(key, mcx, mcz, 'error')
+              outlines.set(key, mcx, mcz, 'error', debugModeRef.current)
             }
           }
         } else {
-          for (const line of st.outlineMap.values()) scene.remove(line)
-          st.outlineMap.clear()
+          outlines.clear()
         }
       }
 
@@ -951,7 +919,7 @@ export function WorldMap({
               st.chunkPixels.set(key, px)
               const [mxs, mzs] = key.split(',')
               const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
-              setOutlineState(key, parseInt(mxs), parseInt(mzs), s)
+              outlines.set(key, parseInt(mxs), parseInt(mzs), s, debugModeRef.current)
             }
             const mat = entry.material as THREE.MeshBasicMaterial
             mat.map?.dispose()
