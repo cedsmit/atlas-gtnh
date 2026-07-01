@@ -249,7 +249,11 @@ export function ChunkTools({
           </div>
         )}
 
-        {result && <span className="text-zinc-300">{result}</span>}
+        {result && (
+          <span className={result.startsWith('Error') ? 'text-red-300' : 'text-emerald-300'}>
+            {result}
+          </span>
+        )}
       </div>
     </>
   )

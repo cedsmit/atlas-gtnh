@@ -21,10 +21,18 @@ from app.world.region_writer import (
     read_region_records,
     write_region_records,
 )
+from app.world.session_lock import is_world_open
 
 log = logging.getLogger(__name__)
 
 _RE_REGION = re.compile(r"r\.(-?\d+)\.(-?\d+)\.mca$")
+_WORLD_OPEN_MSG = "World is currently open in Minecraft — close it first, then try again."
+
+
+def _ensure_closed(dim_path: str) -> None:
+    """Raise if the world is loaded in Minecraft (writing it would corrupt it)."""
+    if is_world_open(dim_path):
+        raise PermissionError(_WORLD_OPEN_MSG)
 
 
 def _group_by_region(chunks: list[tuple[int, int]]) -> dict[tuple[int, int], list[tuple[int, int]]]:
@@ -40,6 +48,7 @@ def delete_chunks(dim_path: str, chunks: list[tuple[int, int]]) -> dict[str, obj
     Returns counts of deleted vs. already-absent chunks and the region files
     touched. A missing region file means those chunks were never generated.
     """
+    _ensure_closed(dim_path)
     region_dir = Path(dim_path) / "region"
     deleted = missing = 0
     touched: list[str] = []
@@ -73,6 +82,7 @@ def delete_chunks_except(dim_path: str, keep: list[tuple[int, int]]) -> dict[str
     selection) so Minecraft regenerates the rest. Scans every region file in the
     dimension. Very destructive — the caller must confirm strongly.
     """
+    _ensure_closed(dim_path)
     region_dir = Path(dim_path) / "region"
     keep_set = {(int(cx), int(cz)) for cx, cz in keep}
     deleted = 0
@@ -118,6 +128,7 @@ def copy_chunks(src_dim: str, dst_dim: str, chunks: list[tuple[int, int]]) -> di
     dst_dir = Path(dst_dim) / "region"
     if src_dir.resolve() == dst_dir.resolve():
         raise ValueError("source and destination are the same world/dimension")
+    _ensure_closed(dst_dim)  # only the destination is written
 
     copied = missing = 0
     touched: list[str] = []
