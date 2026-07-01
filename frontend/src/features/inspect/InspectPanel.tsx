@@ -18,7 +18,12 @@ interface Props {
   onClose: () => void
 }
 
-type Source = 'texture' | 'biome-grass' | 'biome-foliage' | 'built-in' | 'fallback'
+type Source =
+  | 'texture'
+  | 'biome-grass'
+  | 'biome-foliage'
+  | 'built-in'
+  | 'fallback'
 
 interface Entry {
   id: number
@@ -51,7 +56,12 @@ const SOURCE_CLASS: Record<Source, string> = {
   fallback: 'text-amber-400',
 }
 
-export function InspectPanel({ blockColors, blockNames, textureKeys, onClose }: Props) {
+export function InspectPanel({
+  blockColors,
+  blockNames,
+  textureKeys,
+  onClose,
+}: Props) {
   const [query, setQuery] = useState('')
 
   // Use Plains (biome 1) as the representative biome for biome-tinted preview
@@ -73,7 +83,9 @@ export function InspectPanel({ blockColors, blockNames, textureKeys, onClose }: 
       } else if (textureKeys ? !!textureKeys[id] : !!blockColors[id]) {
         // When textureKeys is available: 'texture' only for blocks with a confirmed PNG key.
         // Without textureKeys (still loading): fall back to checking blockColors.
-        rgb = (blockColors[id] as readonly [number, number, number] | undefined) ?? blockColorRGB(id, 0)
+        rgb =
+          (blockColors[id] as readonly [number, number, number] | undefined) ??
+          blockColorRGB(id, 0)
         source = 'texture'
       } else {
         const hardcoded = hardcodedBlockColor(id)

@@ -1,4 +1,12 @@
-import { BoxSelect, ClipboardCopy, ClipboardPaste, Loader2, Trash2, TriangleAlert, X } from 'lucide-react'
+import {
+  BoxSelect,
+  ClipboardCopy,
+  ClipboardPaste,
+  Loader2,
+  Trash2,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import { type MouseEvent, type RefObject, useRef, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
@@ -121,8 +129,15 @@ export function ChunkTools({
       cx1: Math.max(selection.cx0, selection.cx1),
       cz1: Math.max(selection.cz0, selection.cz1),
     }
-    setClipboard({ srcDim: dimensionPath, srcWorld: worldPath, chunks: expand(selection), bounds })
-    setResult(`Copied ${count} chunk(s) to clipboard. Open any world, then Paste.`)
+    setClipboard({
+      srcDim: dimensionPath,
+      srcWorld: worldPath,
+      chunks: expand(selection),
+      bounds,
+    })
+    setResult(
+      `Copied ${count} chunk(s) to clipboard. Open any world, then Paste.`
+    )
   }
 
   function enterPaste() {
@@ -142,7 +157,7 @@ export function ChunkTools({
         engineRef.current?.refreshView() // whole map changed — refresh everything
         setResult(
           `Deleted ${r.deleted ?? 0} chunk(s), kept ${r.kept ?? chunks.length}. ` +
-            'Reload the world in Minecraft to regenerate them.',
+            'Reload the world in Minecraft to regenerate them.'
         )
       } else {
         const r = await deleteChunks(dimensionPath, chunks)
@@ -150,7 +165,7 @@ export function ChunkTools({
         setResult(
           `Deleted ${r.deleted ?? 0} chunk(s)` +
             (r.missing ? `, ${r.missing} already empty` : '') +
-            '. Reload the world in Minecraft to regenerate them.',
+            '. Reload the world in Minecraft to regenerate them.'
         )
       }
       clearSelection()
@@ -195,7 +210,12 @@ export function ChunkTools({
           onMouseLeave={onUp}
           className="absolute inset-0 z-10 cursor-crosshair"
         >
-          {box && <div className="absolute border-2 border-sky-400 bg-sky-400/20" style={box} />}
+          {box && (
+            <div
+              className="absolute border-2 border-sky-400 bg-sky-400/20"
+              style={box}
+            />
+          )}
         </div>
       )}
 
@@ -203,7 +223,9 @@ export function ChunkTools({
         <button
           onClick={toggle}
           className={`inline-flex items-center gap-1 rounded px-2 py-1 ${
-            active ? 'bg-sky-600 text-white' : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
+            active
+              ? 'bg-sky-600 text-white'
+              : 'bg-zinc-700 text-zinc-200 hover:bg-zinc-600'
           }`}
         >
           <BoxSelect className="h-4 w-4 shrink-0" aria-hidden />
@@ -220,13 +242,17 @@ export function ChunkTools({
           </button>
         )}
 
-        {active && !selection && <span className="text-zinc-400">drag to select</span>}
+        {active && !selection && (
+          <span className="text-zinc-400">drag to select</span>
+        )}
 
         {active && selection && (
           <div className="flex flex-col gap-1">
             <span>
-              ({Math.min(selection.cx0, selection.cx1)}, {Math.min(selection.cz0, selection.cz1)}) – (
-              {Math.max(selection.cx0, selection.cx1)}, {Math.max(selection.cz0, selection.cz1)})
+              ({Math.min(selection.cx0, selection.cx1)},{' '}
+              {Math.min(selection.cz0, selection.cz1)}) – (
+              {Math.max(selection.cx0, selection.cx1)},{' '}
+              {Math.max(selection.cz0, selection.cz1)})
             </span>
             <span className="text-zinc-400">{count} chunks selected</span>
 
@@ -252,12 +278,13 @@ export function ChunkTools({
                 </span>
                 <span className="inline-flex items-center gap-1 text-amber-300">
                   <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-                  Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
-                  regenerates the deleted chunks on next load.
+                  Close Minecraft first — writing a loaded save corrupts it. A
+                  .bak is kept; MC regenerates the deleted chunks on next load.
                 </span>
                 {invert && (
                   <span className="text-red-400">
-                    This wipes everything outside your selection — double-check it covers your base.
+                    This wipes everything outside your selection — double-check
+                    it covers your base.
                   </span>
                 )}
                 <div className="flex gap-1">
@@ -267,7 +294,10 @@ export function ChunkTools({
                     className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
                   >
                     {busy ? (
-                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                      <Loader2
+                        className="h-3.5 w-3.5 shrink-0 animate-spin"
+                        aria-hidden
+                      />
                     ) : (
                       <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     )}
@@ -291,7 +321,9 @@ export function ChunkTools({
                   className="inline-flex items-center gap-1 rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
                 >
                   <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                  {invert ? 'Delete all EXCEPT selection' : 'Delete → regenerate'}
+                  {invert
+                    ? 'Delete all EXCEPT selection'
+                    : 'Delete → regenerate'}
                 </button>
                 <div className="flex gap-1">
                   <button
@@ -299,7 +331,10 @@ export function ChunkTools({
                     disabled={busy}
                     className="inline-flex flex-1 items-center justify-center gap-1 rounded bg-sky-800 px-2 py-1 text-sky-100 hover:bg-sky-700 disabled:opacity-50"
                   >
-                    <ClipboardCopy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <ClipboardCopy
+                      className="h-3.5 w-3.5 shrink-0"
+                      aria-hidden
+                    />
                     Copy
                   </button>
                   <button
@@ -317,7 +352,11 @@ export function ChunkTools({
         )}
 
         {result && (
-          <span className={result.startsWith('Error') ? 'text-red-300' : 'text-emerald-300'}>
+          <span
+            className={
+              result.startsWith('Error') ? 'text-red-300' : 'text-emerald-300'
+            }
+          >
             {result}
           </span>
         )}

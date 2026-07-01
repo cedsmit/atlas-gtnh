@@ -8,7 +8,12 @@
 import * as THREE from 'three'
 import type { ChunkData } from './api/chunks'
 import type { BlockColorMap } from '../blocks/api/blockColors'
-import { biomeTints, blockColorRGB, metaBlockColorRGB, resolveMetadataTint } from '../blocks/blockColors'
+import {
+  biomeTints,
+  blockColorRGB,
+  metaBlockColorRGB,
+  resolveMetadataTint,
+} from '../blocks/blockColors'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import { columnTally } from './columnTally'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
@@ -16,7 +21,7 @@ import { shouldShowOverlay } from '../blocks/renderPresets'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import { getTexture } from '../textures/textureLoader'
 
-const CELL = 16         // pixels per block column in chunk canvas
+const CELL = 16 // pixels per block column in chunk canvas
 const CANVAS_SIZE = 256 // 16 blocks × 16 px
 
 // ── Render counters ────────────────────────────────────────────────────────
@@ -40,10 +45,13 @@ export function renderChunkImage(
   registry: BlockRenderRegistry,
   config: RenderConfig,
   recordDebug: boolean, // only true on first render to avoid double-counting
-  debugMode: boolean,   // controls textureDebugStore recording
-  blockNames: Record<number, string> | undefined,
+  debugMode: boolean, // controls textureDebugStore recording
+  blockNames: Record<number, string> | undefined
 ): { canvas: HTMLCanvasElement; stats: ChunkRenderStats } {
-  let drawImage = 0, fillRect = 0, missingTexKey = 0, failedTexLoad = 0
+  let drawImage = 0,
+    fillRect = 0,
+    missingTexKey = 0,
+    failedTexLoad = 0
   const sections = [...data.sections].sort((a, b) => b.y - a.y)
 
   // ── Pass 1: classify every (x,z) column ─────────────────────────────
@@ -51,12 +59,12 @@ export function renderChunkImage(
   // underY/underId/underMeta: first solid block beneath a transparent surface.
   // overlayLists: OVERLAY blocks above the base, bottom-to-top draw order.
   // floorY: first solid block below a water surface (for depth shading).
-  const baseY    = new Int16Array(256).fill(-1)
-  const baseId   = new Uint16Array(256)
+  const baseY = new Int16Array(256).fill(-1)
+  const baseId = new Uint16Array(256)
   const baseMeta = new Uint8Array(256)
-  const floorY   = new Int16Array(256).fill(-1)
-  const underY   = new Int16Array(256).fill(-1)  // block below a transparent surface
-  const underId  = new Uint16Array(256)
+  const floorY = new Int16Array(256).fill(-1)
+  const underY = new Int16Array(256).fill(-1) // block below a transparent surface
+  const underId = new Uint16Array(256)
   const underMeta = new Uint8Array(256)
   // Each entry is [id, meta] pairs accumulated top-down then reversed.
   const overlayLists: ([number, number][] | null)[] = new Array(256).fill(null)
@@ -64,15 +72,15 @@ export function renderChunkImage(
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
       const i = z * 16 + x
-      let foundBase  = false
-      let inWater    = false
-      let needUnder  = false  // scanning for block below a transparent surface
+      let foundBase = false
+      let inWater = false
+      let needUnder = false // scanning for block below a transparent surface
       let colOverlays: [number, number][] | null = null
 
       outer: for (const section of sections) {
         for (let y = 15; y >= 0; y--) {
           const idx = (y << 8) | (z << 4) | x
-          const id  = section.blocks[idx]
+          const id = section.blocks[idx]
           if (id === 0) continue
           const def = registry.lookup(id)
           if (def.category === 'ignore') continue
@@ -87,24 +95,28 @@ export function renderChunkImage(
               // solid / fluid / transparent / partial: defines terrain height.
               // In foliage 'hidden' mode, skip foliage-tinted solids (leaves)
               // so the structure underneath is revealed.
-              if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
-              baseY[i]    = absY
-              baseId[i]   = id
+              if (config.foliageMode === 'hidden' && def.tint === 'foliage')
+                continue
+              baseY[i] = absY
+              baseId[i] = id
               baseMeta[i] = section.data[idx]
-              foundBase   = true
-              inWater     = def.category === 'fluid' && def.tint === 'water'
-              needUnder   = def.category === 'transparent'
+              foundBase = true
+              inWater = def.category === 'fluid' && def.tint === 'water'
+              needUnder = def.category === 'transparent'
               if (!inWater && !needUnder) break outer
             }
           } else if (needUnder) {
             // Continue scanning below a transparent block to find the terrain.
             if (def.category !== 'overlay') {
-              underY[i]    = absY
-              underId[i]   = id
+              underY[i] = absY
+              underId[i] = id
               underMeta[i] = section.data[idx]
               break outer
             }
-          } else if (inWater && !(def.category === 'fluid' && def.tint === 'water')) {
+          } else if (
+            inWater &&
+            !(def.category === 'fluid' && def.tint === 'water')
+          ) {
             floorY[i] = absY
             break outer
           }
@@ -136,13 +148,14 @@ export function renderChunkImage(
   // Reusable 16×16 scratch canvas for compositing biome-tinted overlay sprites.
   // Each tinted overlay is built here then source-over'd onto the chunk canvas.
   const mini = document.createElement('canvas')
-  mini.width = 16; mini.height = 16
+  mini.width = 16
+  mini.height = 16
   const miniCtx = mini.getContext('2d')!
   miniCtx.imageSmoothingEnabled = false
 
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
-      const i  = z * 16 + x
+      const i = z * 16 + x
       const px = x * CELL
       const pz = z * CELL
 
@@ -153,16 +166,16 @@ export function renderChunkImage(
         continue
       }
 
-      const id        = baseId[i]
-      const meta      = baseMeta[i]
-      const blockY    = baseY[i]
-      const baseDef   = registry.lookup(id)
-      const isWater       = baseDef.category === 'fluid' && baseDef.tint === 'water'
+      const id = baseId[i]
+      const meta = baseMeta[i]
+      const blockY = baseY[i]
+      const baseDef = registry.lookup(id)
+      const isWater = baseDef.category === 'fluid' && baseDef.tint === 'water'
       const isTransparent = baseDef.category === 'transparent'
-      const isGrass   = baseDef.tint === 'grass'
+      const isGrass = baseDef.tint === 'grass'
       const isFoliage = baseDef.tint === 'foliage'
-      const isBiome   = (isGrass || isFoliage) && config.biomeTint
-      const tintType  = baseDef.tint ?? (isWater ? 'water' : 'none')
+      const isBiome = (isGrass || isFoliage) && config.biomeTint
+      const tintType = baseDef.tint ?? (isWater ? 'water' : 'none')
 
       // ── Base color: biome tint or block color ──────────────────────
       let r: number, g: number, b: number
@@ -176,21 +189,29 @@ export function renderChunkImage(
         r = Math.max(10, 40 - depth * 1.5)
         g = Math.max(30, 80 - depth * 2)
         b = Math.min(255, 160 + depth * 3)
-      } else if (baseDef.textureTint === 'metadata16' || baseDef.textureTint === 'custom') {
+      } else if (
+        baseDef.textureTint === 'metadata16' ||
+        baseDef.textureTint === 'custom'
+      ) {
         ;[r, g, b] = resolveMetadataTint(meta, baseDef.textureTintColors)
       } else {
         // Check meta-specific color first (wool, stained glass/clay, planks, logs)
         const metaColor = metaBlockColorRGB(id, meta)
         if (metaColor) {
-          r = metaColor[0]; g = metaColor[1]; b = metaColor[2]
+          r = metaColor[0]
+          g = metaColor[1]
+          b = metaColor[2]
         } else {
           const mapped = colorMap?.[id]
-          const raw    = mapped ?? blockColorRGB(id, meta)
-          r = raw[0]; g = raw[1]; b = raw[2]
+          const raw = mapped ?? blockColorRGB(id, meta)
+          r = raw[0]
+          g = raw[1]
+          b = raw[2]
           if (mapped) {
             const maxCh = Math.max(r, g, b)
-            if (maxCh === 0) { r = g = b = 130 }
-            else if (maxCh < 80) {
+            if (maxCh === 0) {
+              r = g = b = 130
+            } else if (maxCh < 80) {
               const boost = 80 / maxCh
               r = Math.min(255, Math.round(r * boost))
               g = Math.min(255, Math.round(g * boost))
@@ -202,9 +223,9 @@ export function renderChunkImage(
 
       // ── Neighbor heights for elevation shading + contours ─────────
       // Edge columns stay -1; cross-chunk shading is a future improvement.
-      const nY = z > 0  ? baseY[(z - 1) * 16 + x] : -1
+      const nY = z > 0 ? baseY[(z - 1) * 16 + x] : -1
       const sY = z < 15 ? baseY[(z + 1) * 16 + x] : -1
-      const wY = x > 0  ? baseY[z * 16 + (x - 1)] : -1
+      const wY = x > 0 ? baseY[z * 16 + (x - 1)] : -1
       const eY = x < 15 ? baseY[z * 16 + (x + 1)] : -1
 
       // Color desaturation (Topo preset and any preset with colorSaturation < 1)
@@ -216,14 +237,20 @@ export function renderChunkImage(
         b = Math.round(lum + (b - lum) * sat)
       }
 
-      const texKey = !isWater ? (baseDef.textureAlias ?? metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null) : null
+      const texKey = !isWater
+        ? (baseDef.textureAlias ??
+          metaTextureKeys?.[`${id}:${meta}`] ??
+          textureKeys?.[id] ??
+          null)
+        : null
       // For 'simplified' foliage mode, skip the texture so only the biome fill renders.
       const skipTex = config.foliageMode === 'simplified' && isFoliage
-      const texImg  = config.terrainTextures && !skipTex && texKey ? getTexture(texKey) : null
+      const texImg =
+        config.terrainTextures && !skipTex && texKey ? getTexture(texKey) : null
 
       // Counters (skip for flat-mode blocks — they intentionally have no texture)
       if (!isWater && baseDef.mapRenderMode !== 'flat') {
-        if (!texKey)      missingTexKey++
+        if (!texKey) missingTexKey++
         else if (!texImg) failedTexLoad++
       }
 
@@ -243,28 +270,35 @@ export function renderChunkImage(
 
       if (isTransparent && underY[i] >= 0) {
         // ── Transparent block: render terrain below, then glass on top ──
-        const uId   = underId[i]
+        const uId = underId[i]
         const uMeta = underMeta[i]
-        const uDef  = registry.lookup(uId)
-        const uIsGrass   = uDef.tint === 'grass'
+        const uDef = registry.lookup(uId)
+        const uIsGrass = uDef.tint === 'grass'
         const uIsFoliage = uDef.tint === 'foliage'
-        const uIsBiome   = (uIsGrass || uIsFoliage) && config.biomeTint
+        const uIsBiome = (uIsGrass || uIsFoliage) && config.biomeTint
 
         let ur: number, ug: number, ub: number
-        if (uIsGrass)        { ;[ur, ug, ub] = grassTints[i] }
-        else if (uIsFoliage) { ;[ur, ug, ub] = foliageTints[i] }
-        else {
+        if (uIsGrass) {
+          ;[ur, ug, ub] = grassTints[i]
+        } else if (uIsFoliage) {
+          ;[ur, ug, ub] = foliageTints[i]
+        } else {
           const uMeta2 = metaBlockColorRGB(uId, uMeta)
           if (uMeta2) {
-            ur = uMeta2[0]; ug = uMeta2[1]; ub = uMeta2[2]
+            ur = uMeta2[0]
+            ug = uMeta2[1]
+            ub = uMeta2[2]
           } else {
             const uMapped = colorMap?.[uId]
-            const uRaw    = uMapped ?? blockColorRGB(uId, uMeta)
-            ur = uRaw[0]; ug = uRaw[1]; ub = uRaw[2]
+            const uRaw = uMapped ?? blockColorRGB(uId, uMeta)
+            ur = uRaw[0]
+            ug = uRaw[1]
+            ub = uRaw[2]
             if (uMapped) {
               const maxCh = Math.max(ur, ug, ub)
-              if (maxCh === 0) { ur = ug = ub = 130 }
-              else if (maxCh < 80) {
+              if (maxCh === 0) {
+                ur = ug = ub = 130
+              } else if (maxCh < 80) {
                 const boost = 80 / maxCh
                 ur = Math.min(255, Math.round(ur * boost))
                 ug = Math.min(255, Math.round(ug * boost))
@@ -280,8 +314,10 @@ export function renderChunkImage(
           ub = Math.round(lum + (ub - lum) * sat)
         }
 
-        const uTexKey = metaTextureKeys?.[`${uId}:${uMeta}`] ?? textureKeys?.[uId] ?? null
-        const uTexImg = config.terrainTextures && uTexKey ? getTexture(uTexKey) : null
+        const uTexKey =
+          metaTextureKeys?.[`${uId}:${uMeta}`] ?? textureKeys?.[uId] ?? null
+        const uTexImg =
+          config.terrainTextures && uTexKey ? getTexture(uTexKey) : null
 
         // Draw under-block
         if (uIsBiome) {
@@ -311,11 +347,15 @@ export function renderChunkImage(
           // Flat map override: skip texture entirely, fill with meta color at mapOpacity.
           // Used for blocks like Ztones glaxx whose in-game texture is just a flat tinted
           // transparent square — no vanilla glass streak pattern should appear.
-          const opacity = baseDef.mapOpacity ?? 0.40
+          const opacity = baseDef.mapOpacity ?? 0.4
           ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
           ctx.fillRect(px, pz, CELL, CELL)
           fillRect++
-        } else if (texImg && (baseDef.textureTint === 'metadata16' || baseDef.textureTint === 'custom')) {
+        } else if (
+          texImg &&
+          (baseDef.textureTint === 'metadata16' ||
+            baseDef.textureTint === 'custom')
+        ) {
           // Tinted transparent block: fill tint color, multiply texture, restore alpha, draw at 50%
           miniCtx.clearRect(0, 0, 16, 16)
           miniCtx.fillStyle = `rgb(${r},${g},${b})`
@@ -327,19 +367,19 @@ export function renderChunkImage(
             miniCtx.drawImage(texImg, 0, 0, 16, 16)
           }
           miniCtx.globalCompositeOperation = 'source-over'
-          ctx.globalAlpha = 0.50
+          ctx.globalAlpha = 0.5
           ctx.drawImage(mini, 0, 0, 16, 16, px, pz, CELL, CELL)
           ctx.globalAlpha = 1.0
           drawImage++
         } else if (texImg) {
-          ctx.globalAlpha = 0.50
+          ctx.globalAlpha = 0.5
           if (satFilter) ctx.filter = satFilter
           ctx.drawImage(texImg, 0, 0, 16, 16, px, pz, CELL, CELL)
           ctx.globalAlpha = 1.0
           if (satFilter) ctx.filter = 'none'
           drawImage++
         } else {
-          const opacity = baseDef.mapOpacity ?? 0.40
+          const opacity = baseDef.mapOpacity ?? 0.4
           ctx.fillStyle = `rgba(${r},${g},${b},${opacity})`
           ctx.fillRect(px, pz, CELL, CELL)
           fillRect++
@@ -395,29 +435,35 @@ export function renderChunkImage(
       const overlays = overlayLists[i]
       if (overlays) {
         for (const [ovId, ovMeta] of overlays) {
-          const ovKey = metaTextureKeys?.[`${ovId}:${ovMeta}`] ?? textureKeys?.[ovId] ?? null
+          const ovKey =
+            metaTextureKeys?.[`${ovId}:${ovMeta}`] ??
+            textureKeys?.[ovId] ??
+            null
           const ovImg = ovKey ? getTexture(ovKey) : null
           if (!ovImg) continue
 
           const ovDef = registry.lookup(ovId)
 
           // Only use mapRenderMode:'marker' when useMarkers is enabled (no preset enables this yet).
-          const effectiveRenderMode = config.useMarkers ? (ovDef.mapRenderMode ?? 'overlay') : 'overlay'
+          const effectiveRenderMode = config.useMarkers
+            ? (ovDef.mapRenderMode ?? 'overlay')
+            : 'overlay'
 
           if (effectiveRenderMode === 'marker') {
             // Tiny solid-colour dot at the centre of the cell (e.g. torch in Detailed mode).
             const markerSz = Math.max(2, Math.ceil(CELL * 0.3125)) // 5 px at CELL=16
-            ctx.fillStyle  = ovDef.mapColor ?? '#ffffff'
+            ctx.fillStyle = ovDef.mapColor ?? '#ffffff'
             ctx.fillRect(
               px + Math.floor((CELL - markerSz) / 2),
               pz + Math.floor((CELL - markerSz) / 2),
-              markerSz, markerSz,
+              markerSz,
+              markerSz
             )
             drawImage++
             continue
           }
 
-          const ovIsGrass   = config.biomeTint && ovDef.tint === 'grass'
+          const ovIsGrass = config.biomeTint && ovDef.tint === 'grass'
           const ovIsFoliage = config.biomeTint && ovDef.tint === 'foliage'
 
           if (ovIsGrass || ovIsFoliage) {
@@ -464,26 +510,31 @@ export function renderChunkImage(
         } else {
           // N/W contribute bright (facing NW light); S/E contribute dark (in shadow).
           // Each direction also adds a lesser counter-contribution for smooth transitions.
-          let bright = 0, dark = 0
+          let bright = 0,
+            dark = 0
           if (nY >= 0) {
             const d = blockY - nY
-            if (d > 0) bright += d          // N-face: lit by NW sun
-            else       dark   += (-d) * 0.3  // below N cliff: partial shadow
+            if (d > 0)
+              bright += d // N-face: lit by NW sun
+            else dark += -d * 0.3 // below N cliff: partial shadow
           }
           if (wY >= 0) {
             const d = blockY - wY
-            if (d > 0) bright += d * 0.65   // W-face: secondary lit direction
-            else       dark   += (-d) * 0.2
+            if (d > 0)
+              bright += d * 0.65 // W-face: secondary lit direction
+            else dark += -d * 0.2
           }
           if (sY >= 0) {
             const d = sY - blockY
-            if (d > 0) dark   += d           // S-slope above: full shadow
-            else       bright += (-d) * 0.15  // S below: minor bright
+            if (d > 0)
+              dark += d // S-slope above: full shadow
+            else bright += -d * 0.15 // S below: minor bright
           }
           if (eY >= 0) {
             const d = eY - blockY
-            if (d > 0) dark   += d * 0.65   // E-slope: secondary shadow
-            else       bright += (-d) * 0.1
+            if (d > 0)
+              dark += d * 0.65 // E-slope: secondary shadow
+            else bright += -d * 0.1
           }
 
           // Ambient occlusion: extra darkening at cliff edges (steep drops in any direction)
@@ -491,17 +542,17 @@ export function renderChunkImage(
             nY >= 0 ? Math.abs(blockY - nY) : 0,
             sY >= 0 ? Math.abs(blockY - sY) : 0,
             wY >= 0 ? Math.abs(blockY - wY) : 0,
-            eY >= 0 ? Math.abs(blockY - eY) : 0,
+            eY >= 0 ? Math.abs(blockY - eY) : 0
           )
-          const ao = Math.max(0, (steep - 2) * str / 80)
+          const ao = Math.max(0, ((steep - 2) * str) / 80)
 
           // Normalize and clamp. NORM=9: a 3-block cliff → ~33% shade at str=1.
           // maxD 0.78 lets Topo (str=2.5) reach near-black on cliffs.
-          const NORM   = 9
-          const maxB   = elevMode === 'strong' ? 0.48 : 0.28
-          const maxD   = elevMode === 'strong' ? 0.78 : 0.42
-          const brightA = Math.min(bright * str / NORM, maxB)
-          const darkA   = Math.min(dark   * str / NORM + ao, maxD)
+          const NORM = 9
+          const maxB = elevMode === 'strong' ? 0.48 : 0.28
+          const maxD = elevMode === 'strong' ? 0.78 : 0.42
+          const brightA = Math.min((bright * str) / NORM, maxB)
+          const darkA = Math.min((dark * str) / NORM + ao, maxD)
           if (brightA > 0.01) {
             ctx.fillStyle = `rgba(255,255,255,${brightA})`
             ctx.fillRect(px, pz, CELL, CELL)
@@ -518,15 +569,16 @@ export function renderChunkImage(
       const cMode = config.contourMode
       if (cMode !== 'off') {
         // 'strong' uses 4-Y interval; others use 8-Y
-        const shift = cMode === 'strong' ? 2 : 3   // bit-shift = log2(interval)
-        const band  = blockY >> shift
+        const shift = cMode === 'strong' ? 2 : 3 // bit-shift = log2(interval)
+        const band = blockY >> shift
         const atContour =
-          (sY >= 0 && (sY >> shift) !== band) ||
-          (nY >= 0 && (nY >> shift) !== band) ||
-          (eY >= 0 && (eY >> shift) !== band) ||
-          (wY >= 0 && (wY >> shift) !== band)
+          (sY >= 0 && sY >> shift !== band) ||
+          (nY >= 0 && nY >> shift !== band) ||
+          (eY >= 0 && eY >> shift !== band) ||
+          (wY >= 0 && wY >> shift !== band)
         if (atContour) {
-          const cAlpha = cMode === 'subtle' ? 0.18 : cMode === 'normal' ? 0.32 : 0.50
+          const cAlpha =
+            cMode === 'subtle' ? 0.18 : cMode === 'normal' ? 0.32 : 0.5
           ctx.fillStyle = `rgba(0,0,0,${cAlpha})`
           ctx.fillRect(px, pz, CELL, CELL)
         }
@@ -559,17 +611,32 @@ function elevColor(y: number): [number, number, number] {
   }
   if (y < 80) {
     const t = (y - 60) / 20
-    return [Math.round(30 + t * 30), Math.round(80 + t * 100), Math.round(160 - t * 60)]
+    return [
+      Math.round(30 + t * 30),
+      Math.round(80 + t * 100),
+      Math.round(160 - t * 60),
+    ]
   }
   if (y < 128) {
     const t = (y - 80) / 48
-    return [Math.round(60 + t * 160), Math.round(180 + t * 50), Math.round(100 - t * 80)]
+    return [
+      Math.round(60 + t * 160),
+      Math.round(180 + t * 50),
+      Math.round(100 - t * 80),
+    ]
   }
   const t = Math.min((y - 128) / 100, 1)
-  return [Math.round(220 + t * 35), Math.round(230 + t * 25), Math.round(20 + t * 235)]
+  return [
+    Math.round(220 + t * 35),
+    Math.round(230 + t * 25),
+    Math.round(20 + t * 235),
+  ]
 }
 
-export function makeChunkTexture(canvas: HTMLCanvasElement, filter: TextureFilter = 'pixel'): THREE.CanvasTexture {
+export function makeChunkTexture(
+  canvas: HTMLCanvasElement,
+  filter: TextureFilter = 'pixel'
+): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.generateMipmaps = true
@@ -583,7 +650,10 @@ export function makeChunkTexture(canvas: HTMLCanvasElement, filter: TextureFilte
   return tex
 }
 
-export function upscaleCanvas(src: HTMLCanvasElement, size: number): HTMLCanvasElement {
+export function upscaleCanvas(
+  src: HTMLCanvasElement,
+  size: number
+): HTMLCanvasElement {
   const dst = document.createElement('canvas')
   dst.width = dst.height = size
   const ctx = dst.getContext('2d')!
@@ -598,13 +668,15 @@ export function upscaleCanvas(src: HTMLCanvasElement, size: number): HTMLCanvasE
 // Returns -1 when getImageData() throws (cross-origin taint = WebGL upload blocked).
 export function canvasDiagnostics(canvas: HTMLCanvasElement): number {
   try {
-    const d = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+    const d = canvas
+      .getContext('2d')!
+      .getImageData(0, 0, canvas.width, canvas.height).data
     let n = 0
     for (let i = 0; i < d.length; i += 4) {
       if (d[i] | d[i + 1] | d[i + 2] | d[i + 3]) n++
     }
     return n
   } catch {
-    return -1  // SecurityError: canvas tainted by cross-origin drawImage
+    return -1 // SecurityError: canvas tainted by cross-origin drawImage
   }
 }

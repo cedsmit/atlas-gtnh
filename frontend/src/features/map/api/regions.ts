@@ -56,7 +56,9 @@ export async function fetchRegionSurface(
     `${API_BASE}/worlds/regions/${rx}/${rz}/surface?world_path=${encodeURIComponent(worldPath)}`
   )
   if (!res.ok)
-    throw new Error(`Failed to load region surface r.${rx}.${rz}: ${res.statusText}`)
+    throw new Error(
+      `Failed to load region surface r.${rx}.${rz}: ${res.statusText}`
+    )
   return res.json() as Promise<RegionSurface>
 }
 

@@ -58,7 +58,9 @@ export function getSettledCount(keys: string[]): {
   missing: number
   pending: number
 } {
-  let loaded = 0, missing = 0, pending = 0
+  let loaded = 0,
+    missing = 0,
+    pending = 0
   for (const key of keys) {
     const e = _cache.get(key)
     if (!e || e.state === 'pending') pending++

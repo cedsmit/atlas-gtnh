@@ -2,33 +2,33 @@
   "format": 1,
   "source": "buildcraft.json",
   "blocks": {
-    "BuildCraft|Core:markerBlock":             { "category": "ignore" },
-    "BuildCraft|Core:pathMarkerBlock":         { "category": "ignore" },
-    "BuildCraft|Factory:markerBlock":          { "category": "ignore" },
+    "BuildCraft|Core:markerBlock": { "category": "ignore" },
+    "BuildCraft|Core:pathMarkerBlock": { "category": "ignore" },
+    "BuildCraft|Factory:markerBlock": { "category": "ignore" },
 
-    "BuildCraft|Core:engineBlock":             { "category": "solid" },
-    "BuildCraft|Core:plateBlock":              { "category": "solid" },
+    "BuildCraft|Core:engineBlock": { "category": "solid" },
+    "BuildCraft|Core:plateBlock": { "category": "solid" },
 
-    "BuildCraft|Factory:autoWorkbenchBlock":   { "category": "solid" },
-    "BuildCraft|Factory:miningWellBlock":      { "category": "solid" },
-    "BuildCraft|Factory:quarryBlock":          { "category": "solid" },
-    "BuildCraft|Factory:pumpBlock":            { "category": "solid" },
-    "BuildCraft|Factory:tankBlock":            { "category": "solid" },
-    "BuildCraft|Factory:floodGateBlock":       { "category": "solid" },
-    "BuildCraft|Factory:hopperBlock":          { "category": "solid" },
-    "BuildCraft|Factory:fillerBlock":          { "category": "solid" },
-    "BuildCraft|Factory:laserBlock":           { "category": "solid" },
-    "BuildCraft|Factory:assemblyTableBlock":   { "category": "solid" },
+    "BuildCraft|Factory:autoWorkbenchBlock": { "category": "solid" },
+    "BuildCraft|Factory:miningWellBlock": { "category": "solid" },
+    "BuildCraft|Factory:quarryBlock": { "category": "solid" },
+    "BuildCraft|Factory:pumpBlock": { "category": "solid" },
+    "BuildCraft|Factory:tankBlock": { "category": "solid" },
+    "BuildCraft|Factory:floodGateBlock": { "category": "solid" },
+    "BuildCraft|Factory:hopperBlock": { "category": "solid" },
+    "BuildCraft|Factory:fillerBlock": { "category": "solid" },
+    "BuildCraft|Factory:laserBlock": { "category": "solid" },
+    "BuildCraft|Factory:assemblyTableBlock": { "category": "solid" },
     "BuildCraft|Factory:advancedCraftingTableBlock": { "category": "solid" },
 
     "BuildCraft|Transport:filteredBufferBlock": { "category": "solid" },
-    "BuildCraft|Transport:pipeBlock":          { "category": "overlay" },
+    "BuildCraft|Transport:pipeBlock": { "category": "overlay" },
 
-    "BuildCraft|Energy:blockOil":              { "category": "fluid" },
-    "BuildCraft|Energy:blockFuel":             { "category": "fluid" },
+    "BuildCraft|Energy:blockOil": { "category": "fluid" },
+    "BuildCraft|Energy:blockFuel": { "category": "fluid" },
 
-    "BuildCraft|Builders:architectBlock":      { "category": "solid" },
-    "BuildCraft|Builders:builderBlock":        { "category": "solid" },
-    "BuildCraft|Builders:libraryBlock":        { "category": "solid" }
+    "BuildCraft|Builders:architectBlock": { "category": "solid" },
+    "BuildCraft|Builders:builderBlock": { "category": "solid" },
+    "BuildCraft|Builders:libraryBlock": { "category": "solid" }
   }
 }

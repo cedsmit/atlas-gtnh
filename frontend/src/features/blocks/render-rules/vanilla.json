@@ -2,103 +2,187 @@
   "format": 1,
   "source": "vanilla.json",
   "blocks": {
-    "minecraft:air":                             { "category": "ignore" },
-    "minecraft:barrier":                         { "category": "ignore" },
+    "minecraft:air": { "category": "ignore" },
+    "minecraft:barrier": { "category": "ignore" },
 
-    "minecraft:flowing_water":                   { "category": "fluid",  "tint": "water" },
-    "minecraft:water":                           { "category": "fluid",  "tint": "water" },
-    "minecraft:flowing_lava":                    { "category": "fluid"  },
-    "minecraft:lava":                            { "category": "fluid"  },
+    "minecraft:flowing_water": { "category": "fluid", "tint": "water" },
+    "minecraft:water": { "category": "fluid", "tint": "water" },
+    "minecraft:flowing_lava": { "category": "fluid" },
+    "minecraft:lava": { "category": "fluid" },
 
-    "minecraft:grass":                           { "category": "solid",   "tint": "grass"   },
-    "minecraft:leaves":                          { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
-    "minecraft:leaves2":                         { "category": "solid",   "tint": "foliage", "alphaMode": "cutout" },
+    "minecraft:grass": { "category": "solid", "tint": "grass" },
+    "minecraft:leaves": {
+      "category": "solid",
+      "tint": "foliage",
+      "alphaMode": "cutout"
+    },
+    "minecraft:leaves2": {
+      "category": "solid",
+      "tint": "foliage",
+      "alphaMode": "cutout"
+    },
 
-    "minecraft:ice":                             { "category": "transparent", "alphaMode": "blend" },
-    "minecraft:glass":                           { "category": "transparent", "alphaMode": "blend" },
-    "minecraft:stained_glass":                   { "category": "transparent", "alphaMode": "blend" },
+    "minecraft:ice": { "category": "transparent", "alphaMode": "blend" },
+    "minecraft:glass": { "category": "transparent", "alphaMode": "blend" },
+    "minecraft:stained_glass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
 
-    "minecraft:snow_layer":                      { "category": "overlay" },
-    "minecraft:carpet":                          { "category": "overlay" },
+    "minecraft:snow_layer": { "category": "overlay" },
+    "minecraft:carpet": { "category": "overlay" },
 
-    "minecraft:vine":                            { "category": "overlay", "tint": "foliage", "blockTags": ["tallgrass"] },
-    "minecraft:waterlily":                       { "category": "overlay", "tint": "foliage", "blockTags": ["tallgrass"] },
+    "minecraft:vine": {
+      "category": "overlay",
+      "tint": "foliage",
+      "blockTags": ["tallgrass"]
+    },
+    "minecraft:waterlily": {
+      "category": "overlay",
+      "tint": "foliage",
+      "blockTags": ["tallgrass"]
+    },
 
-    "minecraft:tallgrass":                       { "category": "overlay", "tint": "grass",   "blockTags": ["tallgrass"] },
-    "minecraft:double_plant":                    { "category": "overlay", "tint": "grass",   "blockTags": ["tallgrass"] },
+    "minecraft:tallgrass": {
+      "category": "overlay",
+      "tint": "grass",
+      "blockTags": ["tallgrass"]
+    },
+    "minecraft:double_plant": {
+      "category": "overlay",
+      "tint": "grass",
+      "blockTags": ["tallgrass"]
+    },
 
-    "minecraft:sapling":                         { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:deadbush":                        { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:yellow_flower":                   { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:red_flower":                      { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:brown_mushroom":                  { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:red_mushroom":                    { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:reeds":                           { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:pumpkin_stem":                    { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:melon_stem":                      { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:nether_wart":                     { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:cocoa":                           { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:carrots":                         { "category": "overlay", "blockTags": ["flower"] },
-    "minecraft:potatoes":                        { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:sapling": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:deadbush": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:yellow_flower": {
+      "category": "overlay",
+      "blockTags": ["flower"]
+    },
+    "minecraft:red_flower": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:brown_mushroom": {
+      "category": "overlay",
+      "blockTags": ["flower"]
+    },
+    "minecraft:red_mushroom": {
+      "category": "overlay",
+      "blockTags": ["flower"]
+    },
+    "minecraft:reeds": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:pumpkin_stem": {
+      "category": "overlay",
+      "blockTags": ["flower"]
+    },
+    "minecraft:melon_stem": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:nether_wart": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:cocoa": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:carrots": { "category": "overlay", "blockTags": ["flower"] },
+    "minecraft:potatoes": { "category": "overlay", "blockTags": ["flower"] },
 
-    "minecraft:wheat":                           { "category": "overlay" },
-    "minecraft:carrots":                         { "category": "overlay" },
-    "minecraft:potatoes":                        { "category": "overlay" },
+    "minecraft:wheat": { "category": "overlay" },
+    "minecraft:carrots": { "category": "overlay" },
+    "minecraft:potatoes": { "category": "overlay" },
 
-    "minecraft:oak_stairs":                      { "category": "solid" },
-    "minecraft:stone_stairs":                    { "category": "solid" },
-    "minecraft:stone_brick_stairs":              { "category": "solid" },
-    "minecraft:birch_stairs":                    { "category": "solid" },
-    "minecraft:spruce_stairs":                   { "category": "solid" },
-    "minecraft:jungle_stairs":                   { "category": "solid" },
-    "minecraft:acacia_stairs":                   { "category": "solid" },
-    "minecraft:dark_oak_stairs":                 { "category": "solid" },
-    "minecraft:brick_stairs":                    { "category": "solid" },
-    "minecraft:nether_brick_stairs":             { "category": "solid" },
-    "minecraft:sandstone_stairs":                { "category": "solid" },
-    "minecraft:red_sandstone_stairs":            { "category": "solid" },
-    "minecraft:quartz_stairs":                   { "category": "solid" },
+    "minecraft:oak_stairs": { "category": "solid" },
+    "minecraft:stone_stairs": { "category": "solid" },
+    "minecraft:stone_brick_stairs": { "category": "solid" },
+    "minecraft:birch_stairs": { "category": "solid" },
+    "minecraft:spruce_stairs": { "category": "solid" },
+    "minecraft:jungle_stairs": { "category": "solid" },
+    "minecraft:acacia_stairs": { "category": "solid" },
+    "minecraft:dark_oak_stairs": { "category": "solid" },
+    "minecraft:brick_stairs": { "category": "solid" },
+    "minecraft:nether_brick_stairs": { "category": "solid" },
+    "minecraft:sandstone_stairs": { "category": "solid" },
+    "minecraft:red_sandstone_stairs": { "category": "solid" },
+    "minecraft:quartz_stairs": { "category": "solid" },
 
-    "minecraft:fence":                           { "category": "solid" },
-    "minecraft:fence_gate":                      { "category": "solid" },
-    "minecraft:nether_brick_fence":              { "category": "solid" },
+    "minecraft:fence": { "category": "solid" },
+    "minecraft:fence_gate": { "category": "solid" },
+    "minecraft:nether_brick_fence": { "category": "solid" },
 
-    "minecraft:golden_rail":                     { "category": "overlay", "blockTags": ["rail"] },
-    "minecraft:detector_rail":                   { "category": "overlay", "blockTags": ["rail"] },
-    "minecraft:rail":                            { "category": "overlay", "blockTags": ["rail"] },
-    "minecraft:activator_rail":                  { "category": "overlay", "blockTags": ["rail"] },
+    "minecraft:golden_rail": { "category": "overlay", "blockTags": ["rail"] },
+    "minecraft:detector_rail": { "category": "overlay", "blockTags": ["rail"] },
+    "minecraft:rail": { "category": "overlay", "blockTags": ["rail"] },
+    "minecraft:activator_rail": {
+      "category": "overlay",
+      "blockTags": ["rail"]
+    },
 
-    "minecraft:redstone_wire":                   { "category": "overlay", "blockTags": ["redstone"] },
-    "minecraft:unlit_redstone_torch":            { "category": "overlay", "blockTags": ["torch", "redstone"] },
-    "minecraft:redstone_torch":                  { "category": "overlay", "blockTags": ["torch", "redstone"] },
-    "minecraft:unpowered_repeater":              { "category": "overlay", "blockTags": ["redstone"] },
-    "minecraft:powered_repeater":                { "category": "overlay", "blockTags": ["redstone"] },
+    "minecraft:redstone_wire": {
+      "category": "overlay",
+      "blockTags": ["redstone"]
+    },
+    "minecraft:unlit_redstone_torch": {
+      "category": "overlay",
+      "blockTags": ["torch", "redstone"]
+    },
+    "minecraft:redstone_torch": {
+      "category": "overlay",
+      "blockTags": ["torch", "redstone"]
+    },
+    "minecraft:unpowered_repeater": {
+      "category": "overlay",
+      "blockTags": ["redstone"]
+    },
+    "minecraft:powered_repeater": {
+      "category": "overlay",
+      "blockTags": ["redstone"]
+    },
 
-    "minecraft:torch":                           {
+    "minecraft:torch": {
       "category": "overlay",
       "mapRenderMode": "marker",
       "mapColor": "#E8A030",
       "blockTags": ["torch"]
     },
-    "minecraft:fire":                            { "category": "overlay", "blockTags": ["fire"] },
+    "minecraft:fire": { "category": "overlay", "blockTags": ["fire"] },
 
-    "minecraft:bed":                             { "category": "overlay" },
-    "minecraft:ladder":                          { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:standing_sign":                   { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:wall_sign":                       { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:lever":                           { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:stone_pressure_plate":            { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:wooden_pressure_plate":           { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:stone_button":                    { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:wooden_button":                   { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:heavy_weighted_pressure_plate":   { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:light_weighted_pressure_plate":   { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:tripwire_hook":                   { "category": "overlay", "mapVisibility": "debug" },
-    "minecraft:tripwire":                        { "category": "overlay", "mapVisibility": "debug" },
+    "minecraft:bed": { "category": "overlay" },
+    "minecraft:ladder": { "category": "overlay", "mapVisibility": "debug" },
+    "minecraft:standing_sign": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:wall_sign": { "category": "overlay", "mapVisibility": "debug" },
+    "minecraft:lever": { "category": "overlay", "mapVisibility": "debug" },
+    "minecraft:stone_pressure_plate": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:wooden_pressure_plate": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:stone_button": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:wooden_button": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:heavy_weighted_pressure_plate": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:light_weighted_pressure_plate": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:tripwire_hook": {
+      "category": "overlay",
+      "mapVisibility": "debug"
+    },
+    "minecraft:tripwire": { "category": "overlay", "mapVisibility": "debug" },
 
-    "minecraft:web":                             { "category": "overlay", "alphaMode": "cutout" },
-    "minecraft:iron_bars":                       { "category": "overlay", "alphaMode": "cutout" },
-    "minecraft:glass_pane":                      { "category": "overlay", "alphaMode": "blend"  },
-    "minecraft:stained_glass_pane":              { "category": "overlay", "alphaMode": "blend"  }
+    "minecraft:web": { "category": "overlay", "alphaMode": "cutout" },
+    "minecraft:iron_bars": { "category": "overlay", "alphaMode": "cutout" },
+    "minecraft:glass_pane": { "category": "overlay", "alphaMode": "blend" },
+    "minecraft:stained_glass_pane": {
+      "category": "overlay",
+      "alphaMode": "blend"
+    }
   }
 }

@@ -64,7 +64,10 @@ export function useDumpMismatch(worldPath: string | null) {
 export async function downloadMissingBlockReport(
   worldPath: string,
   format: 'json' | 'csv',
-  snapshot: { occurrences: Record<number, number>; metas: Record<number, number[]> }
+  snapshot: {
+    occurrences: Record<number, number>
+    metas: Record<number, number[]>
+  }
 ): Promise<void> {
   const res = await fetch(
     `${API_BASE}/worlds/missing-block-report?world_path=${encodeURIComponent(worldPath)}&format=${format}`,

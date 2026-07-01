@@ -25,7 +25,7 @@ const EMPTY: TexturePreloadStats = {
 export function useTexturePreloader(
   textureKeys: Record<number, string> | undefined,
   worldPath: string | null,
-  metaTextureKeys?: Record<string, string>,
+  metaTextureKeys?: Record<string, string>
 ): TexturePreloadStats {
   const [tick, setTick] = useState(0)
   const startRef = useRef<number | null>(null)
@@ -35,7 +35,7 @@ export function useTexturePreloader(
   // Recalculated only when either map reference changes.
   const keys = useMemo(() => {
     const regular = textureKeys ? Object.values(textureKeys) : []
-    const meta    = metaTextureKeys ? Object.values(metaTextureKeys) : []
+    const meta = metaTextureKeys ? Object.values(metaTextureKeys) : []
     return meta.length === 0 ? regular : [...new Set([...regular, ...meta])]
   }, [textureKeys, metaTextureKeys])
 
@@ -60,7 +60,7 @@ export function useTexturePreloader(
       const elapsed = (finishedRef.current - startRef.current).toFixed(0)
       console.log(
         `[atlas:textures] preload done in ${elapsed}ms — ` +
-          `${s.loaded} loaded, ${s.missing} missing`,
+          `${s.loaded} loaded, ${s.missing} missing`
       )
     }
     return {

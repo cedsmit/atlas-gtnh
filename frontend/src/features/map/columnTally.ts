@@ -18,7 +18,10 @@ class ColumnTally {
   record(id: number, meta: number) {
     this._counts.set(id, (this._counts.get(id) ?? 0) + 1)
     let ms = this._metas.get(id)
-    if (!ms) { ms = new Set(); this._metas.set(id, ms) }
+    if (!ms) {
+      ms = new Set()
+      this._metas.set(id, ms)
+    }
     ms.add(meta)
     this._schedule()
   }
@@ -28,11 +31,15 @@ class ColumnTally {
   }
 
   /** Plain-object snapshot for the missing-block report export. */
-  snapshot(): { occurrences: Record<number, number>; metas: Record<number, number[]> } {
+  snapshot(): {
+    occurrences: Record<number, number>
+    metas: Record<number, number[]>
+  } {
     const occurrences: Record<number, number> = {}
     const metas: Record<number, number[]> = {}
     for (const [id, n] of this._counts) occurrences[id] = n
-    for (const [id, set] of this._metas) metas[id] = [...set].sort((a, b) => a - b)
+    for (const [id, set] of this._metas)
+      metas[id] = [...set].sort((a, b) => a - b)
     return { occurrences, metas }
   }
 

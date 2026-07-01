@@ -16,7 +16,11 @@ import type { MapEngine } from '../map/mapEngine'
 import { copyChunks, createWorld } from './api/chunkOps'
 import type { ChunkClipboard } from './chunkClipboard'
 
-const base = (p: string) => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? p
+const base = (p: string) =>
+  p
+    .replace(/[\\/]+$/, '')
+    .split(/[\\/]/)
+    .pop() ?? p
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 /**
@@ -37,7 +41,10 @@ export function PastePanel({
 }) {
   const w = clip.bounds.cx1 - clip.bounds.cx0 + 1
   const h = clip.bounds.cz1 - clip.bounds.cz0 + 1
-  const [anchor, setAnchor] = useState({ cx: clip.bounds.cx0, cz: clip.bounds.cz0 })
+  const [anchor, setAnchor] = useState({
+    cx: clip.bounds.cx0,
+    cz: clip.bounds.cz0,
+  })
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
 
@@ -79,7 +86,11 @@ export function PastePanel({
     try {
       const r = await copyChunks(clip.srcDim, destDim, clip.chunks, offset)
       engineRef.current?.invalidateChunks(destChunks())
-      setResult(`Pasted ${r.copied ?? 0} chunk(s)` + (r.missing ? `, ${r.missing} missing` : '') + '.')
+      setResult(
+        `Pasted ${r.copied ?? 0} chunk(s)` +
+          (r.missing ? `, ${r.missing} missing` : '') +
+          '.'
+      )
     } catch (e) {
       setResult(`Error: ${errMsg(e)}`)
     } finally {
@@ -102,11 +113,15 @@ export function PastePanel({
     }
   }
 
-  const nudgeBtn = 'rounded bg-zinc-700 p-1 hover:bg-zinc-600 disabled:opacity-50'
+  const nudgeBtn =
+    'rounded bg-zinc-700 p-1 hover:bg-zinc-600 disabled:opacity-50'
 
   return (
     <>
-      <div onMouseDown={placeAt} className="absolute inset-0 z-10 cursor-copy" />
+      <div
+        onMouseDown={placeAt}
+        className="absolute inset-0 z-10 cursor-copy"
+      />
 
       <div className="absolute left-2 top-2 z-20 flex w-64 flex-col gap-1 rounded border border-emerald-800 bg-black/80 p-2 font-mono text-xs text-zinc-200">
         <span className="inline-flex items-center gap-1 text-emerald-200">
@@ -118,25 +133,46 @@ export function PastePanel({
         </span>
 
         <div className="flex items-center justify-center gap-1 py-1">
-          <button onClick={nudge(-1, 0)} disabled={busy} className={nudgeBtn} aria-label="Nudge west">
+          <button
+            onClick={nudge(-1, 0)}
+            disabled={busy}
+            className={nudgeBtn}
+            aria-label="Nudge west"
+          >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </button>
           <div className="flex flex-col gap-1">
-            <button onClick={nudge(0, -1)} disabled={busy} className={nudgeBtn} aria-label="Nudge north">
+            <button
+              onClick={nudge(0, -1)}
+              disabled={busy}
+              className={nudgeBtn}
+              aria-label="Nudge north"
+            >
               <ArrowUp className="h-4 w-4" aria-hidden />
             </button>
-            <button onClick={nudge(0, 1)} disabled={busy} className={nudgeBtn} aria-label="Nudge south">
+            <button
+              onClick={nudge(0, 1)}
+              disabled={busy}
+              className={nudgeBtn}
+              aria-label="Nudge south"
+            >
               <ArrowDown className="h-4 w-4" aria-hidden />
             </button>
           </div>
-          <button onClick={nudge(1, 0)} disabled={busy} className={nudgeBtn} aria-label="Nudge east">
+          <button
+            onClick={nudge(1, 0)}
+            disabled={busy}
+            className={nudgeBtn}
+            aria-label="Nudge east"
+          >
             <ArrowRight className="h-4 w-4" aria-hidden />
           </button>
         </div>
 
         <span className="inline-flex items-center gap-1 text-amber-300">
           <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
-          Same modpack version, and the destination world must be closed in Minecraft.
+          Same modpack version, and the destination world must be closed in
+          Minecraft.
         </span>
 
         <button
@@ -170,7 +206,11 @@ export function PastePanel({
           </button>
         </div>
         {result && (
-          <span className={result.startsWith('Error') ? 'text-red-300' : 'text-emerald-300'}>
+          <span
+            className={
+              result.startsWith('Error') ? 'text-red-300' : 'text-emerald-300'
+            }
+          >
             {result}
           </span>
         )}

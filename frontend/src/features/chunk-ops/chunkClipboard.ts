@@ -27,6 +27,6 @@ export function useClipboard(): ChunkClipboard | null {
       subscribers.add(cb)
       return () => subscribers.delete(cb)
     },
-    () => clip,
+    () => clip
   )
 }

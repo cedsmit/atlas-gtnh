@@ -12,7 +12,7 @@ export interface ChunkData {
   chunk_x: number
   chunk_z: number
   sections: ChunkSection[]
-  biomes: number[]  // 256 biome IDs indexed x + z*16; empty when not stored
+  biomes: number[] // 256 biome IDs indexed x + z*16; empty when not stored
 }
 
 async function fetchChunkData(

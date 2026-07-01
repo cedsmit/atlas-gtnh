@@ -12,7 +12,12 @@
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
 import type { RegionSurface } from './api/regions'
-import { biomeTints, blockColorRGB, metaBlockColorRGB, resolveMetadataTint } from '../blocks/blockColors'
+import {
+  biomeTints,
+  blockColorRGB,
+  metaBlockColorRGB,
+  resolveMetadataTint,
+} from '../blocks/blockColors'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig } from '../blocks/renderPresets'
 
@@ -23,7 +28,7 @@ export function renderRegionTile(
   surface: RegionSurface,
   colorMap: BlockColorMap | undefined,
   registry: BlockRenderRegistry,
-  config: RenderConfig,
+  config: RenderConfig
 ): HTMLCanvasElement {
   const N = REGION_BLOCKS
 
@@ -64,7 +69,10 @@ export function renderRegionTile(
     const id = idMap[idx]
     const h = heightMap[idx]
     if (id === 0 || h < 0) {
-      px[o] = 10; px[o + 1] = 10; px[o + 2] = 10; px[o + 3] = 255
+      px[o] = 10
+      px[o + 1] = 10
+      px[o + 2] = 10
+      px[o + 3] = 255
       continue
     }
 
@@ -77,21 +85,31 @@ export function renderRegionTile(
     } else if (def.tint === 'foliage' && config.biomeTint) {
       ;[r, g, b] = biomeTints(biomeMap[idx]).foliage
     } else if (def.category === 'fluid' && def.tint === 'water') {
-      r = 40; g = 80; b = 170
-    } else if (def.textureTint === 'metadata16' || def.textureTint === 'custom') {
+      r = 40
+      g = 80
+      b = 170
+    } else if (
+      def.textureTint === 'metadata16' ||
+      def.textureTint === 'custom'
+    ) {
       ;[r, g, b] = resolveMetadataTint(meta, def.textureTintColors)
     } else {
       const metaColor = metaBlockColorRGB(id, meta)
       if (metaColor) {
-        r = metaColor[0]; g = metaColor[1]; b = metaColor[2]
+        r = metaColor[0]
+        g = metaColor[1]
+        b = metaColor[2]
       } else {
         const mapped = colorMap?.[id]
         const raw = mapped ?? blockColorRGB(id, meta)
-        r = raw[0]; g = raw[1]; b = raw[2]
+        r = raw[0]
+        g = raw[1]
+        b = raw[2]
         if (mapped) {
           const maxCh = Math.max(r, g, b)
-          if (maxCh === 0) { r = g = b = 130 }
-          else if (maxCh < 80) {
+          if (maxCh === 0) {
+            r = g = b = 130
+          } else if (maxCh < 80) {
             const boost = 80 / maxCh
             r = Math.min(255, Math.round(r * boost))
             g = Math.min(255, Math.round(g * boost))
@@ -123,7 +141,10 @@ export function renderRegionTile(
       }
     }
 
-    px[o] = r; px[o + 1] = g; px[o + 2] = b; px[o + 3] = 255
+    px[o] = r
+    px[o + 1] = g
+    px[o + 2] = b
+    px[o + 3] = 255
   }
 
   ctx.putImageData(img, 0, 0)

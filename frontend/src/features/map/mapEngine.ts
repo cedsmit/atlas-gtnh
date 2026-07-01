@@ -32,19 +32,19 @@ import { attachMapInput } from './mapInput'
 import { MapScene } from './mapScene'
 
 const {
-  minScale:                   MIN_SCALE,
-  maxScale:                   MAX_SCALE,
-  chunkLodScale:              CHUNK_LOD_SCALE,
-  chunkPreloadMargin:         CHUNK_PRELOAD_MARGIN,
-  chunkEvictMargin:           CHUNK_EVICT_MARGIN,
-  maxLiveChunksPixel:         MAX_LIVE_CHUNKS_PIXEL,
-  maxLiveChunksJourneymap:    MAX_LIVE_CHUNKS_JOURNEYMAP,
-  maxRegionTiles:             MAX_REGION_TILES,
-  tileCacheMax:               TILE_CACHE_MAX,
-  batchSize:                  BATCH_SIZE,
-  maxConcurrentBatches:       MAX_CONCURRENT_BATCHES,
+  minScale: MIN_SCALE,
+  maxScale: MAX_SCALE,
+  chunkLodScale: CHUNK_LOD_SCALE,
+  chunkPreloadMargin: CHUNK_PRELOAD_MARGIN,
+  chunkEvictMargin: CHUNK_EVICT_MARGIN,
+  maxLiveChunksPixel: MAX_LIVE_CHUNKS_PIXEL,
+  maxLiveChunksJourneymap: MAX_LIVE_CHUNKS_JOURNEYMAP,
+  maxRegionTiles: MAX_REGION_TILES,
+  tileCacheMax: TILE_CACHE_MAX,
+  batchSize: BATCH_SIZE,
+  maxConcurrentBatches: MAX_CONCURRENT_BATCHES,
   maxConcurrentRegionFetches: MAX_CONCURRENT_REGION_FETCHES,
-  renderBudgetMs:             RENDER_BUDGET_MS,
+  renderBudgetMs: RENDER_BUDGET_MS,
 } = VIEWER_CONFIG
 
 interface MapEngineDeps {
@@ -67,7 +67,10 @@ interface MapEngineDeps {
 
 export class MapEngine {
   private _cleanup!: () => void
-  private _st!: { cam: { cx: number; cz: number; scale: number }; forceFrame: boolean }
+  private _st!: {
+    cam: { cx: number; cz: number; scale: number }
+    forceFrame: boolean
+  }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
@@ -79,10 +82,21 @@ export class MapEngine {
 
   constructor(deps: MapEngineDeps) {
     const {
-      container, hud, inspector, dimensionPath,
-      configRef, debugModeRef, bcCountRef, blockColorsRef, textureKeysRef,
-      metaTextureKeysRef, blockNamesRef, registryRef, regionsRef,
-      syncRegionsRef, fitCameraRef,
+      container,
+      hud,
+      inspector,
+      dimensionPath,
+      configRef,
+      debugModeRef,
+      bcCountRef,
+      blockColorsRef,
+      textureKeysRef,
+      metaTextureKeysRef,
+      blockNamesRef,
+      registryRef,
+      regionsRef,
+      syncRegionsRef,
+      fitCameraRef,
     } = deps
 
     inspector.addEventListener('mousedown', (e) => e.stopPropagation())
@@ -91,65 +105,79 @@ export class MapEngine {
     // so they don't write to torn-down state after unmount / dimension change.
     let destroyed = false
 
-    let W = container.clientWidth  || 800
+    let W = container.clientWidth || 800
     let H = container.clientHeight || 600
 
     const st = {
-      cam:                { cx: 0, cz: 0, scale: 1 },
-      cache:              new Map<string, 'empty' | 'error' | THREE.Mesh>(),
-      dataCache:          new Map<string, ChunkData>(),
-      texVersion:         0,
+      cam: { cx: 0, cz: 0, scale: 1 },
+      cache: new Map<string, 'empty' | 'error' | THREE.Mesh>(),
+      dataCache: new Map<string, ChunkData>(),
+      texVersion: 0,
       texVersionAtRender: new Map<string, number>(),
-      lastBcCount:        0,
-      lastConfig:         null as RenderConfig | null,
-      lastDebugMode:      false,
-      chunkPixels:        new Map<string, number>(),
-      resolving:          new Set<string>(),
-      pendingSet:         new Set<string>(),
-      pending:            [] as Array<[number, number, string]>,
+      lastBcCount: 0,
+      lastConfig: null as RenderConfig | null,
+      lastDebugMode: false,
+      chunkPixels: new Map<string, number>(),
+      resolving: new Set<string>(),
+      pendingSet: new Set<string>(),
+      pending: [] as Array<[number, number, string]>,
       // Chunks awaiting time-sliced placement: either freshly fetched (data) or
       // restored from the CPU tile cache (bitmap).
-      renderQueue:        [] as Array<{ key: string; mcx: number; mcz: number; data?: ChunkData; bitmap?: ImageBitmap }>,
-      renderSet:          new Set<string>(),
-      sorted:             [] as [number, number][],
-      sortBounds:         null as { L: number; R: number; T: number; B: number } | null,
-      activeBatches:      0,
-      liveChunks:         0,  // count of chunk meshes currently in the scene (GPU budget)
+      renderQueue: [] as Array<{
+        key: string
+        mcx: number
+        mcz: number
+        data?: ChunkData
+        bitmap?: ImageBitmap
+      }>,
+      renderSet: new Set<string>(),
+      sorted: [] as [number, number][],
+      sortBounds: null as { L: number; R: number; T: number; B: number } | null,
+      activeBatches: 0,
+      liveChunks: 0, // count of chunk meshes currently in the scene (GPU budget)
       // ── Region-tile LOD (zoomed-out overview) ──
-      regionTiled:        new Set<string>(),   // regions with a rendered tile applied
-      regionFailed:       new Set<string>(),   // empty/error regions — don't retry
-      regionResolving:    new Set<string>(),   // surface fetch in flight
-      regionPending:      [] as Array<[number, number, string]>,
-      regionPendingSet:   new Set<string>(),
-      regionRenderQueue:  [] as Array<{ key: string; rx: number; rz: number; surface: RegionSurface }>,
-      regionRenderSet:    new Set<string>(),
+      regionTiled: new Set<string>(), // regions with a rendered tile applied
+      regionFailed: new Set<string>(), // empty/error regions — don't retry
+      regionResolving: new Set<string>(), // surface fetch in flight
+      regionPending: [] as Array<[number, number, string]>,
+      regionPendingSet: new Set<string>(),
+      regionRenderQueue: [] as Array<{
+        key: string
+        rx: number
+        rz: number
+        surface: RegionSurface
+      }>,
+      regionRenderSet: new Set<string>(),
       activeRegionFetches: 0,
       // Bumped only on colour-map / render-config changes (not texture loads), so
       // region tiles re-render when the look changes without thrashing on every
       // texture that streams in.
-      lodVersion:         0,
-      regionLodVersion:   0,
-      regionSet:          new Set<string>(),
-      isDragging:         false,
-      lastMouse:          null as { x: number; y: number } | null,
-      mouseWorldX:        null as number | null,
-      mouseWorldZ:        null as number | null,
-      firstChunkLogged:   false,
+      lodVersion: 0,
+      regionLodVersion: 0,
+      regionSet: new Set<string>(),
+      isDragging: false,
+      lastMouse: null as { x: number; y: number } | null,
+      mouseWorldX: null as number | null,
+      mouseWorldZ: null as number | null,
+      firstChunkLogged: false,
       // ── Render gate ── skip the RAF heavy passes + GPU draw when the view is
       // idle (camera still, nothing loading, no re-render pending).
-      lastCam:            { cx: NaN, cz: NaN, scale: NaN },
-      forceFrame:         true,   // one-shot: force a render next frame
-      staleWork:          false,  // chunk re-renders still catching up to texVersion
-      lastTexKeysRef:     undefined as Record<number, string> | undefined,
-      texKeyCount:        0,      // cached for the HUD (no per-frame Object.keys)
-      lastHud:            '',     // last HUD string (skip redundant DOM writes)
+      lastCam: { cx: NaN, cz: NaN, scale: NaN },
+      forceFrame: true, // one-shot: force a render next frame
+      staleWork: false, // chunk re-renders still catching up to texVersion
+      lastTexKeysRef: undefined as Record<number, string> | undefined,
+      texKeyCount: 0, // cached for the HUD (no per-frame Object.keys)
+      lastHud: '', // last HUD string (skip redundant DOM writes)
     }
 
-    const unsubTextures = onTextureLoad(() => { st.texVersion++; st.forceFrame = true })
+    const unsubTextures = onTextureLoad(() => {
+      st.texVersion++
+      st.forceFrame = true
+    })
 
     const mapScene = new MapScene(container, W, H)
     const { scene, chunkGeo, regionGeo, regionMat, chunkGroup } = mapScene
-    const updateCam  = () => mapScene.updateCam(st.cam, W, H)
+    const updateCam = () => mapScene.updateCam(st.cam, W, H)
     const updateGrid = () => mapScene.updateGrid(st.cam, W, H)
     const outlines = new ChunkOutlineOverlay(scene)
     const regionMeshes = new Map<string, THREE.Mesh>()
@@ -171,11 +199,11 @@ export class MapEngine {
       st.resolving.clear()
       st.pendingSet.clear()
       st.pending.length = 0
-      for (const item of st.renderQueue) item.bitmap?.close()  // orphaned restores
+      for (const item of st.renderQueue) item.bitmap?.close() // orphaned restores
       st.renderQueue.length = 0
       st.renderSet.clear()
-      st.activeBatches  = 0
-      st.liveChunks     = 0
+      st.activeBatches = 0
+      st.liveChunks = 0
       tileCache.clear()
     }
 
@@ -185,8 +213,8 @@ export class MapEngine {
 
       // Compute median X and Z so a single distant outlier region (e.g. a mod dimension
       // that wrote chunks at extreme coordinates) cannot pull the initial view off into space.
-      const xs = regs.map(r => r.region_x).sort((a, b) => a - b)
-      const zs = regs.map(r => r.region_z).sort((a, b) => a - b)
+      const xs = regs.map((r) => r.region_x).sort((a, b) => a - b)
+      const zs = regs.map((r) => r.region_z).sort((a, b) => a - b)
       const mid = Math.floor(xs.length / 2)
       const medX = xs.length % 2 === 0 ? (xs[mid - 1] + xs[mid]) / 2 : xs[mid]
       const medZ = zs.length % 2 === 0 ? (zs[mid - 1] + zs[mid]) / 2 : zs[mid]
@@ -195,19 +223,24 @@ export class MapEngine {
       // This removes genuine outliers while preserving any legitimately large world.
       const MAX_DIST = 200
       const core = regs.filter(
-        r => Math.abs(r.region_x - medX) <= MAX_DIST && Math.abs(r.region_z - medZ) <= MAX_DIST
+        (r) =>
+          Math.abs(r.region_x - medX) <= MAX_DIST &&
+          Math.abs(r.region_z - medZ) <= MAX_DIST
       )
       const active = core.length > 0 ? core : regs
 
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+      let minX = Infinity,
+        maxX = -Infinity,
+        minZ = Infinity,
+        maxZ = -Infinity
       for (const r of active) {
         if (r.region_x < minX) minX = r.region_x
         if (r.region_x > maxX) maxX = r.region_x
         if (r.region_z < minZ) minZ = r.region_z
         if (r.region_z > maxZ) maxZ = r.region_z
       }
-      st.cam.cx    = ((minX + maxX) / 2) * 512 + 256
-      st.cam.cz    = ((minZ + maxZ) / 2) * 512 + 256
+      st.cam.cx = ((minX + maxX) / 2) * 512 + 256
+      st.cam.cz = ((minZ + maxZ) / 2) * 512 + 256
       const worldW = (maxX - minX + 1) * 512
       const worldH = (maxZ - minZ + 1) * 512
       st.cam.scale = Math.max(MIN_SCALE, Math.min(W / worldW, H / worldH, 2))
@@ -216,7 +249,7 @@ export class MapEngine {
 
     function syncRegions() {
       for (const [key, m] of regionMeshes) {
-        revertRegionTile(key, m)  // dispose any per-region tile material
+        revertRegionTile(key, m) // dispose any per-region tile material
         scene.remove(m)
       }
       regionMeshes.clear()
@@ -233,36 +266,41 @@ export class MapEngine {
         regionMeshes.set(key, mesh)
       }
       fitCamera()
-      st.forceFrame = true   // region meshes changed — render even if fitCamera no-ops
+      st.forceFrame = true // region meshes changed — render even if fitCamera no-ops
     }
 
     syncRegionsRef.current = syncRegions
-    fitCameraRef.current   = fitCamera
+    fitCameraRef.current = fitCamera
     syncRegions()
 
     // ── Chunk rendering (time-sliced; called from the RAF loop) ──
     // Paints one fetched chunk's canvas, uploads it, and places its mesh.
     // Heavy: capped per frame by the loop so a burst of arrivals doesn't stall.
-    function renderAndPlaceChunk(key: string, mcx: number, mcz: number, data: ChunkData) {
+    function renderAndPlaceChunk(
+      key: string,
+      mcx: number,
+      mcz: number,
+      data: ChunkData
+    ) {
       const dbg = debugModeRef.current
       st.renderSet.delete(key)
 
       if (!st.firstChunkLogged) {
         st.firstChunkLogged = true
-        const s0      = data.sections[0]
+        const s0 = data.sections[0]
         const nonzero = s0 ? s0.blocks.filter((b) => b !== 0).length : 0
         console.log(
           `[atlas] first chunk ${mcx},${mcz}: ${data.sections.length} sections, ` +
-            `section[0].y=${s0?.y}, nonzero=${nonzero}`,
+            `section[0].y=${s0?.y}, nonzero=${nonzero}`
         )
       }
       if (dbg) {
         const s0 = data.sections[0]
         console.log(
           `[atlas:chunk] parsed    ${mcx},${mcz}` +
-          ` — ${data.sections.length} sections` +
-          ` biomes=${data.biomes.length}` +
-          ` s0.y=${s0?.y ?? 'none'}`,
+            ` — ${data.sections.length} sections` +
+            ` biomes=${data.biomes.length}` +
+            ` s0.y=${s0?.y ?? 'none'}`
         )
       }
 
@@ -277,27 +315,33 @@ export class MapEngine {
         configRef.current,
         true,
         debugModeRef.current,
-        blockNamesRef.current,
+        blockNamesRef.current
       )
       textureDebugStore.addChunkStats(stats)
 
       // ── Canvas pixel diagnostic ──
-      let pixels = -2  // -2 = not checked
+      let pixels = -2 // -2 = not checked
       if (dbg) {
-        const ms  = (performance.now() - t0).toFixed(1)
-        const pct = stats.drawImage + stats.fillRect > 0
-          ? ((stats.drawImage / (stats.drawImage + stats.fillRect)) * 100).toFixed(0)
-          : '0'
+        const ms = (performance.now() - t0).toFixed(1)
+        const pct =
+          stats.drawImage + stats.fillRect > 0
+            ? (
+                (stats.drawImage / (stats.drawImage + stats.fillRect)) *
+                100
+              ).toFixed(0)
+            : '0'
         pixels = canvasDiagnostics(image)
         const pixStr =
-          pixels === -1 ? '⚠ TAINTED (cross-origin — WebGL upload blocked)' :
-          pixels === 0  ? '⚠ EMPTY (drawImage ran but canvas has no pixels)' :
-          `${pixels} non-black pixels`
+          pixels === -1
+            ? '⚠ TAINTED (cross-origin — WebGL upload blocked)'
+            : pixels === 0
+              ? '⚠ EMPTY (drawImage ran but canvas has no pixels)'
+              : `${pixels} non-black pixels`
         console.log(
           `[atlas:chunk] canvas    ${mcx},${mcz}` +
-          ` | ${ms}ms` +
-          ` | drawImage=${stats.drawImage} (${pct}%) fillRect=${stats.fillRect}` +
-          ` | pixels=${pixStr}`,
+            ` | ${ms}ms` +
+            ` | drawImage=${stats.drawImage} (${pct}%) fillRect=${stats.fillRect}` +
+            ` | pixels=${pixStr}`
         )
         st.chunkPixels.set(key, pixels)
       }
@@ -305,32 +349,31 @@ export class MapEngine {
       // ── Upload to GPU ──
       st.dataCache.set(key, data)
       const texFilter = configRef.current.textureFilter ?? 'pixel'
-      const uploadCanvas = texFilter === 'journeymap' ? upscaleCanvas(image, 512) : image
+      const uploadCanvas =
+        texFilter === 'journeymap' ? upscaleCanvas(image, 512) : image
       const chunkTex = makeChunkTexture(uploadCanvas, texFilter)
       if (dbg) {
         console.log(
           `[atlas:chunk] texture   ${mcx},${mcz}` +
-          ` — needsUpdate=${chunkTex.needsUpdate}` +
-          ` uuid=${chunkTex.uuid}`,
+            ` — needsUpdate=${chunkTex.needsUpdate}` +
+            ` uuid=${chunkTex.uuid}`
         )
       }
 
-      const mat  = new THREE.MeshBasicMaterial({ map: chunkTex })
+      const mat = new THREE.MeshBasicMaterial({ map: chunkTex })
       const mesh = new THREE.Mesh(chunkGeo, mat)
       mesh.position.set(mcx * 16 + 8, -(mcz * 16 + 8), 0)
       chunkGroup.add(mesh)
 
       if (dbg) {
         const outlineState: ChunkOutlineState =
-          pixels === -1 ? 'tainted' :
-          pixels ===  0 ? 'empty'   :
-          'loaded'
+          pixels === -1 ? 'tainted' : pixels === 0 ? 'empty' : 'loaded'
         console.log(
           `[atlas:chunk] mesh      ${mcx},${mcz}` +
-          ` — visible=${mesh.visible}` +
-          ` pos=(${mesh.position.x},${mesh.position.y},${mesh.position.z})` +
-          ` tex=${chunkTex.uuid}` +
-          ` → outline=${outlineState}`,
+            ` — visible=${mesh.visible}` +
+            ` pos=(${mesh.position.x},${mesh.position.y},${mesh.position.z})` +
+            ` tex=${chunkTex.uuid}` +
+            ` → outline=${outlineState}`
         )
         outlines.set(key, mcx, mcz, outlineState, debugModeRef.current)
       }
@@ -340,7 +383,10 @@ export class MapEngine {
       st.liveChunks++
     }
 
-    function makeBitmapTexture(bitmap: ImageBitmap, filter: TextureFilter): THREE.Texture {
+    function makeBitmapTexture(
+      bitmap: ImageBitmap,
+      filter: TextureFilter
+    ): THREE.Texture {
       const tex = new THREE.Texture(bitmap)
       tex.colorSpace = THREE.SRGBColorSpace
       // WebGL ignores UNPACK_FLIP_Y for ImageBitmap, so we bake the flip into the
@@ -360,10 +406,18 @@ export class MapEngine {
 
     // Place a chunk restored from the CPU tile cache — a cheap GPU upload, no
     // fetch and no canvas render.  Takes ownership of *bitmap*.
-    function placeRestoredChunk(key: string, mcx: number, mcz: number, bitmap: ImageBitmap) {
+    function placeRestoredChunk(
+      key: string,
+      mcx: number,
+      mcz: number,
+      bitmap: ImageBitmap
+    ) {
       st.renderSet.delete(key)
       const filter = configRef.current.textureFilter ?? 'pixel'
-      const mesh = new THREE.Mesh(chunkGeo, new THREE.MeshBasicMaterial({ map: makeBitmapTexture(bitmap, filter) }))
+      const mesh = new THREE.Mesh(
+        chunkGeo,
+        new THREE.MeshBasicMaterial({ map: makeBitmapTexture(bitmap, filter) })
+      )
       mesh.position.set(mcx * 16 + 8, -(mcz * 16 + 8), 0)
       chunkGroup.add(mesh)
       st.cache.set(key, mesh)
@@ -371,7 +425,8 @@ export class MapEngine {
       // pass leaves it alone until the look actually changes.
       st.texVersionAtRender.set(key, st.texVersion)
       st.liveChunks++
-      if (debugModeRef.current) outlines.set(key, mcx, mcz, 'loaded', debugModeRef.current)
+      if (debugModeRef.current)
+        outlines.set(key, mcx, mcz, 'loaded', debugModeRef.current)
     }
 
     // Drop a live chunk mesh without caching it (used for stale restored tiles
@@ -398,23 +453,30 @@ export class MapEngine {
     function evictChunkToCache(key: string, mesh: THREE.Mesh) {
       chunkGroup.remove(mesh)
       const mat = mesh.material as THREE.MeshBasicMaterial
-      const src = mat.map?.image  // canvas (cold) or ImageBitmap (restored)
+      const src = mat.map?.image // canvas (cold) or ImageBitmap (restored)
       const ver = st.texVersionAtRender.get(key) ?? st.texVersion
       if (src) {
         // Bake the vertical flip into the cached bitmap when capturing from a
         // canvas (CanvasTexture uploads with flipY=true). A bitmap source is
         // already in this orientation, so copy it as-is.
         const opts: ImageBitmapOptions | undefined =
-          src instanceof HTMLCanvasElement ? { imageOrientation: 'flipY' } : undefined
+          src instanceof HTMLCanvasElement
+            ? { imageOrientation: 'flipY' }
+            : undefined
         createImageBitmap(src, opts)
           .then((bmp) => {
             // The effect may have torn down (and cleared the cache) while we
             // decoded — drop the bitmap instead of leaking it into a dead cache.
-            if (destroyed) { bmp.close(); return }
+            if (destroyed) {
+              bmp.close()
+              return
+            }
             tileCache.put(key, bmp, ver)
           })
           .catch(() => {})
-          .finally(() => { if (src instanceof ImageBitmap) src.close() })
+          .finally(() => {
+            if (src instanceof ImageBitmap) src.close()
+          })
       }
       mat.map?.dispose()
       mat.dispose()
@@ -438,7 +500,7 @@ export class MapEngine {
         const dz = +key.slice(ci + 1) - cCz
         live.push({ key, mesh: entry, d: dx * dx + dz * dz })
       }
-      live.sort((a, b) => b.d - a.d)  // farthest first
+      live.sort((a, b) => b.d - a.d) // farthest first
       const evictCount = st.liveChunks - maxLive
       for (let i = 0; i < evictCount && i < live.length; i++) {
         evictChunkToCache(live[i].key, live[i].mesh)
@@ -449,12 +511,19 @@ export class MapEngine {
     // keep region (viewport + evict margin), freeing GPU budget so the detail
     // layer follows the view.  The margin gives hysteresis so chunks just off the
     // edge linger — panning back restores them with no reload.
-    function reconcileLiveChunks(kL: number, kR: number, kT: number, kB: number) {
+    function reconcileLiveChunks(
+      kL: number,
+      kR: number,
+      kT: number,
+      kB: number
+    ) {
       for (const [key, entry] of st.cache) {
         if (!(entry instanceof THREE.Mesh)) continue
         const ci = key.indexOf(',')
-        const mcx = +key.slice(0, ci), mcz = +key.slice(ci + 1)
-        if (mcx < kL || mcx > kR || mcz < kT || mcz > kB) evictChunkToCache(key, entry)
+        const mcx = +key.slice(0, ci),
+          mcz = +key.slice(ci + 1)
+        if (mcx < kL || mcx > kR || mcz < kT || mcz > kB)
+          evictChunkToCache(key, entry)
       }
     }
 
@@ -485,7 +554,8 @@ export class MapEngine {
       const dbg = debugModeRef.current
       if (dbg) {
         console.log(`[atlas:chunk] fetching  batch ×${items.length}`)
-        for (const [mcx, mcz, key] of items) outlines.set(key, mcx, mcz, 'rendering', debugModeRef.current)
+        for (const [mcx, mcz, key] of items)
+          outlines.set(key, mcx, mcz, 'rendering', debugModeRef.current)
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
@@ -497,7 +567,12 @@ export class MapEngine {
           returned.add(key)
           st.resolving.delete(key)
           st.renderSet.add(key)
-          st.renderQueue.push({ key, mcx: data.chunk_x, mcz: data.chunk_z, data })
+          st.renderQueue.push({
+            key,
+            mcx: data.chunk_x,
+            mcz: data.chunk_z,
+            data,
+          })
         }
         // Requested-but-not-returned chunks have no terrain yet.
         for (const [mcx, mcz, key] of items) {
@@ -520,7 +595,10 @@ export class MapEngine {
     }
 
     function drainQueue() {
-      while (st.activeBatches < MAX_CONCURRENT_BATCHES && st.pending.length > 0) {
+      while (
+        st.activeBatches < MAX_CONCURRENT_BATCHES &&
+        st.pending.length > 0
+      ) {
         const batch: Array<[number, number, string]> = []
         while (batch.length < BATCH_SIZE && st.pending.length > 0) {
           const item = st.pending.shift()!
@@ -544,8 +622,12 @@ export class MapEngine {
         st.renderSet.has(key)
       )
         return false
-      const rx = mcx >> 5, rz = mcz >> 5
-      if (!st.regionSet.has(`${rx},${rz}`)) { st.cache.set(key, 'empty'); return false }
+      const rx = mcx >> 5,
+        rz = mcz >> 5
+      if (!st.regionSet.has(`${rx},${rz}`)) {
+        st.cache.set(key, 'empty')
+        return false
+      }
 
       // Warm path: restore a still-valid rendered tile from the CPU cache,
       // skipping the fetch + canvas render entirely.
@@ -598,21 +680,29 @@ export class MapEngine {
       st.activeRegionFetches = 0
     }
 
-    function renderAndPlaceRegionTile(key: string, _rx: number, _rz: number, surface: RegionSurface) {
+    function renderAndPlaceRegionTile(
+      key: string,
+      _rx: number,
+      _rz: number,
+      surface: RegionSurface
+    ) {
       st.regionRenderSet.delete(key)
       const mesh = regionMeshes.get(key)
-      if (!mesh) return  // region no longer present (world changed)
+      if (!mesh) return // region no longer present (world changed)
       const canvas = renderRegionTile(
         surface,
         blockColorsRef.current,
         registryRef.current,
-        configRef.current,
+        configRef.current
       )
       if (mesh.material !== regionMat) {
         const old = mesh.material as THREE.MeshBasicMaterial
-        old.map?.dispose(); old.dispose()
+        old.map?.dispose()
+        old.dispose()
       }
-      mesh.material = new THREE.MeshBasicMaterial({ map: makeRegionTexture(canvas) })
+      mesh.material = new THREE.MeshBasicMaterial({
+        map: makeRegionTexture(canvas),
+      })
       st.regionTiled.add(key)
     }
 
@@ -651,7 +741,7 @@ export class MapEngine {
         st.regionPending.length > 0
       ) {
         const item = st.regionPending.shift()!
-        const key  = item[2]
+        const key = item[2]
         st.regionPendingSet.delete(key)
         st.regionResolving.add(key)
         st.activeRegionFetches++
@@ -687,7 +777,7 @@ export class MapEngine {
         const dz = +key.slice(ci + 1) - rCz
         live.push({ key, d: dx * dx + dz * dz })
       }
-      live.sort((a, b) => b.d - a.d)  // farthest first
+      live.sort((a, b) => b.d - a.d) // farthest first
       const evict = st.regionTiled.size - MAX_REGION_TILES
       for (let i = 0; i < evict && i < live.length; i++) {
         const mesh = regionMeshes.get(live[i].key)
@@ -710,9 +800,17 @@ export class MapEngine {
           ? Object.keys(textureKeysRef.current).length
           : 0
       }
-      const rt = debugModeRef.current ? textureDebugStore.getRenderTotals() : null
-      const hudX = st.mouseWorldX !== null ? Math.round(st.mouseWorldX) : Math.round(st.cam.cx)
-      const hudZ = st.mouseWorldZ !== null ? Math.round(st.mouseWorldZ) : Math.round(st.cam.cz)
+      const rt = debugModeRef.current
+        ? textureDebugStore.getRenderTotals()
+        : null
+      const hudX =
+        st.mouseWorldX !== null
+          ? Math.round(st.mouseWorldX)
+          : Math.round(st.cam.cx)
+      const hudZ =
+        st.mouseWorldZ !== null
+          ? Math.round(st.mouseWorldZ)
+          : Math.round(st.cam.cz)
       const text =
         `X ${hudX}  Z ${hudZ}  ×${st.cam.scale.toFixed(2)}` +
         `  |  ${st.liveChunks} chunks` +
@@ -730,7 +828,8 @@ export class MapEngine {
 
     function loop() {
       const { cx, cz, scale } = st.cam
-      const halfW = W / (2 * scale), halfH = H / (2 * scale)
+      const halfW = W / (2 * scale),
+        halfH = H / (2 * scale)
 
       // Detect color-map or render-config changes and trigger re-render.
       // lodVersion also bumps so region tiles re-render (texVersion alone can't —
@@ -758,10 +857,12 @@ export class MapEngine {
         if (dbgNow) {
           for (const [key, entry] of st.cache) {
             const [mxs, mzs] = key.split(',')
-            const mcx = parseInt(mxs), mcz = parseInt(mzs)
+            const mcx = parseInt(mxs),
+              mcz = parseInt(mzs)
             if (entry instanceof THREE.Mesh) {
               const px = st.chunkPixels.get(key) ?? -2
-              const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
+              const s: ChunkOutlineState =
+                px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
               outlines.set(key, mcx, mcz, s, debugModeRef.current)
             } else if (entry === 'error') {
               outlines.set(key, mcx, mcz, 'error', debugModeRef.current)
@@ -778,12 +879,20 @@ export class MapEngine {
       // camera move, a queued/in-flight load, a pending re-render, or forceFrame
       // (texture load, colour/config/debug change, resize, region sync).
       const camMoved =
-        cx !== st.lastCam.cx || cz !== st.lastCam.cz || scale !== st.lastCam.scale
+        cx !== st.lastCam.cx ||
+        cz !== st.lastCam.cz ||
+        scale !== st.lastCam.scale
       const pendingWork =
-        st.renderQueue.length > 0 || st.regionRenderQueue.length > 0 ||
-        st.pending.length > 0 || st.resolving.size > 0 || st.renderSet.size > 0 ||
-        st.regionPending.length > 0 || st.regionResolving.size > 0 ||
-        st.regionRenderSet.size > 0 || st.activeBatches > 0 || st.activeRegionFetches > 0
+        st.renderQueue.length > 0 ||
+        st.regionRenderQueue.length > 0 ||
+        st.pending.length > 0 ||
+        st.resolving.size > 0 ||
+        st.renderSet.size > 0 ||
+        st.regionPending.length > 0 ||
+        st.regionResolving.size > 0 ||
+        st.regionRenderSet.size > 0 ||
+        st.activeBatches > 0 ||
+        st.activeRegionFetches > 0
       if (!(st.forceFrame || camMoved || st.staleWork || pendingWork)) {
         updateHud()
         rafId = requestAnimationFrame(loop)
@@ -800,7 +909,10 @@ export class MapEngine {
           if ((st.texVersionAtRender.get(key) ?? 0) >= st.texVersion) continue
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
-            if (rerendered >= 4) { moreStale = true; continue }
+            if (rerendered >= 4) {
+              moreStale = true
+              continue
+            }
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
               blockColorsRef.current,
@@ -810,20 +922,28 @@ export class MapEngine {
               configRef.current,
               false,
               debugModeRef.current,
-              blockNamesRef.current,
+              blockNamesRef.current
             )
             textureDebugStore.addChunkStats(reStats)
             if (debugModeRef.current) {
               const px = canvasDiagnostics(newImg)
               st.chunkPixels.set(key, px)
               const [mxs, mzs] = key.split(',')
-              const s: ChunkOutlineState = px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
-              outlines.set(key, parseInt(mxs), parseInt(mzs), s, debugModeRef.current)
+              const s: ChunkOutlineState =
+                px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
+              outlines.set(
+                key,
+                parseInt(mxs),
+                parseInt(mzs),
+                s,
+                debugModeRef.current
+              )
             }
             const mat = entry.material as THREE.MeshBasicMaterial
             mat.map?.dispose()
             const texFilter = configRef.current.textureFilter ?? 'pixel'
-            const uploadCanvas = texFilter === 'journeymap' ? upscaleCanvas(newImg, 512) : newImg
+            const uploadCanvas =
+              texFilter === 'journeymap' ? upscaleCanvas(newImg, 512) : newImg
             mat.map = makeChunkTexture(uploadCanvas, texFilter)
             mat.needsUpdate = true
             st.texVersionAtRender.set(key, st.texVersion)
@@ -861,7 +981,8 @@ export class MapEngine {
       // (kept resident, so zoom-in is instant) rather than evicting it.
       chunkGroup.visible = chunkActive
       {
-        const cCx = Math.round(cx / 16), cCz = Math.round(cz / 16)
+        const cCx = Math.round(cx / 16),
+          cCz = Math.round(cz / 16)
         const maxLive =
           (configRef.current.textureFilter ?? 'pixel') === 'journeymap'
             ? MAX_LIVE_CHUNKS_JOURNEYMAP
@@ -872,35 +993,45 @@ export class MapEngine {
         enforceChunkBudget(cCx, cCz, maxLive)
 
         if (chunkActive) {
-          const cL = Math.floor((cx - halfW) / 16), cR = Math.floor((cx + halfW) / 16)
-          const cT = Math.floor((cz - halfH) / 16), cB = Math.floor((cz + halfH) / 16)
+          const cL = Math.floor((cx - halfW) / 16),
+            cR = Math.floor((cx + halfW) / 16)
+          const cT = Math.floor((cz - halfH) / 16),
+            cB = Math.floor((cz + halfH) / 16)
 
           const bv = st.sortBounds
           if (!bv || bv.L !== cL || bv.R !== cR || bv.T !== cT || bv.B !== cB) {
             // Queue region = viewport + preload margin (load ahead of the view).
-            const qL = cL - CHUNK_PRELOAD_MARGIN, qR = cR + CHUNK_PRELOAD_MARGIN
-            const qT = cT - CHUNK_PRELOAD_MARGIN, qB = cB + CHUNK_PRELOAD_MARGIN
+            const qL = cL - CHUNK_PRELOAD_MARGIN,
+              qR = cR + CHUNK_PRELOAD_MARGIN
+            const qT = cT - CHUNK_PRELOAD_MARGIN,
+              qB = cB + CHUNK_PRELOAD_MARGIN
             st.sorted.length = 0
             for (let z2 = qT; z2 <= qB; z2++)
-              for (let x2 = qL; x2 <= qR; x2++)
-                st.sorted.push([x2, z2])
+              for (let x2 = qL; x2 <= qR; x2++) st.sorted.push([x2, z2])
             st.sorted.sort(
               (a, bsv) =>
-                (a[0]-cCx)**2+(a[1]-cCz)**2 - ((bsv[0]-cCx)**2+(bsv[1]-cCz)**2),
+                (a[0] - cCx) ** 2 +
+                (a[1] - cCz) ** 2 -
+                ((bsv[0] - cCx) ** 2 + (bsv[1] - cCz) ** 2)
             )
             st.sortBounds = { L: cL, R: cR, T: cT, B: cB }
             // Recentre the detail layer: evict chunks outside the keep region
             // (viewport + larger evict margin) so it follows the view smoothly.
             reconcileLiveChunks(
-              cL - CHUNK_EVICT_MARGIN, cR + CHUNK_EVICT_MARGIN,
-              cT - CHUNK_EVICT_MARGIN, cB + CHUNK_EVICT_MARGIN,
+              cL - CHUNK_EVICT_MARGIN,
+              cR + CHUNK_EVICT_MARGIN,
+              cT - CHUNK_EVICT_MARGIN,
+              cB + CHUNK_EVICT_MARGIN
             )
           }
 
           // Queue nearest-first, but never commit more chunks than the GPU budget
           // allows — chunks beyond the cap would only be evicted, causing thrash.
           let committed =
-            st.liveChunks + st.renderQueue.length + st.resolving.size + st.pending.length
+            st.liveChunks +
+            st.renderQueue.length +
+            st.resolving.size +
+            st.pending.length
           for (const [cx2, cz2] of st.sorted) {
             if (committed >= maxLive) break
             if (maybeQueue(cx2, cz2)) committed++
@@ -912,23 +1043,29 @@ export class MapEngine {
       // a base layer under the chunks when zoomed in so gaps in the detail layer
       // show the overview (sharpening into detail) instead of a black placeholder.
       {
-        const rCx = Math.round(cx / 512), rCz = Math.round(cz / 512)
+        const rCx = Math.round(cx / 512),
+          rCz = Math.round(cz / 512)
         enforceRegionBudget(rCx, rCz)
 
-        const rL = Math.floor((cx - halfW) / 512), rR = Math.floor((cx + halfW) / 512)
-        const rT = Math.floor((cz - halfH) / 512), rB = Math.floor((cz + halfH) / 512)
+        const rL = Math.floor((cx - halfW) / 512),
+          rR = Math.floor((cx + halfW) / 512)
+        const rT = Math.floor((cz - halfH) / 512),
+          rB = Math.floor((cz + halfH) / 512)
         const vis: Array<[number, number]> = []
         for (let z2 = rT; z2 <= rB; z2++)
-          for (let x2 = rL; x2 <= rR; x2++)
-            vis.push([x2, z2])
+          for (let x2 = rL; x2 <= rR; x2++) vis.push([x2, z2])
         vis.sort(
           (a, bsv) =>
-            (a[0]-rCx)**2+(a[1]-rCz)**2 - ((bsv[0]-rCx)**2+(bsv[1]-rCz)**2),
+            (a[0] - rCx) ** 2 +
+            (a[1] - rCz) ** 2 -
+            ((bsv[0] - rCx) ** 2 + (bsv[1] - rCz) ** 2)
         )
 
         let committed =
-          st.regionTiled.size + st.regionResolving.size +
-          st.regionPending.length + st.regionRenderSet.size
+          st.regionTiled.size +
+          st.regionResolving.size +
+          st.regionPending.length +
+          st.regionRenderSet.size
         for (const [x2, z2] of vis) {
           if (committed >= MAX_REGION_TILES) break
           if (maybeQueueRegion(x2, z2)) committed++
@@ -954,8 +1091,14 @@ export class MapEngine {
 
     async function onContextMenu(e: MouseEvent) {
       await showBlockInspector({
-        event: e, el, inspector, w: W, h: H,
-        cam: st.cam, dataCache: st.dataCache, dimensionPath,
+        event: e,
+        el,
+        inspector,
+        w: W,
+        h: H,
+        cam: st.cam,
+        dataCache: st.dataCache,
+        dimensionPath,
         isDestroyed: () => destroyed,
         registry: registryRef.current,
         blockColors: blockColorsRef.current,
@@ -966,16 +1109,25 @@ export class MapEngine {
     }
 
     const resizeObs = new ResizeObserver(() => {
-      W = container.clientWidth || 800; H = container.clientHeight || 600
-      mapScene.resize(W, H); updateCam(); st.forceFrame = true
+      W = container.clientWidth || 800
+      H = container.clientHeight || 600
+      mapScene.resize(W, H)
+      updateCam()
+      st.forceFrame = true
     })
     resizeObs.observe(container)
     updateCam()
 
     const detachInput = attachMapInput({
-      el, inspector, state: st, updateCam, fitCamera,
+      el,
+      inspector,
+      state: st,
+      updateCam,
+      fitCamera,
       getDims: () => ({ w: W, h: H }),
-      minScale: MIN_SCALE, maxScale: MAX_SCALE, onContextMenu,
+      minScale: MIN_SCALE,
+      maxScale: MAX_SCALE,
+      onContextMenu,
     })
 
     // Expose the bits the chunk-tools selection UI needs (screen↔world math and
@@ -1019,12 +1171,12 @@ export class MapEngine {
       destroyed = true
       unsubTextures()
       syncRegionsRef.current = null
-      fitCameraRef.current   = null
+      fitCameraRef.current = null
       cancelAnimationFrame(rafId)
       resizeObs.disconnect()
       detachInput()
-      clearChunkCache()   // also removes outlines and clears chunkPixels
-      for (const [key, m] of regionMeshes) revertRegionTile(key, m)  // dispose tile materials
+      clearChunkCache() // also removes outlines and clears chunkPixels
+      for (const [key, m] of regionMeshes) revertRegionTile(key, m) // dispose tile materials
       mapScene.dispose()
     }
   }
@@ -1034,26 +1186,42 @@ export class MapEngine {
   }
 
   /** Current camera centre/zoom + viewport size, for screen↔world conversion. */
-  getViewport(): { cx: number; cz: number; scale: number; w: number; h: number } {
+  getViewport(): {
+    cx: number
+    cz: number
+    scale: number
+    w: number
+    h: number
+  } {
     const { w, h } = this._getDims()
-    return { cx: this._st.cam.cx, cz: this._st.cam.cz, scale: this._st.cam.scale, w, h }
+    return {
+      cx: this._st.cam.cx,
+      cz: this._st.cam.cz,
+      scale: this._st.cam.scale,
+      w,
+      h,
+    }
   }
 
   /** Highlight the selection rectangle (inclusive chunk coords), or clear with null. */
-  setSelection(sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null): void {
+  setSelection(
+    sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
+  ): void {
     this._mapScene.setSelectionRect(chunkRect(sel))
     this._st.forceFrame = true
   }
 
   /** Highlight the paste-preview rectangle (inclusive chunk coords), or clear with null. */
-  setPreview(sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null): void {
+  setPreview(
+    sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
+  ): void {
     this._mapScene.setPreviewRect(chunkRect(sel))
     this._st.forceFrame = true
   }
 }
 
 function chunkRect(
-  sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null,
+  sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
 ): { minX: number; minZ: number; maxX: number; maxZ: number } | null {
   if (!sel) return null
   return {

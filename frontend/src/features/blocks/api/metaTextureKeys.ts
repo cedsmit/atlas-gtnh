@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 
 import { API_BASE } from '../../../shared/api'
 
-async function fetchMetaTextureKeys(worldPath: string): Promise<Record<string, string>> {
+async function fetchMetaTextureKeys(
+  worldPath: string
+): Promise<Record<string, string>> {
   const res = await fetch(
     `${API_BASE}/worlds/block-meta-texture-map?world_path=${encodeURIComponent(worldPath)}`
   )

@@ -1,10 +1,6 @@
 import { Check, TriangleAlert, Loader2 } from 'lucide-react'
 
-export type LoadingStage =
-  | 'scanning'
-  | 'registry'
-  | 'textures'
-  | 'tiles'
+export type LoadingStage = 'scanning' | 'registry' | 'textures' | 'tiles'
 
 interface Props {
   stage?: LoadingStage
@@ -59,7 +55,7 @@ export function LoadingScreen({
     stage === 'textures'
       ? `${texLoaded.toLocaleString()} / ${texTotal.toLocaleString()} images loaded` +
         (texMissing > 0 ? ` · ${texMissing} missing` : '') +
-        ((texTotal - texLoaded - texMissing) > 0
+        (texTotal - texLoaded - texMissing > 0
           ? ` · ${(texTotal - texLoaded - texMissing).toLocaleString()} pending`
           : '')
       : stage === 'scanning' && scanTotal > 0
@@ -70,7 +66,9 @@ export function LoadingScreen({
     <div className="flex flex-1 flex-col items-center justify-center gap-8 px-8">
       {/* Stage title */}
       <div className="max-w-lg text-center">
-        <h2 className="text-xl font-semibold text-zinc-100">{STAGE_TITLE[stage]}</h2>
+        <h2 className="text-xl font-semibold text-zinc-100">
+          {STAGE_TITLE[stage]}
+        </h2>
         <p className="mt-1 truncate font-mono text-sm text-zinc-400">{hint}</p>
       </div>
 
@@ -115,7 +113,9 @@ export function LoadingScreen({
               </span>
             </div>
             {i < STAGES.length - 1 && (
-              <div className={`h-px w-6 ${i < stageIdx ? 'bg-emerald-800' : 'bg-zinc-800'}`} />
+              <div
+                className={`h-px w-6 ${i < stageIdx ? 'bg-emerald-800' : 'bg-zinc-800'}`}
+              />
             )}
           </div>
         ))}
@@ -137,7 +137,10 @@ export function LoadingScreen({
           ) : vanillaJarFound === false ? (
             <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
           ) : (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+            <Loader2
+              className="h-3.5 w-3.5 shrink-0 animate-spin"
+              aria-hidden
+            />
           )}
           {vanillaJarFound === true
             ? 'Vanilla JAR found — full block textures'

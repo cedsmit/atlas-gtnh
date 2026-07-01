@@ -21,3 +21,17 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+
+      - id: prettier
+        name: prettier (frontend)
+        entry: npx --prefix frontend prettier --write --ignore-path frontend/.prettierignore --config frontend/.prettierrc frontend
+        language: system
+        files: ^frontend/.*\.(ts|tsx|js|jsx|cjs|mjs|css|json|html|md)$
+        pass_filenames: false
+
+      - id: eslint
+        name: eslint (frontend)
+        entry: npx --prefix frontend eslint --ext ts,tsx --report-unused-disable-directives --max-warnings 0 frontend/src
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false

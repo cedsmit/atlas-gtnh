@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 
 import { API_BASE } from '../../../shared/api'
 
-async function fetchBlockNames(worldPath: string): Promise<Record<number, string>> {
+async function fetchBlockNames(
+  worldPath: string
+): Promise<Record<number, string>> {
   const res = await fetch(
     `${API_BASE}/worlds/block-names?world_path=${encodeURIComponent(worldPath)}`
   )

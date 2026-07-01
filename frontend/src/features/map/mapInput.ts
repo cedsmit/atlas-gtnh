@@ -25,7 +25,17 @@ export interface MapInputDeps {
 }
 
 export function attachMapInput(deps: MapInputDeps): () => void {
-  const { el, inspector, state: st, updateCam, fitCamera, getDims, minScale, maxScale, onContextMenu } = deps
+  const {
+    el,
+    inspector,
+    state: st,
+    updateCam,
+    fitCamera,
+    getDims,
+    minScale,
+    maxScale,
+    onContextMenu,
+  } = deps
 
   function onMouseDown(e: MouseEvent) {
     st.isDragging = true

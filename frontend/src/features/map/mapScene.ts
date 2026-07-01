@@ -31,15 +31,28 @@ export class MapScene {
   private readonly gridBuf = new Float32Array(MAX_GV * 3)
   private readonly gridAttr = new THREE.BufferAttribute(this.gridBuf, 3)
   private readonly gridGeo = new THREE.BufferGeometry()
-  private readonly regionGridMat = new THREE.LineBasicMaterial({ color: 0x2e2e48 })
+  private readonly regionGridMat = new THREE.LineBasicMaterial({
+    color: 0x2e2e48,
+  })
   private readonly chunkGridBuf = new Float32Array(MAX_GV * 3)
-  private readonly chunkGridAttr = new THREE.BufferAttribute(this.chunkGridBuf, 3)
+  private readonly chunkGridAttr = new THREE.BufferAttribute(
+    this.chunkGridBuf,
+    3
+  )
   private readonly chunkGridGeo = new THREE.BufferGeometry()
-  private readonly chunkGridMat = new THREE.LineBasicMaterial({ color: 0x1c1c2e })
+  private readonly chunkGridMat = new THREE.LineBasicMaterial({
+    color: 0x1c1c2e,
+  })
 
   private readonly rectGeo = new THREE.BufferGeometry()
-  private readonly selectionMat = new THREE.LineBasicMaterial({ color: 0x66ccff, depthTest: false })
-  private readonly previewMat = new THREE.LineBasicMaterial({ color: 0x66ff88, depthTest: false })
+  private readonly selectionMat = new THREE.LineBasicMaterial({
+    color: 0x66ccff,
+    depthTest: false,
+  })
+  private readonly previewMat = new THREE.LineBasicMaterial({
+    color: 0x66ff88,
+    depthTest: false,
+  })
   private selectionLine!: THREE.LineLoop
   private previewLine!: THREE.LineLoop
 
@@ -52,18 +65,31 @@ export class MapScene {
     this.renderer.domElement.style.cursor = 'grab'
 
     this.scene.background = new THREE.Color(0x0f0f0f)
-    this.cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 2000)
+    this.cam = new THREE.OrthographicCamera(
+      -w / 2,
+      w / 2,
+      h / 2,
+      -h / 2,
+      0.1,
+      2000
+    )
     this.scene.add(this.chunkGroup)
 
     this.gridAttr.setUsage(THREE.DynamicDrawUsage)
     this.gridGeo.setAttribute('position', this.gridAttr)
-    const regionGridLines = new THREE.LineSegments(this.gridGeo, this.regionGridMat)
+    const regionGridLines = new THREE.LineSegments(
+      this.gridGeo,
+      this.regionGridMat
+    )
     regionGridLines.frustumCulled = false
     this.scene.add(regionGridLines)
 
     this.chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
     this.chunkGridGeo.setAttribute('position', this.chunkGridAttr)
-    const chunkGridLines = new THREE.LineSegments(this.chunkGridGeo, this.chunkGridMat)
+    const chunkGridLines = new THREE.LineSegments(
+      this.chunkGridGeo,
+      this.chunkGridMat
+    )
     chunkGridLines.frustumCulled = false
     this.scene.add(chunkGridLines)
 
@@ -71,7 +97,10 @@ export class MapScene {
     // outline, positioned/scaled per use.
     this.rectGeo.setAttribute(
       'position',
-      new THREE.BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]), 3),
+      new THREE.BufferAttribute(
+        new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]),
+        3
+      )
     )
     this.selectionLine = new THREE.LineLoop(this.rectGeo, this.selectionMat)
     this.previewLine = new THREE.LineLoop(this.rectGeo, this.previewMat)
@@ -84,7 +113,7 @@ export class MapScene {
 
   private static place(
     line: THREE.LineLoop,
-    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null,
+    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
   ): void {
     if (!rect) {
       line.visible = false
@@ -96,12 +125,16 @@ export class MapScene {
   }
 
   /** Draw (or hide, when null) the selection highlight over a world-space area. */
-  setSelectionRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+  setSelectionRect(
+    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
+  ): void {
     MapScene.place(this.selectionLine, rect)
   }
 
   /** Draw (or hide, when null) the paste-preview highlight over a world-space area. */
-  setPreviewRect(rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null): void {
+  setPreviewRect(
+    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
+  ): void {
     MapScene.place(this.previewLine, rect)
   }
 
@@ -138,13 +171,21 @@ export class MapScene {
     let vi = 0
     for (let rx = rL; rx <= rR && vi < MAX_GV - 6; rx++) {
       const x = rx * 512
-      gridBuf[vi++] = x; gridBuf[vi++] = -(rT * 512 - 512); gridBuf[vi++] = 0.5
-      gridBuf[vi++] = x; gridBuf[vi++] = -(rB * 512 + 512); gridBuf[vi++] = 0.5
+      gridBuf[vi++] = x
+      gridBuf[vi++] = -(rT * 512 - 512)
+      gridBuf[vi++] = 0.5
+      gridBuf[vi++] = x
+      gridBuf[vi++] = -(rB * 512 + 512)
+      gridBuf[vi++] = 0.5
     }
     for (let rz = rT; rz <= rB && vi < MAX_GV - 6; rz++) {
       const y = -(rz * 512)
-      gridBuf[vi++] = rL * 512 - 512; gridBuf[vi++] = y; gridBuf[vi++] = 0.5
-      gridBuf[vi++] = rR * 512 + 512; gridBuf[vi++] = y; gridBuf[vi++] = 0.5
+      gridBuf[vi++] = rL * 512 - 512
+      gridBuf[vi++] = y
+      gridBuf[vi++] = 0.5
+      gridBuf[vi++] = rR * 512 + 512
+      gridBuf[vi++] = y
+      gridBuf[vi++] = 0.5
     }
     this.gridAttr.needsUpdate = true
     this.gridGeo.setDrawRange(0, vi / 3)
@@ -157,13 +198,21 @@ export class MapScene {
         cB = Math.ceil((cz + halfH) / 16) + 1
       for (let chx = cL; chx <= cR && ci < MAX_GV - 6; chx++) {
         const x = chx * 16
-        chunkGridBuf[ci++] = x; chunkGridBuf[ci++] = -(cT * 16 - 16); chunkGridBuf[ci++] = 0.5
-        chunkGridBuf[ci++] = x; chunkGridBuf[ci++] = -(cB * 16 + 16); chunkGridBuf[ci++] = 0.5
+        chunkGridBuf[ci++] = x
+        chunkGridBuf[ci++] = -(cT * 16 - 16)
+        chunkGridBuf[ci++] = 0.5
+        chunkGridBuf[ci++] = x
+        chunkGridBuf[ci++] = -(cB * 16 + 16)
+        chunkGridBuf[ci++] = 0.5
       }
       for (let chz = cT; chz <= cB && ci < MAX_GV - 6; chz++) {
         const y = -(chz * 16)
-        chunkGridBuf[ci++] = cL * 16 - 16; chunkGridBuf[ci++] = y; chunkGridBuf[ci++] = 0.5
-        chunkGridBuf[ci++] = cR * 16 + 16; chunkGridBuf[ci++] = y; chunkGridBuf[ci++] = 0.5
+        chunkGridBuf[ci++] = cL * 16 - 16
+        chunkGridBuf[ci++] = y
+        chunkGridBuf[ci++] = 0.5
+        chunkGridBuf[ci++] = cR * 16 + 16
+        chunkGridBuf[ci++] = y
+        chunkGridBuf[ci++] = 0.5
       }
     }
     this.chunkGridAttr.needsUpdate = true

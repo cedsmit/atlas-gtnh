@@ -53,7 +53,10 @@ export function WorldPicker({ onWorldSelected }: Props) {
         {loading ? 'Validating…' : 'Select World Folder'}
       </button>
       {error && (
-        <p className="inline-flex items-center gap-1.5 text-sm text-red-400" role="alert">
+        <p
+          className="inline-flex items-center gap-1.5 text-sm text-red-400"
+          role="alert"
+        >
           <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
           {error}
         </p>

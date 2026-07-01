@@ -1,5 +1,9 @@
 import type { ChunkRenderStats } from '../map/chunkTileRenderer'
-import { getTextureState, onTextureLoad, type TextureState } from './textureLoader'
+import {
+  getTextureState,
+  onTextureLoad,
+  type TextureState,
+} from './textureLoader'
 
 export type TexDebugStatus = TextureState | 'no-mapping'
 export type TintType = 'grass' | 'foliage' | 'water' | 'none'
@@ -30,7 +34,11 @@ class TextureDebugStore {
   private _texUnsub: (() => void) | null = null
   private _notifyScheduled = false
   private _renderTotals: RenderTotals = {
-    chunks: 0, drawImage: 0, fillRect: 0, missingTexKey: 0, failedTexLoad: 0,
+    chunks: 0,
+    drawImage: 0,
+    fillRect: 0,
+    missingTexKey: 0,
+    failedTexLoad: 0,
   }
 
   enable() {
@@ -46,7 +54,12 @@ class TextureDebugStore {
     this._notify()
   }
 
-  record(id: number, name: string | undefined, texKey: string | null, tintType: TintType) {
+  record(
+    id: number,
+    name: string | undefined,
+    texKey: string | null,
+    tintType: TintType
+  ) {
     const e = this._blocks.get(id)
     if (e) {
       e.occurrences++
@@ -58,8 +71,8 @@ class TextureDebugStore {
 
   addChunkStats(s: ChunkRenderStats) {
     this._renderTotals.chunks++
-    this._renderTotals.drawImage    += s.drawImage
-    this._renderTotals.fillRect     += s.fillRect
+    this._renderTotals.drawImage += s.drawImage
+    this._renderTotals.fillRect += s.fillRect
     this._renderTotals.missingTexKey += s.missingTexKey
     this._renderTotals.failedTexLoad += s.failedTexLoad
     this._scheduleNotify()
@@ -71,7 +84,13 @@ class TextureDebugStore {
 
   clear() {
     this._blocks.clear()
-    this._renderTotals = { chunks: 0, drawImage: 0, fillRect: 0, missingTexKey: 0, failedTexLoad: 0 }
+    this._renderTotals = {
+      chunks: 0,
+      drawImage: 0,
+      fillRect: 0,
+      missingTexKey: 0,
+      failedTexLoad: 0,
+    }
     this._notify()
   }
 
@@ -79,7 +98,8 @@ class TextureDebugStore {
     return [...this._blocks.values()].map((b) => ({
       ...b,
       texStatus: b.texKey
-        ? ((getTextureState(b.texKey) as TexDebugStatus | undefined) ?? 'pending')
+        ? ((getTextureState(b.texKey) as TexDebugStatus | undefined) ??
+          'pending')
         : 'no-mapping',
     }))
   }
@@ -96,8 +116,14 @@ class TextureDebugStore {
     occPending: number
     occNoMapping: number
   } {
-    let loaded = 0, missing = 0, pending = 0, noMapping = 0
-    let occLoaded = 0, occMissing = 0, occPending = 0, occNoMapping = 0
+    let loaded = 0,
+      missing = 0,
+      pending = 0,
+      noMapping = 0
+    let occLoaded = 0,
+      occMissing = 0,
+      occPending = 0,
+      occNoMapping = 0
     for (const b of this._blocks.values()) {
       if (!b.texKey) {
         noMapping++
@@ -105,14 +131,27 @@ class TextureDebugStore {
         continue
       }
       const s = getTextureState(b.texKey)
-      if (s === 'loaded')       { loaded++;   occLoaded   += b.occurrences }
-      else if (s === 'missing') { missing++;  occMissing  += b.occurrences }
-      else                      { pending++;  occPending  += b.occurrences }
+      if (s === 'loaded') {
+        loaded++
+        occLoaded += b.occurrences
+      } else if (s === 'missing') {
+        missing++
+        occMissing += b.occurrences
+      } else {
+        pending++
+        occPending += b.occurrences
+      }
     }
     return {
-      loaded, missing, pending, noMapping,
+      loaded,
+      missing,
+      pending,
+      noMapping,
       total: this._blocks.size,
-      occLoaded, occMissing, occPending, occNoMapping,
+      occLoaded,
+      occMissing,
+      occPending,
+      occNoMapping,
     }
   }
 

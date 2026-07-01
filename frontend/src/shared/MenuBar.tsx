@@ -1,12 +1,30 @@
 import { open } from '@tauri-apps/plugin-dialog'
-import { Bug, FolderOpen, Mountain, Palette, Search, TriangleAlert, X } from 'lucide-react'
+import {
+  Bug,
+  FolderOpen,
+  Mountain,
+  Palette,
+  Search,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { validateWorld } from '../features/world/api/worlds'
-import { BUILT_IN_PRESETS, type TextureFilter } from '../features/blocks/renderPresets'
+import {
+  BUILT_IN_PRESETS,
+  type TextureFilter,
+} from '../features/blocks/renderPresets'
 import { addRecentWorld, getRecentWorlds } from '../features/world/recentWorlds'
 
-type ElevOverride = 'preset' | 'off' | 'subtle' | 'strong' | 'relief' | 'heightmap' | 'contours'
+type ElevOverride =
+  | 'preset'
+  | 'off'
+  | 'subtle'
+  | 'strong'
+  | 'relief'
+  | 'heightmap'
+  | 'contours'
 
 interface Props {
   worldPath: string | null
@@ -178,24 +196,36 @@ export function MenuBar({
               <select
                 value={selectedPresetId}
                 onChange={(e) => onSetPreset(e.target.value)}
-                title={BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId)?.description}
+                title={
+                  BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId)
+                    ?.description
+                }
                 className="bg-zinc-900 px-2 font-mono text-xs text-zinc-300 focus:outline-none hover:bg-zinc-800 cursor-pointer"
               >
                 {BUILT_IN_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
                 ))}
               </select>
             </div>
           )}
           {onSetElevOverride && (
             <div className="flex items-center gap-1.5 border-l border-zinc-800 pl-2">
-              <Mountain className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+              <Mountain
+                className="h-4 w-4 shrink-0 text-zinc-500"
+                aria-hidden
+              />
               <select
                 value={elevOverride ?? 'preset'}
-                onChange={(e) => onSetElevOverride(e.target.value as ElevOverride)}
+                onChange={(e) =>
+                  onSetElevOverride(e.target.value as ElevOverride)
+                }
                 title="Elevation mode override (overrides preset setting)"
                 className={`bg-zinc-900 px-2 font-mono text-xs focus:outline-none hover:bg-zinc-800 cursor-pointer ${
-                  elevOverride && elevOverride !== 'preset' ? 'text-amber-300' : 'text-zinc-300'
+                  elevOverride && elevOverride !== 'preset'
+                    ? 'text-amber-300'
+                    : 'text-zinc-300'
                 }`}
               >
                 <option value="preset">Elev: preset</option>
@@ -212,10 +242,14 @@ export function MenuBar({
             <div className="flex items-stretch border-l border-zinc-800">
               <select
                 value={textureFilter ?? 'preset'}
-                onChange={(e) => onSetTextureFilter(e.target.value as 'preset' | TextureFilter)}
+                onChange={(e) =>
+                  onSetTextureFilter(e.target.value as 'preset' | TextureFilter)
+                }
                 title="Texture filtering mode (overrides preset default)"
                 className={`bg-zinc-900 px-2 font-mono text-xs focus:outline-none hover:bg-zinc-800 cursor-pointer ${
-                  textureFilter && textureFilter !== 'preset' ? 'text-amber-300' : 'text-zinc-300'
+                  textureFilter && textureFilter !== 'preset'
+                    ? 'text-amber-300'
+                    : 'text-zinc-300'
                 }`}
               >
                 <option value="preset">Filter: preset</option>
@@ -229,7 +263,11 @@ export function MenuBar({
             <div className="flex items-stretch border-l border-zinc-800">
               <button
                 onClick={onToggleDisableTint}
-                title={disableTint ? 'Biome tint disabled — showing raw textures' : 'Disable biome tint (show raw texture)'}
+                title={
+                  disableTint
+                    ? 'Biome tint disabled — showing raw textures'
+                    : 'Disable biome tint (show raw texture)'
+                }
                 className={`flex items-center gap-1.5 px-3 text-xs transition-colors ${
                   disableTint
                     ? 'bg-yellow-950 text-yellow-300'
@@ -291,7 +329,10 @@ export function MenuBar({
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2 border-l border-zinc-800 bg-red-950/40 px-3">
-          <TriangleAlert className="h-4 w-4 shrink-0 text-red-400" aria-hidden />
+          <TriangleAlert
+            className="h-4 w-4 shrink-0 text-red-400"
+            aria-hidden
+          />
           <span className="text-xs text-red-400">{error}</span>
           <button
             onClick={() => setError(null)}
