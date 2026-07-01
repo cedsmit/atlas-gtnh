@@ -1,6 +1,7 @@
 import { type MouseEvent, type RefObject, useRef, useState } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
+import { deleteChunks } from './api/chunkOps'
 
 export interface ChunkSelection {
   cx0: number
@@ -20,15 +21,36 @@ function selCount(s: ChunkSelection): number {
   return (Math.abs(s.cx1 - s.cx0) + 1) * (Math.abs(s.cz1 - s.cz0) + 1)
 }
 
+function expand(s: ChunkSelection): [number, number][] {
+  const x0 = Math.min(s.cx0, s.cx1),
+    x1 = Math.max(s.cx0, s.cx1)
+  const z0 = Math.min(s.cz0, s.cz1),
+    z1 = Math.max(s.cz0, s.cz1)
+  const out: [number, number][] = []
+  for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) out.push([x, z])
+  return out
+}
+
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
+
 /**
- * Chunk selection tool overlaid on the map. When active, drag a rectangle to
- * select a range of chunks; the engine draws a persistent world-space highlight.
- * Destructive actions (delete/copy) are added in a later step.
+ * Chunk selection + save operations overlaid on the map. Drag a rectangle to
+ * select chunks (the engine draws a persistent highlight), then delete them for
+ * regeneration. Writes to the save, so the world must be closed in Minecraft.
  */
-export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | null> }) {
+export function ChunkTools({
+  engineRef,
+  dimensionPath,
+}: {
+  engineRef: RefObject<MapEngine | null>
+  dimensionPath: string
+}) {
   const [active, setActive] = useState(false)
   const [selection, setSelection] = useState<ChunkSelection | null>(null)
   const [drag, setDrag] = useState<DragBox | null>(null)
+  const [confirming, setConfirming] = useState<'delete' | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
 
   function relative(e: MouseEvent): { x: number; y: number } {
@@ -44,7 +66,7 @@ export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | nul
   }
 
   function onDown(e: MouseEvent) {
-    if (!engineRef.current) return
+    if (!engineRef.current || busy) return
     const { x, y } = relative(e)
     setDrag({ x0: x, y0: y, x1: x, y1: y })
   }
@@ -63,19 +85,43 @@ export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | nul
     const sel: ChunkSelection = { cx0: a.cx, cz0: a.cz, cx1: b.cx, cz1: b.cz }
     setSelection(sel)
     engineRef.current.setSelection(sel)
+    setResult(null)
+    setConfirming(null)
     setDrag(null)
   }
 
   function clearSelection() {
     setSelection(null)
+    setConfirming(null)
     engineRef.current?.setSelection(null)
   }
 
   function toggle() {
     setActive((prev) => {
-      if (prev) clearSelection() // leaving select mode clears the highlight
+      if (prev) clearSelection()
+      setResult(null)
       return !prev
     })
+  }
+
+  async function runDelete() {
+    if (!selection) return
+    setBusy(true)
+    setResult(null)
+    try {
+      const r = await deleteChunks(dimensionPath, expand(selection))
+      setResult(
+        `Deleted ${r.deleted ?? 0} chunk(s)` +
+          (r.missing ? `, ${r.missing} already empty` : '') +
+          '. Reload the world in Minecraft to regenerate.',
+      )
+      clearSelection()
+    } catch (e) {
+      setResult(`Error: ${errMsg(e)}`)
+    } finally {
+      setBusy(false)
+      setConfirming(null)
+    }
   }
 
   const box = drag
@@ -86,6 +132,8 @@ export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | nul
         height: Math.abs(drag.y1 - drag.y0),
       }
     : null
+
+  const count = selection ? selCount(selection) : 0
 
   return (
     <>
@@ -98,16 +146,11 @@ export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | nul
           onMouseLeave={onUp}
           className="absolute inset-0 z-10 cursor-crosshair"
         >
-          {box && (
-            <div
-              className="absolute border-2 border-sky-400 bg-sky-400/20"
-              style={box}
-            />
-          )}
+          {box && <div className="absolute border-2 border-sky-400 bg-sky-400/20" style={box} />}
         </div>
       )}
 
-      <div className="absolute left-2 top-2 z-20 flex flex-col gap-1 rounded bg-black/70 p-2 font-mono text-xs text-zinc-200">
+      <div className="absolute left-2 top-2 z-20 flex w-64 flex-col gap-1 rounded bg-black/70 p-2 font-mono text-xs text-zinc-200">
         <button
           onClick={toggle}
           className={`rounded px-2 py-1 ${
@@ -116,22 +159,63 @@ export function ChunkTools({ engineRef }: { engineRef: RefObject<MapEngine | nul
         >
           {active ? '◉ Selecting chunks' : '▢ Select chunks'}
         </button>
+
+        {active && !selection && <span className="text-zinc-400">drag to select</span>}
+
         {active && selection && (
           <div className="flex flex-col gap-1">
             <span>
-              ({Math.min(selection.cx0, selection.cx1)}, {Math.min(selection.cz0, selection.cz1)}) –
-              ({Math.max(selection.cx0, selection.cx1)}, {Math.max(selection.cz0, selection.cz1)})
+              ({Math.min(selection.cx0, selection.cx1)}, {Math.min(selection.cz0, selection.cz1)}) – (
+              {Math.max(selection.cx0, selection.cx1)}, {Math.max(selection.cz0, selection.cz1)})
             </span>
-            <span className="text-zinc-400">{selCount(selection)} chunks selected</span>
-            <button
-              onClick={clearSelection}
-              className="rounded bg-zinc-700 px-2 py-1 text-zinc-200 hover:bg-zinc-600"
-            >
-              Clear
-            </button>
+            <span className="text-zinc-400">{count} chunks selected</span>
+
+            {confirming === 'delete' ? (
+              <div className="flex flex-col gap-1 rounded border border-red-700 bg-red-950/60 p-2">
+                <span className="text-red-300">Delete {count} chunk(s) for regeneration?</span>
+                <span className="text-amber-300">
+                  ⚠ Close Minecraft first — writing a loaded save corrupts it. A .bak is kept; MC
+                  regenerates these chunks on next load.
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    onClick={runDelete}
+                    disabled={busy}
+                    className="flex-1 rounded bg-red-700 px-2 py-1 text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    {busy ? 'Working…' : 'Delete'}
+                  </button>
+                  <button
+                    onClick={() => setConfirming(null)}
+                    disabled={busy}
+                    className="flex-1 rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setConfirming('delete')}
+                  disabled={busy}
+                  className="flex-1 rounded bg-red-800 px-2 py-1 text-red-100 hover:bg-red-700 disabled:opacity-50"
+                >
+                  Delete → regenerate
+                </button>
+                <button
+                  onClick={clearSelection}
+                  disabled={busy}
+                  className="rounded bg-zinc-700 px-2 py-1 hover:bg-zinc-600 disabled:opacity-50"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
         )}
-        {active && !selection && <span className="text-zinc-400">drag to select</span>}
+
+        {result && <span className="text-zinc-300">{result}</span>}
       </div>
     </>
   )
