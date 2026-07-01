@@ -7,6 +7,7 @@ import {
   resolveMetadataTint,
 } from '../blocks/blockColors'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
+import type { RenderConfig } from '../blocks/renderPresets'
 import { getTexture } from '../textures/textureLoader'
 
 export interface BlockInspectorContext {
@@ -20,6 +21,7 @@ export interface BlockInspectorContext {
   dimensionPath: string
   isDestroyed: () => boolean
   registry: BlockRenderRegistry
+  config: RenderConfig
   blockColors: BlockColorMap | undefined
   blockNames: Record<number, string> | undefined
   textureKeys: Record<number, string> | undefined
@@ -42,6 +44,7 @@ export async function showBlockInspector(
     dimensionPath,
     isDestroyed,
     registry,
+    config,
     blockColors,
     blockNames,
     textureKeys,
@@ -114,37 +117,103 @@ export async function showBlockInspector(
     }
   }
 
-  // Slope: scan 4 neighboring columns within this chunk, compute shade value
-  function scanTerrainY(nx: number, nz: number): number {
-    for (const sec of secs) {
+  // ── Shading diagnostic — replicates the renderer's hillshade exactly ──
+  // Same column rule as the renderer's base scan (ignore/overlay skipped,
+  // foliage-hidden respected), and neighbors cross chunk borders through the
+  // data cache, exactly like renderChunkImage's NeighborHeights.
+  function terrainYIn(chunk: ChunkData, nx: number, nz: number): number {
+    const csecs = [...chunk.sections].sort((a, bv) => bv.y - a.y)
+    for (const sec of csecs) {
       for (let y = 15; y >= 0; y--) {
         const idx = (y << 8) | (nz << 4) | nx
         const id = sec.blocks[idx]
         if (id === 0) continue
-        const cat = registry.lookup(id).category
-        if (cat !== 'ignore' && cat !== 'overlay') return sec.y * 16 + y
+        const def = registry.lookup(id)
+        if (def.category === 'ignore' || def.category === 'overlay') continue
+        if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
+        return sec.y * 16 + y
       }
     }
     return -1
   }
-  const inY = terrainYv
-  const inNY = lz > 0 ? scanTerrainY(lx, lz - 1) : -1
-  const inSY = lz < 15 ? scanTerrainY(lx, lz + 1) : -1
-  const inWY = lx > 0 ? scanTerrainY(lx - 1, lz) : -1
-  const inEY = lx < 15 ? scanTerrainY(lx + 1, lz) : -1
-  let shade = 0
-  if (inSY >= 0) shade += Math.max(-40, Math.min(40, (inY - inSY) * 4))
-  if (inNY >= 0) shade += Math.max(-20, Math.min(20, (inY - inNY) * 2))
-  if (inEY >= 0) shade += Math.max(-15, Math.min(15, (inY - inEY) * 1.5))
-  if (inWY >= 0) shade += Math.max(-10, Math.min(10, (inY - inWY) * 1.0))
+  // Neighbor column height; steps into the adjacent chunk when off-edge.
+  function neighborY(dx: number, dz: number): number {
+    let nx = lx + dx,
+      nz = lz + dz,
+      ncx = cx,
+      ncz = cz
+    if (nx < 0) {
+      nx = 15
+      ncx--
+    } else if (nx > 15) {
+      nx = 0
+      ncx++
+    }
+    if (nz < 0) {
+      nz = 15
+      ncz--
+    } else if (nz > 15) {
+      nz = 0
+      ncz++
+    }
+    const chunk =
+      ncx === cx && ncz === cz ? data! : dataCache.get(`${ncx},${ncz}`)
+    return chunk ? terrainYIn(chunk, nx, nz) : -1
+  }
+  const inY = data ? terrainYIn(data, lx, lz) : -1
+  const nY = neighborY(0, -1)
+  const sY = neighborY(0, 1)
+  const wY = neighborY(-1, 0)
+  const eY = neighborY(1, 0)
+
+  // Mirror of renderChunkImage step 5 (NW-light hillshade + AO).
+  let bright = 0,
+    dark = 0
+  if (nY >= 0) {
+    const d = inY - nY
+    if (d > 0) bright += d
+    else dark += -d * 0.3
+  }
+  if (wY >= 0) {
+    const d = inY - wY
+    if (d > 0) bright += d * 0.65
+    else dark += -d * 0.2
+  }
+  if (sY >= 0) {
+    const d = sY - inY
+    if (d > 0) dark += d
+    else bright += -d * 0.15
+  }
+  if (eY >= 0) {
+    const d = eY - inY
+    if (d > 0) dark += d * 0.65
+    else bright += -d * 0.1
+  }
+  const steep = Math.max(
+    nY >= 0 ? Math.abs(inY - nY) : 0,
+    sY >= 0 ? Math.abs(inY - sY) : 0,
+    wY >= 0 ? Math.abs(inY - wY) : 0,
+    eY >= 0 ? Math.abs(inY - eY) : 0
+  )
+  const elevMode = config.elevationMode
+  const str = config.elevationStrength
+  const ao = Math.max(0, ((steep - 2) * str) / 80)
+  const maxB = elevMode === 'strong' ? 0.48 : 0.28
+  const maxD = elevMode === 'strong' ? 0.78 : 0.42
+  const brightA = elevMode === 'off' ? 0 : Math.min((bright * str) / 9, maxB)
+  const darkA = elevMode === 'off' ? 0 : Math.min((dark * str) / 9 + ao, maxD)
+
+  const fmtY = (v: number) =>
+    v >= 0 ? `${v - inY >= 0 ? '+' : ''}${v - inY}` : '?'
+  const nbrStr = `N${fmtY(nY)} S${fmtY(sY)} W${fmtY(wY)} E${fmtY(eY)}`
   const slopeStr =
-    lx === 0 || lx === 15 || lz === 0 || lz === 15
-      ? 'edge (partial)'
-      : shade > 0
-        ? `+${shade} (lit)`
-        : shade < 0
-          ? `${shade} (shadow)`
-          : '0 (flat)'
+    elevMode === 'off'
+      ? 'shading off'
+      : brightA < 0.01 && darkA < 0.01
+        ? `flat  [${nbrStr}]`
+        : `${brightA >= 0.01 ? `lit +${Math.round(brightA * 100)}%` : ''}${
+            brightA >= 0.01 && darkA >= 0.01 ? ' ' : ''
+          }${darkA >= 0.01 ? `shadow -${Math.round(darkA * 100)}%` : ''}  [${nbrStr}]`
 
   const biomeId = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
   const topDef = registry.lookup(topId)

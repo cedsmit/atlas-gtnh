@@ -1168,6 +1168,7 @@ export class MapEngine {
         dimensionPath,
         isDestroyed: () => destroyed,
         registry: registryRef.current,
+        config: configRef.current,
         blockColors: blockColorsRef.current,
         blockNames: blockNamesRef.current,
         textureKeys: textureKeysRef.current,
