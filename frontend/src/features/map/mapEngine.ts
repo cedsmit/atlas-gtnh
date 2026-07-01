@@ -22,9 +22,11 @@ import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
 import { onTextureLoad } from '../textures/textureLoader'
 import {
   canvasDiagnostics,
+  computeEdgeHeights,
   makeChunkTexture,
   renderChunkImage,
   upscaleCanvas,
+  type NeighborHeights,
 } from './chunkTileRenderer'
 import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 import { showBlockInspector } from './blockInspector'
@@ -114,6 +116,9 @@ export class MapEngine {
       dataCache: new Map<string, ChunkData>(),
       texVersion: 0,
       texVersionAtRender: new Map<string, number>(),
+      // Rendered chunks whose edge shading is stale because a neighbor's block
+      // data arrived after they were drawn. Re-rendered in the frame loop.
+      shadeStale: new Set<string>(),
       lastBcCount: 0,
       lastConfig: null as RenderConfig | null,
       lastDebugMode: false,
@@ -273,6 +278,47 @@ export class MapEngine {
     fitCameraRef.current = fitCamera
     syncRegions()
 
+    // ── Cross-chunk shading support ──
+    // Edge heights of the four adjacent chunks (when their data is cached) so
+    // elevation shading and contours are seamless across chunk borders.
+    function neighborHeightsFor(mcx: number, mcz: number): NeighborHeights {
+      const reg = registryRef.current
+      const cfg = configRef.current
+      const n = st.dataCache.get(`${mcx},${mcz - 1}`)
+      const s = st.dataCache.get(`${mcx},${mcz + 1}`)
+      const w = st.dataCache.get(`${mcx - 1},${mcz}`)
+      const e = st.dataCache.get(`${mcx + 1},${mcz}`)
+      return {
+        n: n ? computeEdgeHeights(n, 'n', reg, cfg) : null,
+        s: s ? computeEdgeHeights(s, 's', reg, cfg) : null,
+        w: w ? computeEdgeHeights(w, 'w', reg, cfg) : null,
+        e: e ? computeEdgeHeights(e, 'e', reg, cfg) : null,
+      }
+    }
+
+    // Mark already-rendered neighbors of a freshly-arrived chunk for a shading
+    // re-render (their shared edge was drawn without this chunk's heights).
+    // Only neighbors with cached block data are marked — bitmap-restored tiles
+    // can't re-render in place, and dropping them would cascade refetches.
+    function markNeighborsShadeStale(mcx: number, mcz: number) {
+      for (const [dx, dz] of [
+        [0, -1],
+        [0, 1],
+        [-1, 0],
+        [1, 0],
+      ] as const) {
+        const nk = `${mcx + dx},${mcz + dz}`
+        if (
+          st.dataCache.has(nk) &&
+          st.cache.get(nk) instanceof THREE.Mesh &&
+          !st.renderSet.has(nk)
+        ) {
+          st.shadeStale.add(nk)
+        }
+      }
+      if (st.shadeStale.size > 0) st.staleWork = true
+    }
+
     // ── Chunk rendering (time-sliced; called from the RAF loop) ──
     // Paints one fetched chunk's canvas, uploads it, and places its mesh.
     // Heavy: capped per frame by the loop so a burst of arrivals doesn't stall.
@@ -315,7 +361,8 @@ export class MapEngine {
         configRef.current,
         true,
         debugModeRef.current,
-        blockNamesRef.current
+        blockNamesRef.current,
+        neighborHeightsFor(mcx, mcz)
       )
       textureDebugStore.addChunkStats(stats)
 
@@ -381,6 +428,10 @@ export class MapEngine {
       st.cache.set(key, mesh)
       st.texVersionAtRender.set(key, st.texVersion)
       st.liveChunks++
+
+      // Neighbors drawn before this chunk's data arrived have a stale shared
+      // edge — queue them for a shading re-render.
+      markNeighborsShadeStale(mcx, mcz)
     }
 
     function makeBitmapTexture(
@@ -899,20 +950,30 @@ export class MapEngine {
         return
       }
 
-      // Re-render stale chunks (max 4 per frame) when textures or colors changed
-      if (st.texVersion > 0) {
+      // Re-render stale chunks (max 4 per frame) when textures/colors changed
+      // or a late-arriving neighbor invalidated their edge shading.
+      if (st.texVersion > 0 || st.shadeStale.size > 0) {
+        // Prune shade-stale keys whose tile has been evicted meanwhile.
+        for (const key of st.shadeStale) {
+          if (!(st.cache.get(key) instanceof THREE.Mesh)) {
+            st.shadeStale.delete(key)
+          }
+        }
         let rerendered = 0
         let moreStale = false
         const staleNoData: string[] = []
         for (const [key, entry] of st.cache) {
           if (!(entry instanceof THREE.Mesh)) continue
-          if ((st.texVersionAtRender.get(key) ?? 0) >= st.texVersion) continue
+          const texCurrent =
+            (st.texVersionAtRender.get(key) ?? 0) >= st.texVersion
+          if (texCurrent && !st.shadeStale.has(key)) continue
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
             if (rerendered >= 4) {
               moreStale = true
               continue
             }
+            const [rmxs, rmzs] = key.split(',')
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
               blockColorsRef.current,
@@ -922,7 +983,8 @@ export class MapEngine {
               configRef.current,
               false,
               debugModeRef.current,
-              blockNamesRef.current
+              blockNamesRef.current,
+              neighborHeightsFor(parseInt(rmxs), parseInt(rmzs))
             )
             textureDebugStore.addChunkStats(reStats)
             if (debugModeRef.current) {
@@ -947,9 +1009,14 @@ export class MapEngine {
             mat.map = makeChunkTexture(uploadCanvas, texFilter)
             mat.needsUpdate = true
             st.texVersionAtRender.set(key, st.texVersion)
+            st.shadeStale.delete(key)
             rerendered++
-          } else {
+          } else if (!texCurrent) {
             staleNoData.push(key)
+          } else {
+            // Shade-stale only, but the block data was evicted — can't
+            // re-render in place; keep the tile rather than force a refetch.
+            st.shadeStale.delete(key)
           }
         }
         // Restored tiles have no block data to re-render — drop them so they

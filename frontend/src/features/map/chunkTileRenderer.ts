@@ -36,6 +36,56 @@ export interface ChunkRenderStats {
   failedTexLoad: number
 }
 
+// ── Cross-chunk neighbor heights ─────────────────────────────────────────────
+// Terrain heights of the four adjacent chunks' facing edge rows, so elevation
+// shading and contours are seamless across chunk borders. n/s are indexed by
+// x (0-15); w/e are indexed by z. null/undefined = neighbor not loaded yet.
+export interface NeighborHeights {
+  n?: Int16Array | null
+  s?: Int16Array | null
+  w?: Int16Array | null
+  e?: Int16Array | null
+}
+
+/**
+ * Compute the 16 terrain heights of the edge row of *data* that faces a chunk
+ * on the given *side* (side = where the RENDERED chunk sits relative to this
+ * neighbor: 'n' means this chunk is the northern neighbor, so sample its
+ * southern row z=15). Uses the same column rules as the base scan in
+ * renderChunkImage — ignore/overlay skipped, foliage-hidden respected — so the
+ * heights match what an in-chunk neighbor would report.
+ */
+export function computeEdgeHeights(
+  data: ChunkData,
+  side: 'n' | 's' | 'w' | 'e',
+  registry: BlockRenderRegistry,
+  config: RenderConfig
+): Int16Array {
+  const sections = [...data.sections].sort((a, b) => b.y - a.y)
+  const out = new Int16Array(16).fill(-1)
+
+  for (let j = 0; j < 16; j++) {
+    // n: our chunk is north of the target → sample this chunk's z=15 row.
+    // s: z=0 row.  w: x=15 column.  e: x=0 column.
+    const x = side === 'n' || side === 's' ? j : side === 'w' ? 15 : 0
+    const z = side === 'w' || side === 'e' ? j : side === 'n' ? 15 : 0
+
+    scan: for (const section of sections) {
+      for (let y = 15; y >= 0; y--) {
+        const idx = (y << 8) | (z << 4) | x
+        const id = section.blocks[idx]
+        if (id === 0) continue
+        const def = registry.lookup(id)
+        if (def.category === 'ignore' || def.category === 'overlay') continue
+        if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
+        out[j] = section.y * 16 + y
+        break scan
+      }
+    }
+  }
+  return out
+}
+
 // ── Chunk pixel renderer ───────────────────────────────────────────────────
 export function renderChunkImage(
   data: ChunkData,
@@ -46,7 +96,8 @@ export function renderChunkImage(
   config: RenderConfig,
   recordDebug: boolean, // only true on first render to avoid double-counting
   debugMode: boolean, // controls textureDebugStore recording
-  blockNames: Record<number, string> | undefined
+  blockNames: Record<number, string> | undefined,
+  neighbors?: NeighborHeights
 ): { canvas: HTMLCanvasElement; stats: ChunkRenderStats } {
   let drawImage = 0,
     fillRect = 0,
@@ -222,11 +273,12 @@ export function renderChunkImage(
       }
 
       // ── Neighbor heights for elevation shading + contours ─────────
-      // Edge columns stay -1; cross-chunk shading is a future improvement.
-      const nY = z > 0 ? baseY[(z - 1) * 16 + x] : -1
-      const sY = z < 15 ? baseY[(z + 1) * 16 + x] : -1
-      const wY = x > 0 ? baseY[z * 16 + (x - 1)] : -1
-      const eY = x < 15 ? baseY[z * 16 + (x + 1)] : -1
+      // Edge columns read the adjacent chunk's facing row (when loaded) so
+      // shading and contours are seamless across chunk borders.
+      const nY = z > 0 ? baseY[(z - 1) * 16 + x] : (neighbors?.n?.[x] ?? -1)
+      const sY = z < 15 ? baseY[(z + 1) * 16 + x] : (neighbors?.s?.[x] ?? -1)
+      const wY = x > 0 ? baseY[z * 16 + (x - 1)] : (neighbors?.w?.[z] ?? -1)
+      const eY = x < 15 ? baseY[z * 16 + (x + 1)] : (neighbors?.e?.[z] ?? -1)
 
       // Color desaturation (Topo preset and any preset with colorSaturation < 1)
       const sat = config.colorSaturation
