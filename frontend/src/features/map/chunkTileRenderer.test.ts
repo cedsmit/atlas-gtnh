@@ -86,24 +86,44 @@ describe('computeHillshade', () => {
     expect(darkA).toBe(0)
   })
 
-  it('caps a deep architectural drop like a small step (regression: W-7)', () => {
+  it('renders a deep drop rim as a whisper, not a wash (regression: W-7)', () => {
     // Floor tile at Y72 with a 7-block drop to its west (edge of a lower
-    // room). Uncapped this saturated the bright clamp (+28%); capped it must
-    // shade no stronger than a 2-block step, ~14% + mild AO.
+    // room). This produced a +28% (then +12%) white band; JourneyMap shows
+    // ~5% there. Must now be barely visible and equal to a 2-block step.
     const deep = computeHillshade(72, 72, 72, 65, 72, cfg)
     const step2 = computeHillshade(72, 72, 72, 70, 72, cfg)
     expect(deep.brightA).toBeCloseTo(step2.brightA, 5)
-    expect(deep.brightA).toBeLessThan(0.15)
+    expect(deep.brightA).toBeLessThanOrEqual(0.06)
+    expect(deep.darkA).toBe(0) // no AO in normal mode
   })
 
-  it('caps the shadow beside a tall wall', () => {
-    // Floor beside a 9-block wall to the south and east (base corner).
-    const { darkA } = computeHillshade(72, 72, 81, 72, 81, cfg)
+  it('leaves tiles south/east of walls untouched (JourneyMap N/W rule)', () => {
+    // Floor beside a 9-block wall to the south and east (base corner):
+    // JM only compares N and W, so this tile is flat.
+    const { brightA, darkA } = computeHillshade(72, 72, 81, 72, 81, cfg)
+    expect(brightA).toBe(0)
+    expect(darkA).toBe(0)
+  })
+
+  it('shadows tiles below their north/west neighbors', () => {
+    // Floor at the base of a 9-block wall to the north.
+    const { darkA, brightA } = computeHillshade(72, 81, 72, 72, 72, cfg)
+    expect(brightA).toBe(0)
+    expect(darkA).toBeGreaterThan(0.05)
     expect(darkA).toBeLessThanOrEqual(0.35)
   })
 
-  it('keeps natural 1-block terrain steps shaded', () => {
-    const { brightA } = computeHillshade(72, 71, 72, 72, 72, cfg)
-    expect(brightA).toBeGreaterThan(0.05)
+  it('keeps natural 1-block terrain steps visible', () => {
+    const { brightA } = computeHillshade(72, 71, 72, 71, 72, cfg)
+    expect(brightA).toBeGreaterThan(0.04)
+  })
+
+  it("keeps 'strong' mode dramatic for Topo cliffs", () => {
+    const strong = {
+      elevationMode: 'strong',
+      elevationStrength: 2.5,
+    } as never
+    const { darkA } = computeHillshade(72, 72, 81, 72, 81, strong)
+    expect(darkA).toBeGreaterThan(0.5)
   })
 })

@@ -110,10 +110,27 @@ export function computeHillshade(
     return { brightA: 0, darkA: 0 }
   }
   const str = config.elevationStrength
-  const cap = (d: number) => Math.min(d, DELTA_CAP)
 
-  // N/W contribute bright (facing NW light); S/E contribute dark (in shadow).
-  // Each direction also adds a lesser counter-contribution for smooth transitions.
+  if (elevMode !== 'strong') {
+    // ── JourneyMap-style slope shading (normal modes) ──
+    // Compare against the N and W neighbors ONLY, averaged. This is what keeps
+    // JM interiors visually uniform: tiles east/south of a wall are untouched,
+    // a floor tile at the rim of a drop gets a whisper (~6%), and genuine
+    // slope runs (successive offset columns) still read as terrain. Highlights
+    // are weaker than shadows — white wash on pale floors is far more visible
+    // than shadow at a wall's base.
+    const f = (nb: number) =>
+      nb < 0 ? 0 : Math.max(-DELTA_CAP, Math.min(DELTA_CAP, blockY - nb))
+    const slope = (f(nY) + f(wY)) / 2 // + = above N/W neighbors (lit), − = below (shadow)
+    return {
+      brightA: Math.min(Math.max(slope * 0.06 * str, 0), 0.22),
+      darkA: Math.min(Math.max(-slope * 0.12 * str, 0), 0.35),
+    }
+  }
+
+  // ── 'strong' (Topo/Relief): directional accumulation over all four sides ──
+  // Kept dramatic on purpose — these presets want near-black cliff faces.
+  const cap = (d: number) => Math.min(d, DELTA_CAP)
   let bright = 0,
     dark = 0
   if (nY >= 0) {
@@ -150,14 +167,10 @@ export function computeHillshade(
   )
   const ao = Math.max(0, ((steep - 2) * str) / 80)
 
-  // Normalize and clamp. NORM=9 with capped deltas: a full step reaches ~22%
-  // at str=1. 'strong' keeps higher ceilings so Topo can still go near-black.
   const NORM = 9
-  const maxB = elevMode === 'strong' ? 0.48 : 0.22
-  const maxD = elevMode === 'strong' ? 0.78 : 0.35
   return {
-    brightA: Math.min((bright * str) / NORM, maxB),
-    darkA: Math.min((dark * str) / NORM + ao, maxD),
+    brightA: Math.min((bright * str) / NORM, 0.48),
+    darkA: Math.min((dark * str) / NORM + ao, 0.78),
   }
 }
 
