@@ -77,6 +77,25 @@ export interface ResolvedDefinition extends BlockRenderDefinition {
   resolverSource: string // 'builtin' | 'vanilla.json' | 'thaumcraft.json' | …
 }
 
+/**
+ * True when a block is plant/vegetation — grass/foliage-tinted flora, or
+ * anything tagged as a flower/tallgrass (covers modded plants resolved from the
+ * render rules, e.g. Pam's crops tagged `flower`). Deliberately excludes the
+ * non-plant overlays that merely share the `overlay` category (rails, torches,
+ * redstone, signs, pressure plates). Used to drop plants from the zoomed-out
+ * overview so it shows the ground beneath them, and as the classification a
+ * future "highlight plants" toggle will reuse.
+ */
+export function isPlantBlock(def: ResolvedDefinition): boolean {
+  const tags = def.blockTags
+  if (tags && (tags.includes('flower') || tags.includes('tallgrass')))
+    return true
+  return (
+    def.category === 'overlay' &&
+    (def.tint === 'grass' || def.tint === 'foliage')
+  )
+}
+
 /** True when def should be rendered in the given map mode. */
 export function isVisibleInMode(
   def: ResolvedDefinition,
@@ -259,6 +278,52 @@ export class BlockRenderRegistry {
   /** O(1) lookup by numeric block ID. Returns default (solid) if not registered. */
   lookup(id: number): ResolvedDefinition {
     return this.byId.get(id) ?? DEFAULT_DEF
+  }
+
+  /**
+   * Numeric ids of every resolved plant/vegetation block (see isPlantBlock).
+   * Covers vanilla built-ins plus any modded plants matched by the render rules.
+   * Sent to the region-surface fetch so the overview drops plants and shows the
+   * ground beneath them.
+   */
+  plantIds(): number[] {
+    const out: number[] = []
+    for (const [id, def] of this.byId) {
+      if (isPlantBlock(def)) out.push(id)
+    }
+    return out
+  }
+
+  /**
+   * Numeric ids of blocks the map omits entirely (category 'ignore') — invisible
+   * air-like blocks such as Thaumcraft:blockAiry or Galacticraft breathable air.
+   * The detailed renderer skips these and shows the terrain beneath; the overview
+   * must skip them too, else it paints their (textureless) fallback colour as a
+   * stray dot. Always dropped from the overview, regardless of any plant toggle.
+   */
+  ignoredIds(): number[] {
+    const out: number[] = []
+    for (const [id, def] of this.byId) {
+      if (id !== 0 && def.category === 'ignore') out.push(id)
+    }
+    return out
+  }
+
+  /**
+   * Numeric ids of overlay blocks the current preset hides — their blockTags are
+   * in *hiddenTags* (e.g. torch/rail/redstone in JourneyMap). The detailed
+   * renderer omits these overlays, so the overview skips them too and shows the
+   * terrain beneath instead of a stray dot. Untagged overlays that visually cover
+   * the block (snow, carpet) have no matching tag and are kept.
+   */
+  hiddenOverlayIds(hiddenTags: ReadonlySet<string>): number[] {
+    const out: number[] = []
+    for (const [id, def] of this.byId) {
+      if (def.category !== 'overlay') continue
+      const tags = def.blockTags
+      if (tags && tags.some((t) => hiddenTags.has(t))) out.push(id)
+    }
+    return out
   }
 }
 

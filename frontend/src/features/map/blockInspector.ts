@@ -10,6 +10,7 @@ import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig } from '../blocks/renderPresets'
 import { computeHillshade } from './chunkTileRenderer'
 import { getTexture } from '../textures/textureLoader'
+import { averageTextureColor } from '../textures/textureAverage'
 
 export interface BlockInspectorContext {
   event: MouseEvent
@@ -209,9 +210,15 @@ export async function showBlockInspector(
     raw = resolveMetadataTint(topMeta, topDef.textureTintColors)
     colorSrc = hasTexture ? 'texture + meta tint' : 'meta tint'
   } else {
+    const texAvg = texKey ? averageTextureColor(texKey) : null
     const mapped = blockColors?.[topId]
-    raw = mapped ?? blockColorRGB(topId, topMeta)
-    colorSrc = hasTexture ? 'texture' : mapped ? 'color' : 'fallback'
+    if (texAvg) {
+      raw = texAvg // per-metadata texture colour (matches the renderer)
+      colorSrc = 'texture'
+    } else {
+      raw = mapped ?? blockColorRGB(topId, topMeta)
+      colorSrc = mapped ? 'color' : 'fallback'
+    }
   }
 
   const hex =

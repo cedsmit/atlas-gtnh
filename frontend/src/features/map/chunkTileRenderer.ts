@@ -20,6 +20,7 @@ import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
 import { shouldShowOverlay } from '../blocks/renderPresets'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import { getTexture } from '../textures/textureLoader'
+import { averageTextureColor } from '../textures/textureAverage'
 
 const CELL = 16 // pixels per block column in chunk canvas
 const CANVAS_SIZE = 256 // 16 blocks × 16 px
@@ -315,6 +316,12 @@ export function renderChunkImage(
       const isFoliage = baseDef.tint === 'foliage'
       const isBiome = (isGrass || isFoliage) && config.biomeTint
       const tintType = baseDef.tint ?? (isWater ? 'water' : 'none')
+      const texKey = !isWater
+        ? (baseDef.textureAlias ??
+          metaTextureKeys?.[`${id}:${meta}`] ??
+          textureKeys?.[id] ??
+          null)
+        : null
 
       // ── Base color: biome tint or block color ──────────────────────
       let r: number, g: number, b: number
@@ -336,10 +343,20 @@ export function renderChunkImage(
       } else {
         // Check meta-specific color first (wool, stained glass/clay, planks, logs)
         const metaColor = metaBlockColorRGB(id, meta)
+        const texAvg = texKey ? averageTextureColor(texKey) : null
         if (metaColor) {
           r = metaColor[0]
           g = metaColor[1]
           b = metaColor[2]
+        } else if (texAvg) {
+          // The resolved texture's own average — correct per-metadata for
+          // multi-species blocks (e.g. BOP leaves), where colorMap[id] is only
+          // one meta's colour. It's also the fill behind cutout leaf gaps, so
+          // leaves blend to their real species colour instead of a wrong per-id
+          // colour showing through.
+          r = texAvg[0]
+          g = texAvg[1]
+          b = texAvg[2]
         } else {
           const mapped = colorMap?.[id]
           const raw = mapped ?? blockColorRGB(id, meta)
@@ -377,12 +394,6 @@ export function renderChunkImage(
         b = Math.round(lum + (b - lum) * sat)
       }
 
-      const texKey = !isWater
-        ? (baseDef.textureAlias ??
-          metaTextureKeys?.[`${id}:${meta}`] ??
-          textureKeys?.[id] ??
-          null)
-        : null
       // For 'simplified' foliage mode, skip the texture so only the biome fill renders.
       const skipTex = config.foliageMode === 'simplified' && isFoliage
       const texImg =

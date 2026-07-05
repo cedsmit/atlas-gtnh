@@ -65,6 +65,9 @@ export interface RenderConfig {
   colorSaturation: number
   biomeTint: boolean
   useMarkers: boolean // blocks with mapRenderMode:'marker' render as tiny dots
+  // When true the zoomed-out overview keeps plants (a future toggle will render
+  // them as a highlight); when false plants are dropped so the ground shows.
+  highlightPlants: boolean
   showFallbackMagenta: boolean
   textureFilter: TextureFilter
 }
@@ -302,7 +305,10 @@ function buildHiddenTags(p: RenderPreset): ReadonlySet<string> {
 export function presetToConfig(
   preset: RenderPreset,
   overrides: Partial<
-    Pick<RenderConfig, 'biomeTint' | 'showFallbackMagenta' | 'textureFilter'>
+    Pick<
+      RenderConfig,
+      'biomeTint' | 'showFallbackMagenta' | 'textureFilter' | 'highlightPlants'
+    >
   > = {}
 ): RenderConfig {
   return {
@@ -320,6 +326,8 @@ export function presetToConfig(
     // Marker dots for textureless multiparts (AE2 cable bus) and marked
     // blocks — enabled wherever the preset shows cable infrastructure.
     useMarkers: preset.showCables,
+    // Default off: plants are dropped from the overview so the ground shows.
+    highlightPlants: overrides.highlightPlants ?? false,
     showFallbackMagenta:
       overrides.showFallbackMagenta ?? preset.showFallbackMagenta,
     textureFilter: overrides.textureFilter ?? preset.textureFilter,

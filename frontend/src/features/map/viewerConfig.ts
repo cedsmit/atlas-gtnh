@@ -21,13 +21,19 @@ export const VIEWER_CONFIG = {
    * hasn't loaded yet (or was evicted at the live-chunk budget) show the overview
    * rather than a black placeholder.
    *
-   * Set to `minScale` so full chunk detail (textures) renders at EVERY zoom
-   * level, including the most zoomed-out view — the detailed look never swaps to
-   * the flat overview as you zoom. Trade-off: zoomed all the way out over a large
-   * explored area loads many full-res chunks; past the live-chunk budget the
-   * furthest fall back to the region overview until you pan/zoom closer.
+   * Set to 2 (a block spans 2 screen px) — the point where the 16 px/block
+   * texture detail first becomes perceptible. Below it the overview carries the
+   * look, and since the overview renderer now matches the detailed renderer's
+   * colors AND hillshade (see regionTileRenderer), the swap is visually seamless:
+   * at ≤2× per-block texture is sub-pixel, so both layers show the same picture.
+   *
+   * Why not `minScale` (detail everywhere): a zoomed-all-the-way-out view spans
+   * far more chunks than the live-chunk budget, so the engine keeps thousands of
+   * chunk meshes resident and issues thousands of draw calls per frame — laggy
+   * even when idle. Deferring detail to ≥2× keeps the mesh count bounded while
+   * the cheap overview (one 512² mesh per 1024 chunks) handles the wide view.
    */
-  chunkLodScale: 1,
+  chunkLodScale: 2,
 
   /**
    * Chunks loaded beyond the visible viewport, in every direction, so the edge

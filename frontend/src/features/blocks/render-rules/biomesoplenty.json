@@ -14,22 +14,18 @@
     },
     "BiomesOPlenty:leaves1": {
       "category": "solid",
-      "tint": "foliage",
       "alphaMode": "cutout"
     },
     "BiomesOPlenty:leaves2": {
       "category": "solid",
-      "tint": "foliage",
       "alphaMode": "cutout"
     },
     "BiomesOPlenty:leaves3": {
       "category": "solid",
-      "tint": "foliage",
       "alphaMode": "cutout"
     },
     "BiomesOPlenty:leaves4": {
       "category": "solid",
-      "tint": "foliage",
       "alphaMode": "cutout"
     },
     "BiomesOPlenty:appleLeaves": {

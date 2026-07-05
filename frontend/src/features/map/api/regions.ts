@@ -46,15 +46,24 @@ export interface RegionSurface {
   chunks: ChunkSurface[]
 }
 
-/** Fetch the compact per-column surface summary for one region (overview LOD). */
+/**
+ * Fetch the compact per-column surface summary for one region (overview LOD).
+ * *skipIds* are block ids (e.g. plants) treated as air so the overview reports
+ * the ground beneath them instead of painting the plant.
+ */
 export async function fetchRegionSurface(
   worldPath: string,
   rx: number,
-  rz: number
+  rz: number,
+  skipIds?: number[]
 ): Promise<RegionSurface> {
-  const res = await fetch(
-    `${API_BASE}/worlds/regions/${rx}/${rz}/surface?world_path=${encodeURIComponent(worldPath)}`
-  )
+  // POST (not GET) so the skip-id list travels in the body — it can be long, and
+  // keeping it out of the URL keeps the backend access logs readable.
+  const res = await fetch(`${API_BASE}/worlds/regions/${rx}/${rz}/surface`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ world_path: worldPath, skip_ids: skipIds ?? [] }),
+  })
   if (!res.ok)
     throw new Error(
       `Failed to load region surface r.${rx}.${rz}: ${res.statusText}`

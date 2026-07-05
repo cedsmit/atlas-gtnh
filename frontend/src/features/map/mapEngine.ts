@@ -106,6 +106,9 @@ export class MapEngine {
     // Set in cleanup; async continuations (fetches, createImageBitmap) check it
     // so they don't write to torn-down state after unmount / dimension change.
     let destroyed = false
+    // Trailing-debounce timer: refresh the overview tiles once texture loading
+    // quiesces (they colour blocks from texture averages — see regionRestale).
+    let regionRelodTimer: ReturnType<typeof setTimeout> | null = null
 
     let W = container.clientWidth || 800
     let H = container.clientHeight || 600
@@ -153,12 +156,23 @@ export class MapEngine {
         surface: RegionSurface
       }>,
       regionRenderSet: new Set<string>(),
+      // Tiled regions queued for an in-place re-render because textures they
+      // colour from finished loading after the tile was first drawn.
+      regionRestale: new Set<string>(),
       activeRegionFetches: 0,
       // Bumped only on colour-map / render-config changes (not texture loads), so
       // region tiles re-render when the look changes without thrashing on every
       // texture that streams in.
       lodVersion: 0,
       regionLodVersion: 0,
+      // Block ids dropped from the overview so it shows the terrain beneath them:
+      // invisible 'ignore' blocks, preset-hidden overlays (torch/rail/redstone),
+      // and plants (unless highlightPlants). Recomputed when the registry or
+      // config changes; sent to the surface fetch.
+      surfaceSkipIds: [] as number[],
+      surfaceSkipCsv: '',
+      lastRegistryForSkip: null as BlockRenderRegistry | null,
+      lastConfigForSkip: null as RenderConfig | null,
       regionSet: new Set<string>(),
       isDragging: false,
       lastMouse: null as { x: number; y: number } | null,
@@ -178,6 +192,18 @@ export class MapEngine {
     const unsubTextures = onTextureLoad(() => {
       st.texVersion++
       st.forceFrame = true
+      // Overview tiles colour blocks from texture averages, so they need a
+      // refresh as textures stream in. Debounce on the trailing edge: re-render
+      // the visible overview once loading has been quiet for a moment, instead
+      // of thrashing on every batch (and avoiding a flash during the initial
+      // burst — tiles keep their current colours until the refresh completes).
+      if (regionRelodTimer !== null) clearTimeout(regionRelodTimer)
+      regionRelodTimer = setTimeout(() => {
+        regionRelodTimer = null
+        if (destroyed) return
+        for (const key of st.regionTiled) st.regionRestale.add(key)
+        st.forceFrame = true
+      }, 800)
     })
 
     const mapScene = new MapScene(container, W, H)
@@ -728,6 +754,7 @@ export class MapEngine {
       st.regionPendingSet.clear()
       st.regionRenderQueue.length = 0
       st.regionRenderSet.clear()
+      st.regionRestale.clear()
       st.activeRegionFetches = 0
     }
 
@@ -744,7 +771,9 @@ export class MapEngine {
         surface,
         blockColorsRef.current,
         registryRef.current,
-        configRef.current
+        configRef.current,
+        textureKeysRef.current,
+        metaTextureKeysRef.current
       )
       if (mesh.material !== regionMat) {
         const old = mesh.material as THREE.MeshBasicMaterial
@@ -770,7 +799,12 @@ export class MapEngine {
 
     async function fetchRegionTile(rx: number, rz: number, key: string) {
       try {
-        const surface = await fetchRegionSurface(dimensionPath, rx, rz)
+        const surface = await fetchRegionSurface(
+          dimensionPath,
+          rx,
+          rz,
+          st.surfaceSkipIds
+        )
         if (surface.chunks.length === 0) {
           st.regionFailed.add(key)
         } else {
@@ -798,6 +832,28 @@ export class MapEngine {
         st.activeRegionFetches++
         void fetchRegionTile(item[0], item[1], key)
       }
+    }
+
+    // Re-queue tiled regions whose overview colours are stale (textures loaded
+    // after they were drawn). Bypasses the 'already tiled' guard in
+    // maybeQueueRegion; fetchRegionTile → renderAndPlaceRegionTile re-renders the
+    // tile in place (material swap, no revert to placeholder → no flash).
+    function drainRegionRestale() {
+      if (st.regionRestale.size === 0) return
+      for (const key of st.regionRestale) {
+        st.regionRestale.delete(key)
+        if (!st.regionTiled.has(key)) continue // evicted since being marked
+        if (
+          st.regionResolving.has(key) ||
+          st.regionPendingSet.has(key) ||
+          st.regionRenderSet.has(key)
+        )
+          continue // already re-rendering
+        const ci = key.indexOf(',')
+        st.regionPendingSet.add(key)
+        st.regionPending.push([+key.slice(0, ci), +key.slice(ci + 1), key])
+      }
+      drainRegionQueue()
     }
 
     // Returns true if it committed a new region surface fetch.
@@ -900,6 +956,35 @@ export class MapEngine {
         st.forceFrame = true
       }
 
+      // Recompute the overview skip set when the registry (re)resolves — e.g.
+      // once modded names load — or when the config changes (a different preset
+      // hides different overlays). Skips invisible 'ignore' blocks, the preset's
+      // hidden overlays, and plants (kept when highlightPlants is on). Bumping
+      // lodVersion re-fetches overview tiles so they drop the newly-known ids.
+      const reg = registryRef.current
+      if (reg !== st.lastRegistryForSkip || cfg !== st.lastConfigForSkip) {
+        st.lastRegistryForSkip = reg
+        st.lastConfigForSkip = cfg
+        // Plants are the flower/tallgrass-tagged (and grass/foliage-tinted)
+        // overlays; when highlighting, keep them visible by not skipping them.
+        const tags = new Set(cfg.hiddenTags)
+        if (cfg.highlightPlants) {
+          tags.delete('flower')
+          tags.delete('tallgrass')
+        }
+        const set = new Set<number>(reg.ignoredIds())
+        for (const id of reg.hiddenOverlayIds(tags)) set.add(id)
+        if (!cfg.highlightPlants) for (const id of reg.plantIds()) set.add(id)
+        const ids = [...set]
+        const csv = ids.join(',')
+        if (csv !== st.surfaceSkipCsv) {
+          st.surfaceSkipIds = ids
+          st.surfaceSkipCsv = csv
+          st.lodVersion++
+          st.forceFrame = true
+        }
+      }
+
       // Detect debug mode toggle — add/remove outlines for existing chunks
       const dbgNow = debugModeRef.current
       if (dbgNow !== st.lastDebugMode) {
@@ -942,6 +1027,7 @@ export class MapEngine {
         st.regionPending.length > 0 ||
         st.regionResolving.size > 0 ||
         st.regionRenderSet.size > 0 ||
+        st.regionRestale.size > 0 ||
         st.activeBatches > 0 ||
         st.activeRegionFetches > 0
       if (!(st.forceFrame || camMoved || st.staleWork || pendingWork)) {
@@ -1032,6 +1118,7 @@ export class MapEngine {
       // Render freshly-fetched chunks and region tiles, time-sliced, for a smooth UI.
       drainRenderQueue()
       drainRegionRenderQueue()
+      drainRegionRestale()
 
       const chunkActive = scale >= CHUNK_LOD_SCALE
 
@@ -1237,6 +1324,7 @@ export class MapEngine {
 
     this._cleanup = () => {
       destroyed = true
+      if (regionRelodTimer !== null) clearTimeout(regionRelodTimer)
       unsubTextures()
       syncRegionsRef.current = null
       fitCameraRef.current = null
