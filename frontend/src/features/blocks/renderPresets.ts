@@ -64,6 +64,9 @@ export interface RenderConfig {
   contourMode: ContourMode
   colorSaturation: number
   biomeTint: boolean
+  // Render grass/foliage as a flat biome-tinted colour instead of multiplying
+  // the (noisy) grass/leaf sprite in — matches JourneyMap's smooth grass.
+  flatBiome: boolean
   useMarkers: boolean // blocks with mapRenderMode:'marker' render as tiny dots
   showFallbackMagenta: boolean
   textureFilter: TextureFilter
@@ -314,6 +317,9 @@ export function presetToConfig(
     contourMode: preset.contourMode,
     colorSaturation: preset.colorSaturation,
     biomeTint: overrides.biomeTint ?? preset.biomeTint,
+    // JourneyMap renders grass/foliage as one flat biome colour per block
+    // (no sprite detail) — scoped to that preset only.
+    flatBiome: preset.id === 'journeymap',
     // Marker dots for textureless multiparts (AE2 cable bus) and marked
     // blocks — enabled wherever the preset shows cable infrastructure.
     useMarkers: preset.showCables,

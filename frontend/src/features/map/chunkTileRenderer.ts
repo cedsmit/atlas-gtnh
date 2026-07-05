@@ -24,6 +24,13 @@ import { getTexture } from '../textures/textureLoader'
 const CELL = 16 // pixels per block column in chunk canvas
 const CANVAS_SIZE = 256 // 16 blocks × 16 px
 
+// Flat-biome shade: when rendering grass/foliage as a single flat colour
+// (JourneyMap style), the biome tint is scaled by the average grey of the
+// sprite it replaces, so overall brightness matches the old textured multiply.
+// grass_top averages ~0x93 and JourneyMap itself multiplies grass by 0x92.
+const GRASS_FLAT_SHADE = 0.58
+const FOLIAGE_FLAT_SHADE = 0.55
+
 // ── Render counters ────────────────────────────────────────────────────────
 export interface ChunkRenderStats {
   /** ctx.drawImage calls — textures actually rendered */
@@ -524,6 +531,13 @@ export function renderChunkImage(
           ctx.fillRect(px, pz, CELL, CELL)
           fillRect++
         }
+      } else if (isBiome && config.flatBiome) {
+        // JourneyMap-style: one flat biome-tinted colour, no sprite detail.
+        // Scale by the replaced sprite's average grey so brightness matches.
+        const sh = isFoliage ? FOLIAGE_FLAT_SHADE : GRASS_FLAT_SHADE
+        ctx.fillStyle = `rgb(${Math.round(r * sh)},${Math.round(g * sh)},${Math.round(b * sh)})`
+        ctx.fillRect(px, pz, CELL, CELL)
+        fillRect++
       } else if (isBiome) {
         ctx.fillStyle = `rgb(${r},${g},${b})`
         ctx.fillRect(px, pz, CELL, CELL)
