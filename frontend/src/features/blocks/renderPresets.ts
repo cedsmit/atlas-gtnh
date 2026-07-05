@@ -98,7 +98,10 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     terrainTextures: true,
     biomeTint: true,
     showFallbackMagenta: false,
-    textureFilter: 'journeymap',
+    // Crisp/nearest, no upscale: keeps block textures saturated instead of the
+    // 'journeymap' filter's 256->512 bilinear + GPU-linear blur that averaged
+    // them toward grey. Flat biome grass (flatBiome) keeps the smooth look.
+    textureFilter: 'pixel',
   },
   {
     id: 'vanilla',
