@@ -27,16 +27,17 @@ atlas-gtnh/
 │   └── tests/
 ├── frontend/         # Tauri + React + Vite
 │   ├── src/
-│   │   ├── components/
-│   │   ├── features/
-│   │   ├── pages/
-│   │   ├── api/      # FastAPI client
-│   │   └── hooks/
-│   └── src-tauri/    # Rust shell
-├── worlds/           # Local world files (not in git)
-├── docs/
-└── docker/
+│   │   ├── features/ # Feature modules (map, world, blocks, textures, …); each has its own api/
+│   │   ├── shared/   # Cross-feature UI + API base
+│   │   └── src-tauri # (sibling) Rust shell
+├── tools/            # forge-icon-dumper (Forge mod that dumps block→texture mappings)
+└── docs/
+    ├── CurrentScope.md  # living roadmap + current status
+    ├── design/          # architecture, world-format, texture-resolution (some sections aspirational)
+    └── reports/         # point-in-time analyses / audits
 ```
+
+> World saves are opened from any path via the native file dialog — there is no in-repo `worlds/` folder. Local `uploads/` is git-ignored.
 
 ## Prerequisites
 
