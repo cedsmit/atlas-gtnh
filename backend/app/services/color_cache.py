@@ -10,12 +10,21 @@ DB location: ~/.atlas_gtnh/colors.db
 import json
 import logging
 import sqlite3
+import threading
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
 
 _DB_PATH = Path.home() / ".atlas_gtnh" / "colors.db"
+
+# Schema DDL and the scan-version wipe are one-time-per-process work. Guarding
+# them behind a flag keeps _connect() cheap on the hot path (a cold scan opens a
+# fresh connection per JAR), while the lock makes init safe across the worker
+# threads that asyncio.to_thread spins up.
+_init_lock = threading.Lock()
+_initialized = False
 
 # Bump this when the scan format changes to force a full rescan on next startup.
 _SCAN_VERSION = 4  # bumped: now also caches blockstate + model JSON assets
@@ -47,11 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_json_jar ON json_assets (source_jar, jar_mtime);
 """
 
 
-def _connect() -> sqlite3.Connection:
-    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_DB_PATH), timeout=10)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+def _initialize(conn: sqlite3.Connection) -> None:
+    """Create the schema and apply the scan-version wipe. Runs once per process."""
     for stmt in _DDL.strip().split(";"):
         s = stmt.strip()
         if s:
@@ -74,6 +80,24 @@ def _connect() -> sqlite3.Connection:
             conn.commit()
     except Exception:
         pass
+
+
+def _connect() -> sqlite3.Connection:
+    """Open a connection, initializing the schema on the first call per process.
+
+    Callers own the returned connection and must close it — use
+    ``with closing(_connect()) as conn:``.
+    """
+    global _initialized
+    _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(_DB_PATH), timeout=10)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    if not _initialized:
+        with _init_lock:
+            if not _initialized:
+                _initialize(conn)
+                _initialized = True
     return conn
 
 
@@ -83,7 +107,7 @@ def load_jar_colors(
     """Return cached dominant (avg as fallback) colors for *jar_path* if mtime matches."""
     try:
         mtime = jar_path.stat().st_mtime
-        with _connect() as conn:
+        with closing(_connect()) as conn:
             rows = conn.execute(
                 "SELECT registry_name,"
                 "  COALESCE(dominant_r, avg_r),"
@@ -103,7 +127,7 @@ def load_jar_colors(
 def get_texture_source_jar(texture_key: str) -> str | None:
     """Return the source JAR path for *texture_key*, or None if not in cache."""
     try:
-        with _connect() as conn:
+        with closing(_connect()) as conn:
             row = conn.execute(
                 "SELECT source_jar FROM texture_colors WHERE registry_name = ? LIMIT 1",
                 (texture_key,),
@@ -141,7 +165,7 @@ def save_jar_colors(
             )
             for name, (avg, dom) in colors.items()
         ]
-        with _connect() as conn:
+        with closing(_connect()) as conn, conn:
             conn.execute("DELETE FROM texture_colors WHERE source_jar = ?", (jar_str,))
             conn.executemany(
                 "INSERT INTO texture_colors "
@@ -166,7 +190,7 @@ def load_jar_json_assets(
     try:
         mtime = jar_path.stat().st_mtime
         jar_str = str(jar_path)
-        with _connect() as conn:
+        with closing(_connect()) as conn:
             rows = conn.execute(
                 "SELECT asset_type, asset_key, content FROM json_assets "
                 "WHERE source_jar = ? AND jar_mtime = ?",
@@ -214,7 +238,7 @@ def save_jar_json_assets(
             rows.append(("m", key, jar_str, mtime, json.dumps(val, separators=(",", ":"))))
         if not rows:
             rows.append(("_sentinel", "_empty", jar_str, mtime, "{}"))
-        with _connect() as conn:
+        with closing(_connect()) as conn, conn:
             conn.execute("DELETE FROM json_assets WHERE source_jar = ?", (jar_str,))
             conn.executemany(
                 "INSERT OR REPLACE INTO json_assets "
