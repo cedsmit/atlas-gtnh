@@ -15,9 +15,10 @@ import type { RegionSurface } from './api/regions'
 import { computeHillshade } from './chunkTileRenderer'
 import {
   biomeTints,
-  blockColorRGB,
+  hardcodedBlockColor,
   metaBlockColorRGB,
   resolveMetadataTint,
+  UNKNOWN_COLOR,
 } from '../blocks/blockColors'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig } from '../blocks/renderPresets'
@@ -146,11 +147,10 @@ export function renderRegionTile(
         b = metaColor[2]
       } else {
         const mapped = colorMap?.[id]
-        const raw = mapped ?? blockColorRGB(id, meta)
-        r = raw[0]
-        g = raw[1]
-        b = raw[2]
         if (mapped) {
+          r = mapped[0]
+          g = mapped[1]
+          b = mapped[2]
           const maxCh = Math.max(r, g, b)
           if (maxCh === 0) {
             r = g = b = 130
@@ -160,6 +160,14 @@ export function renderRegionTile(
             g = Math.min(255, Math.round(g * boost))
             b = Math.min(255, Math.round(b * boost))
           }
+        } else {
+          // No scanned colour: a hardcoded colour if we have one, else a neutral
+          // 'unknown' grey instead of a random hash (matches the chunk renderer;
+          // the overview can't scan down for a textured block below).
+          const raw = hardcodedBlockColor(id) ?? UNKNOWN_COLOR
+          r = raw[0]
+          g = raw[1]
+          b = raw[2]
         }
       }
     }

@@ -11,10 +11,15 @@ import type { BlockColorMap } from '../blocks/api/blockColors'
 import {
   biomeTints,
   blockColorRGB,
+  hardcodedBlockColor,
   metaBlockColorRGB,
   resolveMetadataTint,
+  UNKNOWN_COLOR,
 } from '../blocks/blockColors'
-import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
+import type {
+  BlockRenderRegistry,
+  ResolvedDefinition,
+} from '../blocks/blockRenderRegistry'
 import { columnTally } from './columnTally'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
 import { shouldShowOverlay } from '../blocks/renderPresets'
@@ -194,6 +199,29 @@ export function renderChunkImage(
     failedTexLoad = 0
   const sections = [...data.sections].sort((a, b) => b.y - a.y)
 
+  // A block is "unknown" when it resolves to neither a texture nor a known
+  // colour — i.e. it would fall to the random golden-angle hash. Pass 1 scans
+  // past these to a renderable block below (downward-scan before fallback), and
+  // Pass 2 fills any that remain with a neutral grey (UNKNOWN_COLOR) rather than
+  // a random colour.
+  const isUnknownBlock = (
+    id: number,
+    meta: number,
+    def: ResolvedDefinition
+  ): boolean => {
+    if (def.tint) return false // grass/foliage/water are always renderable
+    if (
+      def.textureAlias ??
+      metaTextureKeys?.[`${id}:${meta}`] ??
+      textureKeys?.[id]
+    )
+      return false // has a texture key
+    if (colorMap?.[id]) return false // scanned colour
+    if (metaBlockColorRGB(id, meta)) return false // hardcoded per-meta colour
+    if (hardcodedBlockColor(id)) return false // hardcoded per-id colour
+    return true
+  }
+
   // ── Pass 1: classify every (x,z) column ─────────────────────────────
   // baseY/baseId/baseMeta: highest surface block (may be transparent).
   // underY/underId/underMeta: first solid block beneath a transparent surface.
@@ -206,6 +234,12 @@ export function renderChunkImage(
   const underY = new Int16Array(256).fill(-1) // block below a transparent surface
   const underId = new Uint16Array(256)
   const underMeta = new Uint8Array(256)
+  // Topmost unknown block per column + a flag when it becomes the base because
+  // nothing renderable sat below it (downward-scan fell through).
+  const unkY = new Int16Array(256).fill(-1)
+  const unkId = new Uint16Array(256)
+  const unkMeta = new Uint8Array(256)
+  const baseUnknown = new Uint8Array(256)
   // Each entry is [id, meta] pairs accumulated top-down then reversed.
   const overlayLists: ([number, number][] | null)[] = new Array(256).fill(null)
 
@@ -237,6 +271,17 @@ export function renderChunkImage(
               // so the structure underneath is revealed.
               if (config.foliageMode === 'hidden' && def.tint === 'foliage')
                 continue
+              // Unknown block: remember the topmost one, but keep scanning down
+              // for a renderable block to show beneath it instead of dropping to
+              // a flat fallback colour.
+              if (isUnknownBlock(id, section.data[idx], def)) {
+                if (unkY[i] < 0) {
+                  unkY[i] = absY
+                  unkId[i] = id
+                  unkMeta[i] = section.data[idx]
+                }
+                continue
+              }
               baseY[i] = absY
               baseId[i] = id
               baseMeta[i] = section.data[idx]
@@ -261,6 +306,15 @@ export function renderChunkImage(
             break outer
           }
         }
+      }
+
+      // Nothing renderable sat below an unknown top block — fall back to the
+      // unknown block itself, flagged so Pass 2 fills a neutral grey.
+      if (!foundBase && unkY[i] >= 0) {
+        baseY[i] = unkY[i]
+        baseId[i] = unkId[i]
+        baseMeta[i] = unkMeta[i]
+        baseUnknown[i] = 1
       }
 
       // Store overlays in bottom-to-top draw order.
@@ -325,7 +379,11 @@ export function renderChunkImage(
 
       // ── Base color: biome tint or block color ──────────────────────
       let r: number, g: number, b: number
-      if (isGrass) {
+      if (baseUnknown[i]) {
+        // Unmapped block with nothing renderable below it — a neutral grey
+        // rather than a random hash. Debug still flags it (showFallbackMagenta).
+        ;[r, g, b] = UNKNOWN_COLOR
+      } else if (isGrass) {
         ;[r, g, b] = grassTints[i]
       } else if (isFoliage) {
         ;[r, g, b] = foliageTints[i]

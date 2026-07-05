@@ -518,6 +518,14 @@ export function hardcodedBlockColor(
   return COLORS[id] ?? MODDED_COLORS[id] ?? null
 }
 
+/**
+ * Neutral fill for blocks with no texture and no known colour — a single
+ * consistent "unknown" grey rather than the golden-angle hash, so normal presets
+ * never show random fallback colours. The Debug preset still flags these blocks
+ * via `showFallbackMagenta`.
+ */
+export const UNKNOWN_COLOR: readonly [number, number, number] = [125, 125, 125]
+
 export function blockColorRGB(
   id: number,
   meta: number

@@ -72,6 +72,92 @@
     "EnderIO:blockFusedQuartzFramed": {
       "category": "transparent",
       "alphaMode": "blend"
-    }
+    },
+
+    "ExtraUtilities:etherealglass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "Natura:NetherGlass": { "category": "transparent", "alphaMode": "blend" },
+    "HardcoreEnderExpansion:laboratory_glass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "ExtraTrees:stainedglass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "BloodArsenal:blood_stained_glass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "witchery:shadedglass": { "category": "transparent", "alphaMode": "blend" },
+    "witchery:shadedglass_active": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "etfuturum:tinted_glass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "GalaxySpace:futureglass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "GalaxySpace:futureglasses": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "tectech:tile.quantumGlass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "RandomThings:spectreGlass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "GoodGenerator:fieldRestrictingGlass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "gtnhlanth:tile.casing.shielded_accelerator_glass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "OpenBlocks:canvasglass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "miscutils:blockBlockChromaticGlass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "miscutils:blockFrameGtChromaticGlass": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "TConstruct:GlassBlock.StainedClear": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "chisel:glass2": { "category": "transparent", "alphaMode": "blend" },
+
+    "chisel:stained_glass_pane_*": {
+      "category": "overlay",
+      "alphaMode": "blend"
+    },
+    "chisel:stained_glass_*": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+
+    "TConstruct:GlassPane": { "category": "overlay", "alphaMode": "blend" },
+    "TConstruct:GlassPaneClearStained": {
+      "category": "overlay",
+      "alphaMode": "blend"
+    },
+    "chisel:glass_pane": { "category": "overlay", "alphaMode": "blend" },
+    "Botania:manaGlassPane": { "category": "overlay", "alphaMode": "blend" },
+    "Botania:elfGlassPane": { "category": "overlay", "alphaMode": "blend" }
   }
 }
