@@ -11,6 +11,7 @@ from app.models.region import (
     DimensionInfo,
     RegionDetail,
     RegionListResponse,
+    RegionSurfaceRequest,
     RegionSurfaceResponse,
 )
 from app.models.world import (
@@ -66,13 +67,19 @@ async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> Re
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@router.get("/regions/{rx}/{rz}/surface", response_model=RegionSurfaceResponse)
+@router.post("/regions/{rx}/{rz}/surface", response_model=RegionSurfaceResponse)
 async def get_world_region_surface(
-    rx: int, rz: int, world_path: str = Query(...)
+    rx: int, rz: int, req: RegionSurfaceRequest
 ) -> RegionSurfaceResponse:
-    """Compact per-column surface summary for one region (zoomed-out LOD tile)."""
+    """Compact per-column surface summary for one region (zoomed-out LOD tile).
+
+    `skip_ids` (request body) are block ids to treat as air (e.g. plants), so the
+    overview shows the ground beneath them. Sent in the body to keep the long id
+    list out of the access logs.
+    """
+    skip_ids = frozenset(req.skip_ids)
     try:
-        return await asyncio.to_thread(get_region_surface, world_path, rx, rz)
+        return await asyncio.to_thread(get_region_surface, req.world_path, rx, rz, skip_ids)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:

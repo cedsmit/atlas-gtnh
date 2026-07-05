@@ -399,14 +399,18 @@ def read_region_chunks(
     return result
 
 
-# Block ids treated as air for surface purposes, so the overview shows the
-# terrain beneath them.  Mirrors the frontend's default-hidden transient blocks
-# (currently fire, id 51); the place to make this configurable later.
+# Block ids always treated as air for surface purposes, so the overview shows the
+# terrain beneath them.  Fire (51) is a transient the map hides everywhere; the
+# caller passes additional ids per request (the frontend's plant classification,
+# covering modded plants) via read_region_surface's skip_ids.
 _SURFACE_SKIP_IDS: tuple[int, ...] = (51,)
+_DEFAULT_SKIP_ARR = np.array(_SURFACE_SKIP_IDS, dtype=np.uint16)
 
 
-def _parse_chunk_surface(raw_nbt: bytes) -> RawChunkSurface:
-    """Extract the topmost non-air, non-hidden block per column from chunk NBT."""
+def _parse_chunk_surface(raw_nbt: bytes, skip_arr: _NDArr | None = None) -> RawChunkSurface:
+    """Extract the topmost non-air, non-skipped block per column from chunk NBT."""
+    if skip_arr is None:
+        skip_arr = _DEFAULT_SKIP_ARR
     xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(raw_nbt)
     biomes = _decode_biomes(biomes_bytes, xpos, zpos)
 
@@ -426,8 +430,8 @@ def _parse_chunk_surface(raw_nbt: bytes) -> RawChunkSurface:
         b2 = blocks.reshape(16, 256)  # [y, col]
         d2 = data.reshape(16, 256)
         mask = b2 != 0
-        for sid in _SURFACE_SKIP_IDS:
-            mask &= b2 != sid
+        if skip_arr.size:
+            mask &= ~np.isin(b2, skip_arr)
         col_has = mask.any(axis=0)  # [col]
         to_fill = col_has & ~filled
         if not to_fill.any():
@@ -451,19 +455,28 @@ def _parse_chunk_surface(raw_nbt: bytes) -> RawChunkSurface:
     )
 
 
-def read_region_surface(path: Path) -> list[RawChunkSurface]:
+def read_region_surface(
+    path: Path, skip_ids: frozenset[int] = frozenset()
+) -> list[RawChunkSurface]:
     """Read a compact surface summary for every present chunk in a region.
 
     Reads the file once (cached).  Corrupt or empty chunks are skipped.
+    *skip_ids* are block ids treated as air for surface purposes (unioned with
+    the always-skipped set) so the overview reports the terrain beneath them.
     """
     data = _read_region_bytes(path)
     if len(data) < 2 * SECTOR_SIZE:
         raise ValueError(f"Region file is too small to be valid: {path.name}")
 
+    skip_arr = (
+        np.fromiter(set(_SURFACE_SKIP_IDS) | skip_ids, dtype=np.uint16)
+        if skip_ids
+        else _DEFAULT_SKIP_ARR
+    )
     out: list[RawChunkSurface] = []
     for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
         try:
-            surface = _parse_chunk_surface(_decompress_chunk(data, offset))
+            surface = _parse_chunk_surface(_decompress_chunk(data, offset), skip_arr)
         except Exception:
             continue
         out.append(surface)

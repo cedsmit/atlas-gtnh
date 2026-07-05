@@ -58,6 +58,14 @@ class RegionSurfaceResponse(BaseModel):
     chunks: list[ChunkSurface]
 
 
+class RegionSurfaceRequest(BaseModel):
+    world_path: str
+    # Block ids treated as air (plants, invisible/hidden blocks) so the overview
+    # shows the terrain beneath them. Sent in the body rather than the query
+    # string to keep the (potentially long) id list out of the access logs.
+    skip_ids: list[int] = []
+
+
 class ChunkBatchRequest(BaseModel):
     world_path: str
     coords: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...]

@@ -158,17 +158,20 @@ def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> list[Chu
     return out
 
 
-def get_region_surface(world_path: str, rx: int, rz: int) -> RegionSurfaceResponse:
+def get_region_surface(
+    world_path: str, rx: int, rz: int, skip_ids: frozenset[int] = frozenset()
+) -> RegionSurfaceResponse:
     """Compact per-column surface summary for every chunk in a region.
 
     Used to render a single low-detail tile per region for the zoomed-out
-    overview, instead of one full-resolution texture per chunk.
+    overview, instead of one full-resolution texture per chunk.  *skip_ids* are
+    block ids treated as air (e.g. plants) so the overview shows the ground below.
     """
     region_file = Path(world_path) / "region" / f"r.{rx}.{rz}.mca"
     if not region_file.exists():
         raise FileNotFoundError(f"Region file not found: r.{rx}.{rz}.mca")
 
-    surfaces = read_region_surface(region_file)
+    surfaces = read_region_surface(region_file, skip_ids)
     return RegionSurfaceResponse(
         region_x=rx,
         region_z=rz,

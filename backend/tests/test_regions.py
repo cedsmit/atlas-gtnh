@@ -33,7 +33,13 @@ def _make_chunk_nbt(chunk_x: int, chunk_z: int) -> bytes:
     return buf.getvalue()
 
 
-def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
+def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int, top_id: int | None = None) -> bytes:
+    # All stone; when top_id is given, the y=15 layer (indices 3840..4095 in the
+    # YZX-ordered Blocks array) is set to it, so it sits atop stone.
+    blocks = [1] * 4096
+    if top_id is not None:
+        for i in range(15 * 256, 16 * 256):
+            blocks[i] = top_id
     nbt_file = nbtlib.File(
         {
             "Level": nbtlib.Compound(
@@ -49,7 +55,7 @@ def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
                             nbtlib.Compound(
                                 {
                                     "Y": nbtlib.Byte(0),
-                                    "Blocks": nbtlib.ByteArray([1] * 4096),  # all stone
+                                    "Blocks": nbtlib.ByteArray(blocks),
                                     "Data": nbtlib.ByteArray([0] * 2048),
                                 }
                             ),
@@ -64,8 +70,10 @@ def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
     return buf.getvalue()
 
 
-def _make_region_file_with_sections(chunk_x: int = 0, chunk_z: int = 0) -> bytes:
-    nbt_bytes = zlib.compress(_make_chunk_nbt_with_sections(chunk_x, chunk_z))
+def _make_region_file_with_sections(
+    chunk_x: int = 0, chunk_z: int = 0, top_id: int | None = None
+) -> bytes:
+    nbt_bytes = zlib.compress(_make_chunk_nbt_with_sections(chunk_x, chunk_z, top_id))
     chunk_length = len(nbt_bytes) + 1
     chunk_sectors = (chunk_length + 4 + SECTOR_SIZE - 1) // SECTOR_SIZE
 
@@ -229,7 +237,7 @@ def test_get_chunks_batch_empty_coords(tmp_path: Path) -> None:
 
 def test_get_region_surface(tmp_path: Path) -> None:
     world = _make_world(tmp_path, _make_region_file_with_sections())
-    response = client.get("/worlds/regions/0/0/surface", params={"world_path": str(world)})
+    response = client.post("/worlds/regions/0/0/surface", json={"world_path": str(world)})
     assert response.status_code == 200
     body = response.json()
     assert body["region_x"] == 0
@@ -247,8 +255,28 @@ def test_get_region_surface(tmp_path: Path) -> None:
 
 def test_get_region_surface_missing(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
-    response = client.get("/worlds/regions/9/9/surface", params={"world_path": str(world)})
+    response = client.post("/worlds/regions/9/9/surface", json={"world_path": str(world)})
     assert response.status_code == 404
+
+
+def test_get_region_surface_skips_ids(tmp_path: Path) -> None:
+    # Column tops are tallgrass (id 31) over stone. Passing skip_ids=[31] must
+    # reveal the stone beneath (id 1 at y=14) — how the overview hides plants to
+    # match the detailed render.
+    world = _make_world(tmp_path, _make_region_file_with_sections(top_id=31))
+
+    resp = client.post("/worlds/regions/0/0/surface", json={"world_path": str(world)})
+    surf = resp.json()["chunks"][0]
+    assert surf["ids"][0] == 31
+    assert surf["heights"][0] == 15
+
+    resp = client.post(
+        "/worlds/regions/0/0/surface",
+        json={"world_path": str(world), "skip_ids": [31]},
+    )
+    surf = resp.json()["chunks"][0]
+    assert surf["ids"][0] == 1
+    assert surf["heights"][0] == 14
 
 
 def test_get_chunk_data_corrupt_chunk_returns_400(tmp_path: Path) -> None:
