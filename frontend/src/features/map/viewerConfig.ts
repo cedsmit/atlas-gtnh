@@ -17,13 +17,17 @@ export const VIEWER_CONFIG = {
   /**
    * At/above this scale chunk detail is shown over the region base; below it the
    * detail layer is hidden and only the per-region overview tiles show.  Region
-   * tiles always render as a base layer underneath, so gaps in the detail layer
-   * show the overview (sharpening into detail) rather than a black placeholder.
+   * tiles always render as a base layer underneath, so areas whose chunk detail
+   * hasn't loaded yet (or was evicted at the live-chunk budget) show the overview
+   * rather than a black placeholder.
    *
-   * Default: low-detail overview at the max zoom-out (scale `minScale` = 1.0),
-   * full chunk detail from scale 1.25 in (one scroll step).
+   * Set to `minScale` so full chunk detail (textures) renders at EVERY zoom
+   * level, including the most zoomed-out view — the detailed look never swaps to
+   * the flat overview as you zoom. Trade-off: zoomed all the way out over a large
+   * explored area loads many full-res chunks; past the live-chunk budget the
+   * furthest fall back to the region overview until you pan/zoom closer.
    */
-  chunkLodScale: 1.25,
+  chunkLodScale: 1,
 
   /**
    * Chunks loaded beyond the visible viewport, in every direction, so the edge
