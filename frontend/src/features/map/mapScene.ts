@@ -59,7 +59,12 @@ export class MapScene {
   constructor(container: HTMLElement, w: number, h: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
     this.renderer.setSize(w, h)
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    // Floor the backing resolution at 1.25× so lower-DPR (100%) displays get the
+    // same mipmap crispness as a 1.25-DPR one — otherwise block textures sample a
+    // higher (blurrier) mip level at the same zoom and read paler.
+    this.renderer.setPixelRatio(
+      Math.min(Math.max(window.devicePixelRatio, 1.25), 2)
+    )
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.cursor = 'grab'
