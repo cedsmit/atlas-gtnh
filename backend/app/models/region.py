@@ -50,6 +50,8 @@ class ChunkSurface(BaseModel):
     metas: list[int]  # 256
     heights: list[int]  # 256, absolute Y of the top block; -1 = empty
     biomes: list[int] = []  # 256, or empty when not stored
+    floor_ids: list[int] = []  # 256, seabed block under water (0 = none)
+    water_depth: list[int] = []  # 256, water depth over the seabed (0 = none)
 
 
 class RegionSurfaceResponse(BaseModel):

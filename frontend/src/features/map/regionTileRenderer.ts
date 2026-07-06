@@ -12,7 +12,7 @@
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
 import type { RegionSurface } from './api/regions'
-import { computeHillshade } from './chunkTileRenderer'
+import { computeHillshade, WATER_DEEP, waterBlend } from './chunkTileRenderer'
 import {
   biomeTints,
   hardcodedBlockColor,
@@ -42,11 +42,16 @@ export function renderRegionTile(
   const metaMap = new Uint8Array(N * N)
   const heightMap = new Int16Array(N * N).fill(-1)
   const biomeMap = new Uint16Array(N * N).fill(1) // default: plains
+  // Seabed block + water depth per column (for translucent water); 0 = none.
+  const floorMap = new Uint16Array(N * N)
+  const depthMap = new Uint8Array(N * N)
 
   for (const ch of surface.chunks) {
     const baseX = (((ch.chunk_x % 32) + 32) % 32) * 16
     const baseZ = (((ch.chunk_z % 32) + 32) % 32) * 16
     const hasBiome = ch.biomes.length === 256
+    const fids = ch.floor_ids
+    const wdepth = ch.water_depth
     for (let i = 0; i < 256; i++) {
       const X = baseX + (i & 15)
       const Z = baseZ + (i >> 4)
@@ -55,6 +60,8 @@ export function renderRegionTile(
       metaMap[idx] = ch.metas[i]
       heightMap[idx] = ch.heights[i]
       if (hasBiome) biomeMap[idx] = ch.biomes[i]
+      if (fids) floorMap[idx] = fids[i]
+      if (wdepth) depthMap[idx] = wdepth[i]
     }
   }
 
@@ -123,11 +130,25 @@ export function renderRegionTile(
         b = fb
       }
     } else if (def.category === 'fluid' && def.tint === 'water') {
-      // Match the detailed renderer's default-depth water (no floor data is
-      // available at the overview to compute true depth shading).
-      r = 25
-      g = 60
-      b = 190
+      // Translucent water: show the seabed blended toward deep-water blue by
+      // depth, so shallow water reveals the floor (sand/dirt/gravel) and deep
+      // water reads as ocean. Falls back to plain deep water with no floor data.
+      const fid = floorMap[idx]
+      const depth = depthMap[idx]
+      if (fid && depth) {
+        const fKey = textureKeys?.[fid] ?? null
+        const fAvg = fKey ? averageTextureColor(fKey) : null
+        const fc =
+          fAvg ?? colorMap?.[fid] ?? hardcodedBlockColor(fid) ?? UNKNOWN_COLOR
+        const t = waterBlend(depth)
+        r = fc[0] * (1 - t) + WATER_DEEP[0] * t
+        g = fc[1] * (1 - t) + WATER_DEEP[1] * t
+        b = fc[2] * (1 - t) + WATER_DEEP[2] * t
+      } else {
+        r = WATER_DEEP[0]
+        g = WATER_DEEP[1]
+        b = WATER_DEEP[2]
+      }
     } else if (
       def.textureTint === 'metadata16' ||
       def.textureTint === 'custom'

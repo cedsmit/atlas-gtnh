@@ -38,6 +38,8 @@ export interface ChunkSurface {
   metas: number[] // 256
   heights: number[] // 256, absolute Y of the top block; -1 = empty
   biomes: number[] // 256, or empty when not stored
+  floor_ids?: number[] // 256, seabed block under water (0 = none)
+  water_depth?: number[] // 256, water depth over the seabed (0 = none)
 }
 
 export interface RegionSurface {

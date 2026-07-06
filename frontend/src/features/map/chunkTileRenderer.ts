@@ -30,6 +30,17 @@ import { averageTextureColor } from '../textures/textureAverage'
 const CELL = 16 // pixels per block column in chunk canvas
 const CANVAS_SIZE = 256 // 16 blocks × 16 px
 
+// ── Water ────────────────────────────────────────────────────────────────────
+// Translucent water: the seabed colour is blended toward this deep-water colour
+// by depth, so shallow water shows the floor (sand/dirt/gravel) and deep water
+// reads as ocean blue. Shared by the detailed and overview renderers.
+export const WATER_DEEP: readonly [number, number, number] = [28, 66, 140]
+
+/** Blend factor of deep-water colour over the seabed, by water depth (blocks). */
+export function waterBlend(depth: number): number {
+  return 0.6 + 0.3 * Math.min(depth / 12, 1) // 0.6 shallow → 0.9 deep
+}
+
 // ── Render counters ────────────────────────────────────────────────────────
 export interface ChunkRenderStats {
   /** ctx.drawImage calls — textures actually rendered */
@@ -231,6 +242,8 @@ export function renderChunkImage(
   const baseId = new Uint16Array(256)
   const baseMeta = new Uint8Array(256)
   const floorY = new Int16Array(256).fill(-1)
+  const floorId = new Uint16Array(256) // seabed block under water
+  const floorMeta = new Uint8Array(256)
   const underY = new Int16Array(256).fill(-1) // block below a transparent surface
   const underId = new Uint16Array(256)
   const underMeta = new Uint8Array(256)
@@ -303,6 +316,8 @@ export function renderChunkImage(
             !(def.category === 'fluid' && def.tint === 'water')
           ) {
             floorY[i] = absY
+            floorId[i] = id
+            floorMeta[i] = section.data[idx]
             break outer
           }
         }
@@ -370,15 +385,22 @@ export function renderChunkImage(
       const isFoliage = baseDef.tint === 'foliage'
       const isBiome = (isGrass || isFoliage) && config.biomeTint
       const tintType = baseDef.tint ?? (isWater ? 'water' : 'none')
-      const texKey = !isWater
-        ? (baseDef.textureAlias ??
+      // For water, the texture we draw is the SEABED's, washed blue by depth
+      // below; for everything else it's the block's own resolved texture.
+      const texKey = isWater
+        ? floorId[i]
+          ? (metaTextureKeys?.[`${floorId[i]}:${floorMeta[i]}`] ??
+            textureKeys?.[floorId[i]] ??
+            null)
+          : null
+        : (baseDef.textureAlias ??
           metaTextureKeys?.[`${id}:${meta}`] ??
           textureKeys?.[id] ??
           null)
-        : null
 
       // ── Base color: biome tint or block color ──────────────────────
       let r: number, g: number, b: number
+      let waterT = 0 // blue-wash alpha over the seabed texture (0 = deep water)
       if (baseUnknown[i]) {
         // Unmapped block with nothing renderable below it — a neutral grey
         // rather than a random hash. Debug still flags it (showFallbackMagenta).
@@ -388,11 +410,24 @@ export function renderChunkImage(
       } else if (isFoliage) {
         ;[r, g, b] = foliageTints[i]
       } else if (isWater) {
-        const floor = floorY[i]
-        const depth = floor >= 0 ? Math.min(blockY - floor, 20) : 10
-        r = Math.max(10, 40 - depth * 1.5)
-        g = Math.max(30, 80 - depth * 2)
-        b = Math.min(255, 160 + depth * 3)
+        // Translucent water: fill the seabed colour (so texture gaps match), draw
+        // the seabed texture below, then wash it blue by depth (waterT) — shallow
+        // shows the floor texture, deep reads as ocean.
+        const fid = floorId[i]
+        const depth = floorY[i] >= 0 ? blockY - floorY[i] : 0
+        if (fid && depth > 0) {
+          const fAvg = texKey ? averageTextureColor(texKey) : null
+          const fc =
+            fAvg ?? colorMap?.[fid] ?? hardcodedBlockColor(fid) ?? UNKNOWN_COLOR
+          r = fc[0]
+          g = fc[1]
+          b = fc[2]
+          waterT = waterBlend(depth)
+        } else {
+          r = WATER_DEEP[0]
+          g = WATER_DEEP[1]
+          b = WATER_DEEP[2]
+        }
       } else if (
         baseDef.textureTint === 'metadata16' ||
         baseDef.textureTint === 'custom'
@@ -621,18 +656,11 @@ export function renderChunkImage(
         } else if (!isWater) {
           fillRect++
         }
-        // Textured water mode: draw water texture at reduced opacity over depth fill.
-        if (isWater && config.waterMode === 'textured') {
-          const wKey = textureKeys?.[id] ?? null
-          if (wKey) {
-            const wImg = getTexture(wKey)
-            if (wImg) {
-              ctx.globalAlpha = 0.35
-              ctx.drawImage(wImg, 0, 0, 16, 16, px, pz, CELL, CELL)
-              ctx.globalAlpha = 1.0
-              drawImage++
-            }
-          }
+        // Water: wash the seabed (fill + texture) toward deep-water blue by depth,
+        // so shallow water shows the floor texture and deep water reads as ocean.
+        if (isWater && waterT > 0) {
+          ctx.fillStyle = `rgba(${WATER_DEEP[0]},${WATER_DEEP[1]},${WATER_DEEP[2]},${waterT})`
+          ctx.fillRect(px, pz, CELL, CELL)
         }
       }
 

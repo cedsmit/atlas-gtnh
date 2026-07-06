@@ -183,6 +183,8 @@ def get_region_surface(
                 metas=s.metas,
                 heights=s.heights,
                 biomes=s.biomes,
+                floor_ids=s.floor_ids,
+                water_depth=s.water_depth,
             )
             for s in surfaces
         ],

@@ -93,6 +93,11 @@ class RawChunkSurface:
     metas: list[int]  # metadata of that block
     heights: list[int]  # absolute Y of that block (-1 = empty column)
     biomes: list[int]  # 256 biome IDs, or empty when not stored
+    # For water-surface columns: the seabed block below the water and the water
+    # depth, so the overview can render translucent water over the floor. 0 for
+    # non-water columns (floor_ids) / where no floor was found (water_depth).
+    floor_ids: list[int]  # seabed block id under water (0 = none)
+    water_depth: list[int]  # surface−floor block count, capped (0 = none)
 
 
 def _parse_location_table(data: bytes) -> list[tuple[int, int, int, int]]:
@@ -405,19 +410,22 @@ def read_region_chunks(
 # covering modded plants) via read_region_surface's skip_ids.
 _SURFACE_SKIP_IDS: tuple[int, ...] = (51,)
 _DEFAULT_SKIP_ARR = np.array(_SURFACE_SKIP_IDS, dtype=np.uint16)
+_WATER_IDS = (8, 9)  # flowing + still water
+_WATER_ARR = np.array(_WATER_IDS, dtype=np.uint16)
+_MAX_WATER_DEPTH = 63  # depth cap (fits uint8 and the render curve)
 
 
-def _parse_chunk_surface(raw_nbt: bytes, skip_arr: _NDArr | None = None) -> RawChunkSurface:
-    """Extract the topmost non-air, non-skipped block per column from chunk NBT."""
-    if skip_arr is None:
-        skip_arr = _DEFAULT_SKIP_ARR
-    xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(raw_nbt)
-    biomes = _decode_biomes(biomes_bytes, xpos, zpos)
+def _scan_topmost(
+    raw_sections: list[dict[str, Any]], skip_arr: _NDArr, only_cols: _NDArr | None = None
+) -> tuple[_NDArr, _NDArr, _NDArr]:
+    """Topmost non-air, non-skip block per column → (ids, metas, heights[-1]).
 
+    *only_cols* (bool[256]) limits the scan to those columns; the rest stay empty.
+    """
     ids = np.zeros(256, dtype=np.uint16)
     metas = np.zeros(256, dtype=np.uint8)
     heights = np.full(256, -1, dtype=np.int16)
-    filled = np.zeros(256, dtype=bool)
+    filled = np.zeros(256, dtype=bool) if only_cols is None else ~only_cols
 
     # Highest sections first so the first non-air block found per column is the surface.
     for sec in sorted(raw_sections, key=lambda s: s.get("Y", 0), reverse=True):
@@ -445,6 +453,31 @@ def _parse_chunk_surface(raw_nbt: bytes, skip_arr: _NDArr | None = None) -> RawC
         heights[cols] = sec.get("Y", 0) * 16 + ty
         filled[cols] = True
 
+    return ids, metas, heights
+
+
+def _parse_chunk_surface(raw_nbt: bytes, skip_arr: _NDArr | None = None) -> RawChunkSurface:
+    """Extract the topmost non-air, non-skipped block per column from chunk NBT."""
+    if skip_arr is None:
+        skip_arr = _DEFAULT_SKIP_ARR
+    xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(raw_nbt)
+    biomes = _decode_biomes(biomes_bytes, xpos, zpos)
+
+    ids, metas, heights = _scan_topmost(raw_sections, skip_arr)
+
+    # For water-surface columns, find the seabed (topmost non-water block below)
+    # and the water depth, so the overview can render translucent water.
+    floor_ids = np.zeros(256, dtype=np.uint16)
+    water_depth = np.zeros(256, dtype=np.uint8)
+    water_cols = np.isin(ids, _WATER_ARR)
+    if water_cols.any():
+        floor_skip = np.concatenate([np.asarray(skip_arr, dtype=np.uint16), _WATER_ARR])
+        f_ids, _f_metas, f_heights = _scan_topmost(raw_sections, floor_skip, only_cols=water_cols)
+        has_floor = water_cols & (f_heights >= 0)
+        floor_ids[has_floor] = f_ids[has_floor]
+        depth = np.clip(heights - f_heights, 1, _MAX_WATER_DEPTH).astype(np.uint8)
+        water_depth[has_floor] = depth[has_floor]
+
     return RawChunkSurface(
         chunk_x=xpos,
         chunk_z=zpos,
@@ -452,6 +485,8 @@ def _parse_chunk_surface(raw_nbt: bytes, skip_arr: _NDArr | None = None) -> RawC
         metas=metas.tolist(),
         heights=heights.tolist(),
         biomes=biomes,
+        floor_ids=floor_ids.tolist(),
+        water_depth=water_depth.tolist(),
     )
 
 
