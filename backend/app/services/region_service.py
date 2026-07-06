@@ -24,7 +24,14 @@ _KNOWN_DIMS: dict[str, str] = json.loads(_DIMS_FILE.read_text(encoding="utf-8"))
 
 
 def _dim_name(dim_id: str) -> str:
-    return _KNOWN_DIMS.get(dim_id, f"Dimension {dim_id.removeprefix('DIM')}")
+    if dim_id in _KNOWN_DIMS:
+        return _KNOWN_DIMS[dim_id]
+    # PersonalSpace mod stores its dimension as PERSONAL_DIM_<id>, not DIM<id>.
+    if dim_id.startswith("PERSONAL_DIM_"):
+        return f"Personal Dimension {dim_id.removeprefix('PERSONAL_DIM_')}"
+    if dim_id.startswith("DIM"):
+        return f"Dimension {dim_id.removeprefix('DIM')}"
+    return dim_id
 
 
 def list_dimensions(world_path: str) -> list[DimensionInfo]:
@@ -43,8 +50,11 @@ def list_dimensions(world_path: str) -> list[DimensionInfo]:
             )
         )
 
-    for dim_dir in sorted(root.glob("DIM*")):
-        if not dim_dir.is_dir():
+    # Any sub-folder holding a region/ of .mca files is a dimension. Keying off the
+    # "DIM" name prefix misses mod dimensions with other names (e.g. the PersonalSpace
+    # mod's PERSONAL_DIM_<id>). Mod *data* folders store .dat files, never region/*.mca.
+    for dim_dir in sorted(root.iterdir()):
+        if not dim_dir.is_dir() or dim_dir.name == "region":
             continue
         dim_region_dir = dim_dir / "region"
         mca_files = list(dim_region_dir.glob("*.mca")) if dim_region_dir.is_dir() else []

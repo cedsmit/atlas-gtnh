@@ -358,6 +358,27 @@ def test_list_dimensions_with_nether(tmp_path: Path) -> None:
     assert "Nether" in names
 
 
+def test_list_dimensions_personal_space(tmp_path: Path) -> None:
+    # The PersonalSpace mod stores its dimension as PERSONAL_DIM_<id>, not DIM<id>.
+    world = _make_world(tmp_path)
+    personal = world / "PERSONAL_DIM_180" / "region"
+    personal.mkdir(parents=True)
+    (personal / "r.0.0.mca").write_bytes(_make_region_file())
+    # An empty personal dim (no .mca) must be skipped, like empty DIM folders.
+    (world / "PERSONAL_DIM_999" / "region").mkdir(parents=True)
+    # A mod data folder (no region/*.mca) must not be listed as a dimension.
+    (world / "gregtech").mkdir()
+    (world / "gregtech" / "foo.dat").touch()
+
+    response = client.get("/worlds/dimensions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    by_id = {d["id"]: d for d in response.json()}
+    assert by_id["PERSONAL_DIM_180"]["name"] == "Personal Dimension 180"
+    assert by_id["PERSONAL_DIM_180"]["region_count"] == 1
+    assert "PERSONAL_DIM_999" not in by_id  # empty → skipped
+    assert "gregtech" not in by_id  # mod data folder, not a dimension
+
+
 def test_list_dimensions_missing_world(tmp_path: Path) -> None:
     response = client.get("/worlds/dimensions", params={"world_path": str(tmp_path / "nope")})
     assert response.status_code == 404
