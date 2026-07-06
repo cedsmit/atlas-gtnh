@@ -27,6 +27,60 @@ import { averageTextureColor } from '../textures/textureAverage'
 const REGION_BLOCKS = 512 // 32 chunks × 16 blocks
 export const REGION_TILE_PX = REGION_BLOCKS // 1 px per block
 
+// ── Biome-tint blend ──────────────────────────────────────────────────────────
+// Grass/foliage tints are per-column, so biome borders step hard. Precomputing a
+// tint map and box-blurring it (radius BIOME_BLEND_R) smooths those borders into
+// gradients like JourneyMap. Reused scratch avoids per-tile allocation (renders
+// are single-threaded).
+const BIOME_BLEND_R = 3
+interface TintScratch {
+  grR: Uint8Array
+  grG: Uint8Array
+  grB: Uint8Array
+  fR: Uint8Array
+  fG: Uint8Array
+  fB: Uint8Array
+  tmp: Uint8Array
+}
+let _tintScratch: TintScratch | null = null
+function tintScratch(n: number): TintScratch {
+  if (!_tintScratch || _tintScratch.tmp.length !== n) {
+    _tintScratch = {
+      grR: new Uint8Array(n),
+      grG: new Uint8Array(n),
+      grB: new Uint8Array(n),
+      fR: new Uint8Array(n),
+      fG: new Uint8Array(n),
+      fB: new Uint8Array(n),
+      tmp: new Uint8Array(n),
+    }
+  }
+  return _tintScratch
+}
+
+/** Separable box blur (radius R) of an N×N Uint8 channel, in place via tmp. */
+function boxBlur(buf: Uint8Array, tmp: Uint8Array, N: number, R: number): void {
+  for (let z = 0; z < N; z++) {
+    const row = z * N
+    for (let x = 0; x < N; x++) {
+      const lo = x - R < 0 ? 0 : x - R
+      const hi = x + R >= N ? N - 1 : x + R
+      let sum = 0
+      for (let j = lo; j <= hi; j++) sum += buf[row + j]
+      tmp[row + x] = (sum / (hi - lo + 1)) | 0
+    }
+  }
+  for (let x = 0; x < N; x++) {
+    for (let z = 0; z < N; z++) {
+      const lo = z - R < 0 ? 0 : z - R
+      const hi = z + R >= N ? N - 1 : z + R
+      let sum = 0
+      for (let j = lo; j <= hi; j++) sum += tmp[j * N + x]
+      buf[z * N + x] = (sum / (hi - lo + 1)) | 0
+    }
+  }
+}
+
 export function renderRegionTile(
   surface: RegionSurface,
   colorMap: BlockColorMap | undefined,
@@ -62,6 +116,41 @@ export function renderRegionTile(
       if (hasBiome) biomeMap[idx] = ch.biomes[i]
       if (fids) floorMap[idx] = fids[i]
       if (wdepth) depthMap[idx] = wdepth[i]
+    }
+  }
+
+  // ── Biome-tint blend ── precompute per-column grass/foliage tints, then box-
+  // blur them to smooth biome borders. Only when tinting is on and the region
+  // spans >1 biome (a single-biome region has nothing to blend). `sc` is null
+  // when tinting is off, which the grass/foliage branches below check.
+  const sc = config.biomeTint ? tintScratch(N * N) : null
+  if (sc) {
+    const tintById = new Map<number, ReturnType<typeof biomeTints>>()
+    let firstBid = -1
+    let multiBiome = false
+    for (let idx = 0; idx < N * N; idx++) {
+      const bid = biomeMap[idx]
+      if (firstBid < 0) firstBid = bid
+      else if (bid !== firstBid) multiBiome = true
+      let t = tintById.get(bid)
+      if (!t) {
+        t = biomeTints(bid)
+        tintById.set(bid, t)
+      }
+      sc.grR[idx] = t.grass[0]
+      sc.grG[idx] = t.grass[1]
+      sc.grB[idx] = t.grass[2]
+      sc.fR[idx] = t.foliage[0]
+      sc.fG[idx] = t.foliage[1]
+      sc.fB[idx] = t.foliage[2]
+    }
+    if (multiBiome) {
+      boxBlur(sc.grR, sc.tmp, N, BIOME_BLEND_R)
+      boxBlur(sc.grG, sc.tmp, N, BIOME_BLEND_R)
+      boxBlur(sc.grB, sc.tmp, N, BIOME_BLEND_R)
+      boxBlur(sc.fR, sc.tmp, N, BIOME_BLEND_R)
+      boxBlur(sc.fG, sc.tmp, N, BIOME_BLEND_R)
+      boxBlur(sc.fB, sc.tmp, N, BIOME_BLEND_R)
     }
   }
 
@@ -104,8 +193,11 @@ export function renderRegionTile(
       null
     const texAvg = texKey ? averageTextureColor(texKey) : null
 
-    if (def.tint === 'grass' && config.biomeTint) {
-      const [gr, gg, gb] = biomeTints(biomeMap[idx]).grass
+    if (def.tint === 'grass' && sc) {
+      // Blended biome grass tint (sc is populated whenever biomeTint is on).
+      const gr = sc.grR[idx]
+      const gg = sc.grG[idx]
+      const gb = sc.grB[idx]
       // The detailed renderer fills the biome tint then MULTIPLIES the grass
       // texture over it. Replicate so overview grass isn't the raw (too-bright)
       // tint but the darker tinted-texture colour.
@@ -118,8 +210,10 @@ export function renderRegionTile(
         g = gg
         b = gb
       }
-    } else if (def.tint === 'foliage' && config.biomeTint) {
-      const [fr, fg, fb] = biomeTints(biomeMap[idx]).foliage
+    } else if (def.tint === 'foliage' && sc) {
+      const fr = sc.fR[idx]
+      const fg = sc.fG[idx]
+      const fb = sc.fB[idx]
       if (texAvg) {
         r = (fr * texAvg[0]) / 255
         g = (fg * texAvg[1]) / 255
