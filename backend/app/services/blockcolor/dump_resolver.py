@@ -24,6 +24,7 @@ sides for wall/pillar blocks, bottom last.
 
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import threading
@@ -115,8 +116,14 @@ class ForgeDumpResolver:
         and leave the resolver with a mix of two dumps.
         """
         try:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
+            # Bundled canonical dumps ship gzipped (icon_dump.json.gz, ~4% of raw);
+            # per-instance dumps are plain JSON.
+            if str(path).endswith(".gz"):
+                with gzip.open(path, "rt", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                with open(path, encoding="utf-8") as f:
+                    data = json.load(f)
         except Exception as exc:
             log.warning("ForgeDumpResolver: cannot open %s: %s", path, exc)
             return False

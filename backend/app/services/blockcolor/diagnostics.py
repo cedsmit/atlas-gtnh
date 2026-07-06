@@ -290,7 +290,7 @@ def compute_dump_mismatch(world_path: str) -> dict[str, object]:
     path = Path(world_path)
 
     # Make sure the dump is loaded (no-op if already loaded).
-    _try_auto_load_dump(find_minecraft_dir(path))
+    _try_auto_load_dump(find_minecraft_dir(path), world_path)
     dump = get_dump_resolver()
     if not dump.is_loaded:
         return {"dump_loaded": False}
@@ -408,7 +408,7 @@ def build_missing_block_report(
     metas = metas or {}
 
     path = Path(world_path)
-    _try_auto_load_dump(find_minecraft_dir(path))
+    _try_auto_load_dump(find_minecraft_dir(path), world_path)
     dump = get_dump_resolver()
     world_mods = read_world_modlist(path)
     dump_mods = dump.mods_map
