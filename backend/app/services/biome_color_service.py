@@ -9,7 +9,8 @@ hardcoded temperature/rainfall table (which is wrong for most modded biomes).
 Resolution mirrors the icon dump, most-specific first: ``ATLAS_BIOME_DUMP_PATH``
 env → an instance's ``config/atlas/biome_dump.json`` (walking up from the world
 folder) → ``~/.atlas_gtnh/biome_dump.json`` → the **canonical dump bundled with
-Atlas** (``backend/app/data/biome_dump.json``).
+Atlas**, version-selected as ``backend/app/data/<major>/biome_dump.json`` (the GTNH
+major version is detected from the world's ModList — see ``pack_version``).
 
 Biome grass/foliage colours are deterministic for a given modpack build — the
 same for every user — so we capture them once with the AtlasDumper mod and ship
@@ -28,31 +29,43 @@ import json
 import os
 from pathlib import Path
 
+from app.services.pack_version import detect_gtnh_major, load_major_signatures
+
 # biome_id -> {"grass": [r, g, b], "foliage": [r, g, b]}
 BiomeColors = dict[int, dict[str, list[int]]]
 
 _cache: dict[str, BiomeColors] = {}
 
-# Canonical dump shipped with Atlas: backend/app/data/biome_dump.json
-# (this file lives at backend/app/services/, so parent.parent is backend/app/).
-_BUNDLED = Path(__file__).resolve().parent.parent / "data" / "biome_dump.json"
+# Canonical dumps shipped with Atlas live at backend/app/data/<major>/biome_dump.json
+# (this file is at backend/app/services/, so parent.parent is backend/app/). The GTNH
+# major version is detected per world from its ModList.
+_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def _int_to_rgb(v: int) -> list[int]:
     return [(v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF]
 
 
+def _bundled_candidate(world_path: str) -> Path | None:
+    """The version-selected bundled dump for this world, or None if none is bundled."""
+    signatures = load_major_signatures(_DATA_DIR, "biome_dump.json")
+    major = detect_gtnh_major(world_path, signatures)
+    return _DATA_DIR / major / "biome_dump.json" if major else None
+
+
 def _candidates(world_path: str) -> list[Path]:
     env = os.environ.get("ATLAS_BIOME_DUMP_PATH", "").strip()
+    bundled = _bundled_candidate(world_path)
     if env:
-        return [Path(env), _BUNDLED]
+        return [Path(env), *([bundled] if bundled else [])]
     out: list[Path] = []
     p = Path(world_path)
     # The world usually sits inside an instance dir that also holds config/atlas/.
     for base in [p, *p.parents][:4]:
         out.append(base / "config" / "atlas" / "biome_dump.json")
     out.append(Path.home() / ".atlas_gtnh" / "biome_dump.json")
-    out.append(_BUNDLED)  # ships with Atlas — the zero-setup default
+    if bundled:  # ships with Atlas — the zero-setup default, below any per-instance dump
+        out.append(bundled)
     return out
 
 
@@ -94,7 +107,9 @@ def get_biome_colors(world_path: str) -> BiomeColors:
             result = {}
         if not result:
             continue
-        if cand != _BUNDLED:
+        # Don't cache a bundled default (anything under backend/app/data) so a real
+        # per-instance dump dropped in later still supersedes it without a restart.
+        if _DATA_DIR not in cand.parents:
             _cache[world_path] = result
         return result
     return {}
