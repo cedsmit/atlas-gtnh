@@ -52,6 +52,20 @@ async def get_block_colors(world_path: str = Query(...)) -> dict[int, list[int]]
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/biome-colors")
+async def get_biome_colors_endpoint(
+    world_path: str = Query(...),
+) -> dict[int, dict[str, list[int]]]:
+    """biome_id → {grass:[r,g,b], foliage:[r,g,b]} from the AtlasDumper biome dump.
+
+    Empty when no biome_dump.json is present; the frontend then falls back to its
+    built-in temperature/rainfall table.
+    """
+    from app.services.biome_color_service import get_biome_colors
+
+    return await asyncio.to_thread(get_biome_colors, world_path)
+
+
 @router.get("/block-texture-map")
 async def get_block_texture_map(world_path: str = Query(...)) -> dict[int, str]:
     """Return block_id → texture_key for every block that has a matched texture.

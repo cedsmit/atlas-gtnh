@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
+import { useBiomeColors } from './features/blocks/api/biomeColors'
 import { useBlockNames } from './features/blocks/api/blockNames'
 import {
   type DimensionInfo,
@@ -59,6 +60,7 @@ export default function App() {
     isError: worldError,
   } = useBlockColors(worldPath)
   const { data: blockNames } = useBlockNames(worldPath)
+  const { data: biomeColors } = useBiomeColors(worldPath)
   const { data: textureKeys } = useTextureKeys(worldPath)
   const { data: metaTextureKeys } = useMetaTextureKeys(worldPath)
   const { data: dimensions } = useDimensions(worldPath)
@@ -307,6 +309,7 @@ export default function App() {
               dimensionPath={dimensionPath}
               regions={regionData?.regions ?? []}
               blockColors={blockColors}
+              biomeColors={biomeColors}
               textureKeys={textureKeys}
               metaTextureKeys={metaTextureKeys}
               worldPath={worldPath ?? undefined}

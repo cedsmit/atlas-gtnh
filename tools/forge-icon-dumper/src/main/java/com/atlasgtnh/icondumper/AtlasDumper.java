@@ -1,11 +1,13 @@
 package com.atlasgtnh.icondumper;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.ModContainer;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.common.registry.FMLControlledNamespacedRegistry;
 import cpw.mods.fml.common.registry.GameData;
 import cpw.mods.fml.common.registry.GameRegistry;
@@ -15,6 +17,8 @@ import net.minecraftforge.common.MinecraftForge;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -43,12 +47,16 @@ import java.util.*;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.0.0";
+    public static final String VERSION = "1.1.0";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
     // We dump on the first fire (blocks atlas is always stitched first).
     private boolean dumped = false;
+    // Biome colors are dumped separately, on the first client tick with a loaded
+    // world — by then the grass/foliage colormaps that getBiomeGrassColor reads
+    // are loaded (they are not guaranteed at texture-stitch time).
+    private boolean biomesDumped = false;
 
     // Resolved once on first dump; cached for the life of the process.
     private Method getIconMethod     = null;  // Block.getIcon(int, int) → IIcon
@@ -58,8 +66,9 @@ public class AtlasDumper {
     @EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         this.gameDir = event.getModConfigurationDirectory().getParentFile();
-        MinecraftForge.EVENT_BUS.register(this);
-        System.out.println("[AtlasDumper] Registered — will dump icons after blocks texture stitch.");
+        MinecraftForge.EVENT_BUS.register(this);          // TextureStitchEvent (block icons)
+        FMLCommonHandler.instance().bus().register(this); // ClientTickEvent (biome colors)
+        System.out.println("[AtlasDumper] Registered — will dump icons after blocks texture stitch, biomes after world load.");
     }
 
     @SubscribeEvent
@@ -68,6 +77,16 @@ public class AtlasDumper {
         dumped = true;
         System.out.println("[AtlasDumper] Texture atlas stitched — starting icon dump...");
         dumpIcons();
+    }
+
+    @SubscribeEvent
+    public void onClientTick(TickEvent.ClientTickEvent event) {
+        if (biomesDumped) return;
+        // Wait for a loaded world so the grass/foliage colormaps are available.
+        if (getClientWorld() == null) return;
+        biomesDumped = true;
+        System.out.println("[AtlasDumper] World loaded — starting biome color dump...");
+        dumpBiomes();
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -367,6 +386,153 @@ public class AtlasDumper {
             w.write("\n    }");
         }
         w.write("\n  }\n}\n");
+    }
+
+    // ── Biome color dump ──────────────────────────────────────────────────────
+
+    /** The client's loaded world, or null — via Minecraft.getMinecraft().theWorld. */
+    private Object getClientWorld() {
+        try {
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Method getMc = resolveMethod(mcClass, new Class<?>[]{}, "getMinecraft", "func_71410_x");
+            Object mc = getMc.invoke(null);
+            if (mc == null) return null;
+            Field theWorld = resolveField(mcClass, "theWorld", "field_71441_e");
+            return theWorld.get(mc);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * Dump each registered biome's real grass and foliage color — the same values
+     * getBiomeGrassColor()/getBiomeFoliageColor() return in-game (colormap lookups
+     * plus any mod override, e.g. BOP's fixed/perlin colors) — so Atlas can key
+     * biome tint on ground truth instead of a hardcoded temperature/rainfall table.
+     * Colors are sampled at (0,64,0): the biome's center color, not the 3x3 edge
+     * average (Atlas re-derives border blending itself).
+     */
+    private void dumpBiomes() {
+        Map<Integer, Object[]> biomes = new LinkedHashMap<>();  // id → [name, grass, foliage, temp, rain]
+        int count = 0, errors = 0;
+        List<String> errorSamples = new ArrayList<>();
+        try {
+            Class<?> biomeClass = Class.forName("net.minecraft.world.biome.BiomeGenBase");
+            Method getArray = resolveMethod(biomeClass, new Class<?>[]{}, "getBiomeGenArray", "func_150565_n");
+            Method getGrass = resolveMethod(biomeClass, new Class<?>[]{int.class, int.class, int.class}, "getBiomeGrassColor",   "func_150558_b");
+            Method getFol   = resolveMethod(biomeClass, new Class<?>[]{int.class, int.class, int.class}, "getBiomeFoliageColor", "func_150571_c");
+            Field  idField   = resolveField(biomeClass, "biomeID",   "field_76756_M");
+            Field  nameField = resolveField(biomeClass, "biomeName", "field_76791_y");
+            Field  tempField = resolveFieldOrNull(biomeClass, "temperature", "field_76750_F");
+            Field  rainField = resolveFieldOrNull(biomeClass, "rainfall",    "field_76751_G");
+
+            Object arr = getArray.invoke(null);   // BiomeGenBase[]
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object biome = Array.get(arr, i);
+                if (biome == null) continue;
+                try {
+                    int id      = idField.getInt(biome);
+                    String name = String.valueOf(nameField.get(biome));
+                    int grass   = ((Number) getGrass.invoke(biome, 0, 64, 0)).intValue() & 0xFFFFFF;
+                    int foliage = ((Number) getFol.invoke(biome, 0, 64, 0)).intValue() & 0xFFFFFF;
+                    float temp  = tempField != null ? tempField.getFloat(biome) : 0f;
+                    float rain  = rainField != null ? rainField.getFloat(biome) : 0f;
+                    biomes.put(id, new Object[]{name, grass, foliage, temp, rain});
+                    count++;
+                } catch (Exception e) {
+                    errors++;
+                    if (errorSamples.size() < 30) {
+                        Throwable c = (e.getCause() != null) ? e.getCause() : e;
+                        errorSamples.add("biome[" + i + "] → " + c.getClass().getSimpleName()
+                            + (c.getMessage() != null ? ": " + c.getMessage().split("\n")[0] : ""));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[AtlasDumper] FATAL: biome dump reflection failed: " + e);
+            return;
+        }
+
+        File outDir = new File(gameDir, "config/atlas");
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            System.err.println("[AtlasDumper] Could not create output directory: " + outDir);
+            return;
+        }
+        File outFile = new File(outDir, "biome_dump.json");
+        try (FileWriter w = new FileWriter(outFile)) {
+            writeBiomeJson(w, biomes, count, errors, errorSamples);
+            System.out.printf("[AtlasDumper] Biome dump done — %d biomes, %d errors → %s%n",
+                count, errors, outFile.getAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("[AtlasDumper] Biome write failed: " + e.getMessage());
+        }
+    }
+
+    private void writeBiomeJson(FileWriter w, Map<Integer, Object[]> biomes,
+                                int count, int errors, List<String> errorSamples) throws IOException {
+        String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+        List<String> modList = new ArrayList<>();
+        try {
+            for (ModContainer mc : Loader.instance().getActiveModList()) {
+                modList.add(mc.getModId() + "@" + mc.getVersion());
+            }
+        } catch (Throwable ignored) {}
+
+        w.write("{\n");
+        w.write("  \"format\": \"atlas-gtnh-biome-dump-v1\",\n");
+        w.write("  \"minecraft_version\": \"1.7.10\",\n");
+        w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
+        w.write("  \"summary\": { \"biome_count\": " + count + ", \"errors\": " + errors + ", \"error_samples\": [");
+        for (int i = 0; i < errorSamples.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(errorSamples.get(i)));
+        }
+        w.write("] },\n");
+        w.write("  \"mods\": [");
+        for (int i = 0; i < modList.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(modList.get(i)));
+        }
+        w.write("],\n");
+        w.write("  \"biomes\": {\n");
+        int bi = 0;
+        for (Map.Entry<Integer, Object[]> e : biomes.entrySet()) {
+            if (bi++ > 0) w.write(",\n");
+            Object[] v = e.getValue();
+            w.write("    \"" + e.getKey() + "\": { "
+                + "\"name\": "        + jsonStr((String) v[0]) + ", "
+                + "\"grass\": "       + ((Integer) v[1])       + ", "
+                + "\"foliage\": "     + ((Integer) v[2])       + ", "
+                + "\"temperature\": " + v[3]                   + ", "
+                + "\"rainfall\": "    + v[4]                   + " }");
+        }
+        w.write("\n  }\n}\n");
+    }
+
+    // ── Reflection helpers (MCP name → SRG name fallback) ──────────────────────
+
+    private static Method resolveMethod(Class<?> c, Class<?>[] params, String... names) throws NoSuchMethodException {
+        for (String n : names) {
+            try { return c.getMethod(n, params); } catch (NoSuchMethodException ignored) {}
+        }
+        throw new NoSuchMethodException(names[0] + " (+ SRG) not found on " + c.getName());
+    }
+
+    private static Field resolveField(Class<?> c, String... names) throws NoSuchFieldException {
+        for (String n : names) {
+            try { return c.getField(n); } catch (NoSuchFieldException ignored) {}
+        }
+        for (String n : names) {
+            try { Field f = c.getDeclaredField(n); f.setAccessible(true); return f; }
+            catch (NoSuchFieldException ignored) {}
+        }
+        throw new NoSuchFieldException(names[0] + " (+ SRG) not found on " + c.getName());
+    }
+
+    private static Field resolveFieldOrNull(Class<?> c, String... names) {
+        try { return resolveField(c, names); } catch (NoSuchFieldException e) { return null; }
     }
 
     private static String jsonStr(String s) {

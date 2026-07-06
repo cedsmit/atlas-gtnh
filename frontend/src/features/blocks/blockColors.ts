@@ -326,11 +326,27 @@ export const FOLIAGE_TINTED_IDS = new Set([
   1376, // BiomesOPlenty:colorizedLeaves1/2 — biome-tinted canopy
 ])
 
+// Authoritative per-biome colours dumped from the running modpack
+// (config/atlas/biome_dump.json → served as /worlds/biome-colors). When present
+// these are used verbatim — the same values getBiomeGrassColor()/
+// getBiomeFoliageColor() return in-game, so modded biomes (BOP, RWG) are exactly
+// right instead of falling to the approximate table below. Set once per world.
+export type DumpedBiomeColors = Record<number, { grass: RGB; foliage: RGB }>
+let _dumpedBiomeColors: DumpedBiomeColors | null = null
+
+/** Install the biome colours from the modpack dump (null clears them). */
+export function setDumpedBiomeColors(map: DumpedBiomeColors | null): void {
+  _dumpedBiomeColors = map
+}
+
 export function biomeTints(biomeId: number): { grass: RGB; foliage: RGB } {
-  // Prefer an exact entry for this id (covers custom BOP/GTNH biomes), then the
-  // vanilla "mutated" convention where a mutated biome (base + 128) reuses its
-  // base variant's tint, then the default. Checking the raw id first stops a
-  // custom biome with id >= 128 from being silently remapped to a vanilla tint.
+  // Ground-truth dumped colours win when available.
+  const dumped = _dumpedBiomeColors?.[biomeId]
+  if (dumped) return dumped
+  // Fallback table: prefer an exact entry for this id (covers custom BOP/GTNH
+  // biomes), then the vanilla "mutated" convention where a mutated biome
+  // (base + 128) reuses its base variant's tint, then the default. Checking the
+  // raw id first stops a custom biome with id >= 128 from being silently remapped.
   const mutatedBase = biomeId >= 128 ? biomeId - 128 : -1
   return {
     grass: BIOME_GRASS[biomeId] ?? BIOME_GRASS[mutatedBase] ?? DEFAULT_GRASS,

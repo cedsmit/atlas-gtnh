@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react'
 import { LocateFixed } from 'lucide-react'
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
+import {
+  setDumpedBiomeColors,
+  type DumpedBiomeColors,
+} from '../blocks/blockColors'
 import type { RegionSummary } from './api/regions'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import {
@@ -23,6 +27,7 @@ interface Props {
   dimensionPath: string
   regions: RegionSummary[]
   blockColors?: BlockColorMap
+  biomeColors?: DumpedBiomeColors
   textureKeys?: Record<number, string>
   metaTextureKeys?: Record<string, string>
   worldPath?: string
@@ -36,6 +41,7 @@ export function WorldMap({
   dimensionPath,
   regions,
   blockColors,
+  biomeColors,
   textureKeys,
   metaTextureKeys,
   worldPath,
@@ -60,8 +66,14 @@ export function WorldMap({
   configRef.current = configProp ?? DEFAULT_CONFIG
   const debugModeRef = useRef(debugMode)
   debugModeRef.current = debugMode
+  // Biome colours from the modpack dump feed a module singleton that biomeTints()
+  // reads (so all call sites benefit without threading). Fold their count into
+  // bcCount so tiles re-render when the dump loads.
+  setDumpedBiomeColors(biomeColors ?? null)
   const bcCountRef = useRef(0)
-  bcCountRef.current = Object.keys(blockColors ?? {}).length
+  bcCountRef.current =
+    Object.keys(blockColors ?? {}).length +
+    Object.keys(biomeColors ?? {}).length
 
   // Registry: use prop if provided (App.tsx owns it), otherwise create locally.
   const registryRef = useRef<BlockRenderRegistry>(

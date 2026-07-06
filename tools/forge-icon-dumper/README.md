@@ -1,22 +1,34 @@
 # Atlas Icon Dumper
 
-A small Forge 1.7.10 client-side mod that exports the exact block→texture
-mapping Minecraft uses, enabling Atlas GTNH to resolve block textures without
-heuristics.
+A small Forge 1.7.10 client-side mod that exports (1) the exact block→texture
+mapping and (2) each biome's real grass/foliage colour that Minecraft uses,
+enabling Atlas GTNH to resolve textures and biome tints without heuristics.
 
 ## What it does
 
-After the game stitches the blocks texture atlas (all `registerBlockIcons()`
-calls have completed), it iterates every registered block and calls
-`block.getIcon(side, meta)` via reflection for all 16 metadata values and 6
-sides.
-
-The icon names from `IIcon.getIconName()` — the same strings Minecraft's own
-renderer uses — are written to:
+**Icons** — after the game stitches the blocks texture atlas (all
+`registerBlockIcons()` calls have completed), it iterates every registered block
+and calls `block.getIcon(side, meta)` via reflection for all 16 metadata values
+and 6 sides. The icon names from `IIcon.getIconName()` — the same strings
+Minecraft's own renderer uses — are written to:
 
 ```
 .minecraft/config/atlas/icon_dump.json
 ```
+
+**Biome colours** — on the first client tick after a world is loaded (so the
+grass/foliage colormaps are available), it iterates `BiomeGenBase.getBiomeGenArray()`
+and reads each biome's `getBiomeGrassColor()` / `getBiomeFoliageColor()` (colormap
+lookups plus any mod override, e.g. Biomes O' Plenty). These are written to:
+
+```
+.minecraft/config/atlas/biome_dump.json
+```
+
+Atlas serves this so grass/foliage tint from ground truth instead of an
+approximate temperature/rainfall table (which is wrong for most modded biomes).
+Both dumps use the same reflection approach (MCP name → SRG name fallback) so the
+mod compiles against only the Forge universal JAR.
 
 ## Installation (pre-built)
 
