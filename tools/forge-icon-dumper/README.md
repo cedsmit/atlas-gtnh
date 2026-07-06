@@ -32,8 +32,9 @@ mod compiles against only the Forge universal JAR.
 
 ## Installation (pre-built)
 
-The JAR at `tools/forge-icon-dumper/atlas-icon-dumper-1.0.0.jar` is ready to
-use. Copy it to your GTNH `mods/` folder.
+The JAR at `tools/forge-icon-dumper/atlas-icon-dumper-1.1.0.jar` is ready to
+use. Copy it to your GTNH `mods/` folder. (An older `atlas-icon-dumper-1.0.0.jar`
+dumps icons only — delete it; 1.1.0 dumps icons **and** biome colours.)
 
 ## Building from source
 
@@ -52,6 +53,10 @@ or Gradle wrapper required.
 
 ### Compile
 
+> **Replace both `path\to\...` placeholders with your real JAR paths.** Leaving
+> them literal is the usual cause of a wall of "cannot find symbol" errors —
+> `javac` can't find a single Forge/Minecraft class, so every reference fails.
+
 ```cmd
 javac --release 8 ^
   -cp "path\to\forge-universal.jar;path\to\minecraft-client.jar" ^
@@ -59,11 +64,29 @@ javac --release 8 ^
   src\main\java\com\atlasgtnh\icondumper\AtlasDumper.java
 ```
 
+A worked example with resolved Prism paths (yours will differ by Forge build):
+
+```cmd
+javac --release 8 ^
+  -cp "%APPDATA%\PrismLauncher\libraries\net\minecraftforge\forge\1.7.10-10.13.4.1614-1.7.10\forge-1.7.10-10.13.4.1614-1.7.10-universal.jar;%APPDATA%\PrismLauncher\libraries\com\mojang\minecraft\1.7.10\minecraft-1.7.10-client.jar" ^
+  -d out ^
+  src\main\java\com\atlasgtnh\icondumper\AtlasDumper.java
+```
+
+On JDK 20+ you'll see three `source/target value 8 is obsolete` warnings —
+harmless; the build still succeeds and produces Java 8 bytecode. (Any JDK 8–25
+works; the mod only needs a Java 8 classfile.)
+
 ### Package
 
 ```cmd
-jar cf atlas-icon-dumper-1.0.0.jar -C out .
+jar cf atlas-icon-dumper-1.1.0.jar -C out .
 ```
+
+The compiled `out\` must contain `mcmod.info` and `pack.mcmeta` too, not just the
+`.class` — Gradle normally copies them from `src\main\resources`. When building
+by hand, copy both into `out\` first and substitute the `${version}`/`${mcversion}`
+tokens in `mcmod.info` (→ `1.1.0` / `1.7.10`), or the mod loads without metadata.
 
 ### Notes on vanilla JAR
 
@@ -75,12 +98,18 @@ because Forge's class loader deobfuscates them.
 
 ## Running
 
-Launch the GTNH client normally. When the main menu appears, the dump is
-already complete. You do NOT need to load a world.
+Launch the GTNH client normally.
+
+- **Icons** dump after the texture atlas stitches — by the time the **main menu**
+  appears, `icon_dump.json` is already written. No world needed.
+- **Biome colours** dump on the first client tick **after you load a world**
+  (single-player or a server) — the grass/foliage colormaps aren't available
+  until then. Load any world in the pack once and `biome_dump.json` appears.
 
 Watch the game log for:
 ```
 [AtlasDumper] Done — 4012/4095 blocks (61 no-icon, 22 unnamed), 289 mods, 83 errors → .minecraft/config/atlas/icon_dump.json
+[AtlasDumper] Biome dump done — 91 biomes, 0 errors → .minecraft/config/atlas/biome_dump.json
 ```
 
 ## Dump summary fields
