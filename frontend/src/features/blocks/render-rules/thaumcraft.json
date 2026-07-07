@@ -11,6 +11,11 @@
     },
     "Thaumcraft:blockJar": { "category": "overlay" },
     "Thaumcraft:blockCandle": { "category": "overlay", "blockTags": ["torch"] },
+    "Thaumcraft:blockCustomPlant": {
+      "category": "overlay",
+      "blockTags": ["flower"]
+    },
+    "Thaumcraft:blockTube": { "category": "solid", "blockTags": ["pipe"] },
     "Thaumcraft:blockArcaneLog": { "category": "solid" },
     "Thaumcraft:blockMagicalLog": { "category": "solid" },
     "Thaumcraft:blockTaintFibre": {
