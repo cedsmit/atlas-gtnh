@@ -10,6 +10,7 @@ import {
   Mountain,
   Palette,
   Search,
+  Star,
   TriangleAlert,
   X,
 } from 'lucide-react'
@@ -25,6 +26,7 @@ import {
   presetShowsTag,
   type TextureFilter,
 } from '../features/blocks/renderPresets'
+import { type UserPreset } from '../features/blocks/userPresets'
 import { addRecentWorld, getRecentWorlds } from '../features/world/recentWorlds'
 
 type ElevOverride =
@@ -53,6 +55,10 @@ interface Props {
   layerOverrides?: LayerOverrides
   onSetLayer?: (tag: LayerTag, show: boolean) => void
   onResetLayers?: () => void
+  userPresets?: UserPreset[]
+  onSavePreset?: (name: string) => void
+  onApplyPreset?: (p: UserPreset) => void
+  onDeletePreset?: (id: string) => void
 }
 
 export function MenuBar({
@@ -72,15 +78,22 @@ export function MenuBar({
   layerOverrides,
   onSetLayer,
   onResetLayers,
+  userPresets,
+  onSavePreset,
+  onApplyPreset,
+  onDeletePreset,
 }: Props) {
   const [fileOpen, setFileOpen] = useState(false)
   const [debugMenuOpen, setDebugMenuOpen] = useState(false)
   const [layersMenuOpen, setLayersMenuOpen] = useState(false)
+  const [presetsMenuOpen, setPresetsMenuOpen] = useState(false)
+  const [newPresetName, setNewPresetName] = useState('')
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const debugMenuRef = useRef<HTMLDivElement>(null)
   const layersMenuRef = useRef<HTMLDivElement>(null)
+  const presetsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (fileOpen) setRecentWorlds(getRecentWorlds())
@@ -97,6 +110,9 @@ export function MenuBar({
       }
       if (layersMenuRef.current && !layersMenuRef.current.contains(target)) {
         setLayersMenuOpen(false)
+      }
+      if (presetsMenuRef.current && !presetsMenuRef.current.contains(target)) {
+        setPresetsMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClick)
@@ -134,6 +150,13 @@ export function MenuBar({
     BUILT_IN_PRESETS[0]
   const hasLayerOverrides =
     !!layerOverrides && Object.keys(layerOverrides).length > 0
+
+  function saveCurrentView() {
+    const name = newPresetName.trim()
+    if (!name) return
+    onSavePreset?.(name)
+    setNewPresetName('')
+  }
 
   return (
     <header className="flex h-9 items-stretch border-b border-zinc-800 bg-zinc-950">
@@ -337,6 +360,81 @@ export function MenuBar({
                         Reset to preset
                       </Item>
                     </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {onSavePreset && (
+            <div
+              ref={presetsMenuRef}
+              className="relative flex items-stretch border-l border-zinc-800"
+            >
+              <button
+                onClick={() => setPresetsMenuOpen((o) => !o)}
+                title="Saved views — save the current preset + overrides, re-apply later"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  presetsMenuOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Star className="h-4 w-4 shrink-0" aria-hidden />
+                Saved
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              </button>
+
+              {presetsMenuOpen && (
+                <div className="absolute right-0 top-full z-50 min-w-64 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+                  <div className="flex items-center gap-1 px-2 py-1.5">
+                    <input
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveCurrentView()
+                      }}
+                      placeholder="Name this view…"
+                      className="min-w-0 flex-1 rounded bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-300 outline-none ring-1 ring-zinc-700 focus:ring-zinc-500"
+                    />
+                    <button
+                      onClick={saveCurrentView}
+                      disabled={!newPresetName.trim()}
+                      className="rounded bg-emerald-800 px-2 py-1 font-mono text-xs text-emerald-200 transition-colors hover:bg-emerald-700 disabled:opacity-40"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <Separator />
+                  {!userPresets || userPresets.length === 0 ? (
+                    <p className="px-3 py-1.5 text-xs text-zinc-500">
+                      No saved views yet
+                    </p>
+                  ) : (
+                    userPresets.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center transition-colors hover:bg-zinc-800"
+                      >
+                        <button
+                          onClick={() => {
+                            onApplyPreset?.(p)
+                            setPresetsMenuOpen(false)
+                          }}
+                          title={`Apply "${p.name}"`}
+                          className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-sm text-zinc-300 hover:text-zinc-100"
+                        >
+                          {p.name}
+                        </button>
+                        <button
+                          onClick={() => onDeletePreset?.(p.id)}
+                          aria-label={`Delete ${p.name}`}
+                          title="Delete"
+                          className="px-2 text-zinc-600 transition-colors hover:text-red-400"
+                        >
+                          <X className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </div>
+                    ))
                   )}
                 </div>
               )}

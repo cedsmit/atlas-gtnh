@@ -38,6 +38,12 @@ import {
   loadRenderPrefs,
   saveRenderPrefs,
 } from './features/blocks/renderPrefs'
+import {
+  type UserPreset,
+  deleteUserPreset,
+  loadUserPresets,
+  saveUserPreset,
+} from './features/blocks/userPresets'
 import { getTextureState } from './features/textures/textureLoader'
 import { textureDebugStore } from './features/textures/textureDebugStore'
 
@@ -75,6 +81,16 @@ export default function App() {
       layerOverrides,
     })
   }, [selectedPresetId, elevOverride, textureFilterOverride, layerOverrides])
+
+  // Named user presets (Stage 3.3) — saved snapshots of a render view.
+  const [userPresets, setUserPresets] = useState(loadUserPresets)
+
+  function applyUserPreset(p: UserPreset) {
+    setSelectedPresetId(p.presetId)
+    setElevOverride(p.elevOverride)
+    setTextureFilterOverride(p.textureFilter)
+    setLayerOverrides(p.layerOverrides)
+  }
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const {
@@ -286,6 +302,25 @@ export default function App() {
             : undefined
         }
         onResetLayers={worldPath ? () => setLayerOverrides({}) : undefined}
+        userPresets={userPresets}
+        onSavePreset={
+          worldPath
+            ? (name) =>
+                setUserPresets(
+                  saveUserPreset({
+                    name,
+                    presetId: selectedPresetId,
+                    elevOverride,
+                    textureFilter: textureFilterOverride,
+                    layerOverrides,
+                  })
+                )
+            : undefined
+        }
+        onApplyPreset={worldPath ? applyUserPreset : undefined}
+        onDeletePreset={
+          worldPath ? (id) => setUserPresets(deleteUserPreset(id)) : undefined
+        }
       />
 
       {!worldPath ? (
