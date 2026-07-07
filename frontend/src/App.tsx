@@ -27,8 +27,10 @@ import { columnTally } from './features/map/columnTally'
 import {
   type ElevationMode,
   type ContourMode,
+  type LayerOverrides,
   type TextureFilter,
   BUILT_IN_PRESETS,
+  applyLayerOverrides,
   presetToConfig,
 } from './features/blocks/renderPresets'
 import { getTextureState } from './features/textures/textureLoader'
@@ -51,6 +53,9 @@ export default function App() {
   const [textureFilterOverride, setTextureFilterOverride] = useState<
     'preset' | TextureFilter
   >('preset')
+  // User layer toggles that override the active preset's category visibility
+  // (Stage 3.1). Session-only, like the elevation/filter overrides.
+  const [layerOverrides, setLayerOverrides] = useState<LayerOverrides>({})
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const {
@@ -102,6 +107,7 @@ export default function App() {
     }
     return {
       ...base,
+      hiddenTags: applyLayerOverrides(base.hiddenTags, layerOverrides),
       elevationMode,
       elevationStrength,
       contourMode,
@@ -110,7 +116,7 @@ export default function App() {
           ? preset.textureFilter
           : textureFilterOverride,
     }
-  }, [preset, elevOverride, textureFilterOverride])
+  }, [preset, elevOverride, textureFilterOverride, layerOverrides])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
@@ -253,6 +259,14 @@ export default function App() {
         onToggleDebug={worldPath ? handleToggleDebug : undefined}
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
+        layerOverrides={layerOverrides}
+        onSetLayer={
+          worldPath
+            ? (tag, show) =>
+                setLayerOverrides((prev) => ({ ...prev, [tag]: show }))
+            : undefined
+        }
+        onResetLayers={worldPath ? () => setLayerOverrides({}) : undefined}
       />
 
       {!worldPath ? (

@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ExternalLink,
   FolderOpen,
+  Layers,
   Mountain,
   Palette,
   Search,
@@ -18,6 +19,10 @@ import { API_BASE } from './api'
 import { validateWorld } from '../features/world/api/worlds'
 import {
   BUILT_IN_PRESETS,
+  LAYER_TAGS,
+  type LayerOverrides,
+  type LayerTag,
+  presetShowsTag,
   type TextureFilter,
 } from '../features/blocks/renderPresets'
 import { addRecentWorld, getRecentWorlds } from '../features/world/recentWorlds'
@@ -45,6 +50,9 @@ interface Props {
   onToggleDebug?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
+  layerOverrides?: LayerOverrides
+  onSetLayer?: (tag: LayerTag, show: boolean) => void
+  onResetLayers?: () => void
 }
 
 export function MenuBar({
@@ -61,13 +69,18 @@ export function MenuBar({
   onToggleDebug,
   textureFilter,
   onSetTextureFilter,
+  layerOverrides,
+  onSetLayer,
+  onResetLayers,
 }: Props) {
   const [fileOpen, setFileOpen] = useState(false)
   const [debugMenuOpen, setDebugMenuOpen] = useState(false)
+  const [layersMenuOpen, setLayersMenuOpen] = useState(false)
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const debugMenuRef = useRef<HTMLDivElement>(null)
+  const layersMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (fileOpen) setRecentWorlds(getRecentWorlds())
@@ -81,6 +94,9 @@ export function MenuBar({
       }
       if (debugMenuRef.current && !debugMenuRef.current.contains(target)) {
         setDebugMenuOpen(false)
+      }
+      if (layersMenuRef.current && !layersMenuRef.current.contains(target)) {
+        setLayersMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClick)
@@ -112,6 +128,12 @@ export function MenuBar({
       )
     }
   }
+
+  const activePreset =
+    BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId) ??
+    BUILT_IN_PRESETS[0]
+  const hasLayerOverrides =
+    !!layerOverrides && Object.keys(layerOverrides).length > 0
 
   return (
     <header className="flex h-9 items-stretch border-b border-zinc-800 bg-zinc-950">
@@ -260,6 +282,64 @@ export function MenuBar({
                 <option value="smooth">Filter: smooth</option>
                 <option value="journeymap">Filter: JM</option>
               </select>
+            </div>
+          )}
+          {onSetLayer && (
+            <div
+              ref={layersMenuRef}
+              className="relative flex items-stretch border-l border-zinc-800"
+            >
+              <button
+                onClick={() => setLayersMenuOpen((o) => !o)}
+                title="Show / hide overlay categories on top of the preset"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  layersMenuOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : hasLayerOverrides
+                      ? 'text-amber-300 hover:bg-zinc-800'
+                      : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Layers className="h-4 w-4 shrink-0" aria-hidden />
+                Layers
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              </button>
+
+              {layersMenuOpen && (
+                <div className="absolute right-0 top-full z-50 min-w-56 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+                  {LAYER_TAGS.map(({ tag, label }) => {
+                    const visible =
+                      layerOverrides?.[tag] ?? presetShowsTag(activePreset, tag)
+                    return (
+                      <Item key={tag} onClick={() => onSetLayer(tag, !visible)}>
+                        <span className="flex w-full items-center gap-1.5">
+                          {label}
+                          {visible && (
+                            <Check
+                              className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                              aria-hidden
+                            />
+                          )}
+                        </span>
+                      </Item>
+                    )
+                  })}
+                  {onResetLayers && (
+                    <>
+                      <Separator />
+                      <Item
+                        onClick={() => {
+                          onResetLayers()
+                          setLayersMenuOpen(false)
+                        }}
+                        disabled={!hasLayerOverrides}
+                      >
+                        Reset to preset
+                      </Item>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {(onToggleDebug || onToggleInspect) && (

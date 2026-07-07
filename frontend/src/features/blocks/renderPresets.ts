@@ -298,6 +298,54 @@ function buildHiddenTags(p: RenderPreset): ReadonlySet<string> {
   return t
 }
 
+// ── User layer overrides (Stage 3.1) ────────────────────────────────────────
+// The overlay categories a user can independently show/hide on top of the active
+// preset — the same tag strings buildHiddenTags emits. A LayerOverrides entry is
+// the user's desired *visibility* (true = force-show, false = force-hide); a tag
+// absent from the record defers to the preset, so toggles layer on top of it and
+// switching presets stays meaningful.
+export type LayerTag =
+  | 'torch'
+  | 'flower'
+  | 'tallgrass'
+  | 'machine'
+  | 'pipe'
+  | 'cable'
+  | 'fire'
+
+export type LayerOverrides = Partial<Record<LayerTag, boolean>>
+
+// Display order + labels for the Layers menu.
+export const LAYER_TAGS: readonly { tag: LayerTag; label: string }[] = [
+  { tag: 'machine', label: 'Machines' },
+  { tag: 'pipe', label: 'Pipes' },
+  { tag: 'cable', label: 'Cables' },
+  { tag: 'flower', label: 'Flowers / crops' },
+  { tag: 'tallgrass', label: 'Tall grass / ferns' },
+  { tag: 'torch', label: 'Torches / lights' },
+  { tag: 'fire', label: 'Fire' },
+]
+
+/** Apply user show/hide overrides on top of the preset's hidden-tag set. */
+export function applyLayerOverrides(
+  base: ReadonlySet<string>,
+  overrides?: LayerOverrides
+): ReadonlySet<string> {
+  if (!overrides || Object.keys(overrides).length === 0) return base
+  const out = new Set(base)
+  for (const [tag, show] of Object.entries(overrides)) {
+    if (show)
+      out.delete(tag) // force-show: drop from hidden
+    else out.add(tag) // force-hide: add to hidden
+  }
+  return out
+}
+
+/** Whether a preset shows the given overlay category (before user overrides). */
+export function presetShowsTag(preset: RenderPreset, tag: LayerTag): boolean {
+  return !buildHiddenTags(preset).has(tag)
+}
+
 /**
  * Convert a preset to the flat RenderConfig the renderer consumes.
  * `biomeTint` and `showFallbackMagenta` are preset-driven (magenta only via the
