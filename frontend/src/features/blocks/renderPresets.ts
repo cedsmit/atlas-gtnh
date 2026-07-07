@@ -300,15 +300,13 @@ function buildHiddenTags(p: RenderPreset): ReadonlySet<string> {
 
 /**
  * Convert a preset to the flat RenderConfig the renderer consumes.
- * Pass `overrides` for per-session toggles (RAW button, FB button).
+ * `biomeTint` and `showFallbackMagenta` are preset-driven (magenta only via the
+ * `debug` preset); pass `overrides` for the remaining per-session toggles.
  */
 export function presetToConfig(
   preset: RenderPreset,
   overrides: Partial<
-    Pick<
-      RenderConfig,
-      'biomeTint' | 'showFallbackMagenta' | 'textureFilter' | 'highlightPlants'
-    >
+    Pick<RenderConfig, 'textureFilter' | 'highlightPlants'>
   > = {}
 ): RenderConfig {
   return {
@@ -322,14 +320,13 @@ export function presetToConfig(
     elevationStrength: preset.elevationStrength,
     contourMode: preset.contourMode,
     colorSaturation: preset.colorSaturation,
-    biomeTint: overrides.biomeTint ?? preset.biomeTint,
+    biomeTint: preset.biomeTint,
     // Marker dots for textureless multiparts (AE2 cable bus) and marked
     // blocks — enabled wherever the preset shows cable infrastructure.
     useMarkers: preset.showCables,
     // Default off: plants are dropped from the overview so the ground shows.
     highlightPlants: overrides.highlightPlants ?? false,
-    showFallbackMagenta:
-      overrides.showFallbackMagenta ?? preset.showFallbackMagenta,
+    showFallbackMagenta: preset.showFallbackMagenta,
     textureFilter: overrides.textureFilter ?? preset.textureFilter,
   }
 }

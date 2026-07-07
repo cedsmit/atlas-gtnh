@@ -1,6 +1,10 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import { open as openExternal } from '@tauri-apps/plugin-shell'
 import {
   Bug,
+  Check,
+  ChevronDown,
+  ExternalLink,
   FolderOpen,
   Mountain,
   Palette,
@@ -10,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { API_BASE } from './api'
 import { validateWorld } from '../features/world/api/worlds'
 import {
   BUILT_IN_PRESETS,
@@ -38,10 +43,6 @@ interface Props {
   onToggleInspect?: () => void
   debugOpen?: boolean
   onToggleDebug?: () => void
-  showFallbackMagenta?: boolean
-  onToggleFallbackMagenta?: () => void
-  disableTint?: boolean
-  onToggleDisableTint?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
 }
@@ -58,17 +59,15 @@ export function MenuBar({
   onToggleInspect,
   debugOpen,
   onToggleDebug,
-  showFallbackMagenta,
-  onToggleFallbackMagenta,
-  disableTint,
-  onToggleDisableTint,
   textureFilter,
   onSetTextureFilter,
 }: Props) {
   const [fileOpen, setFileOpen] = useState(false)
+  const [debugMenuOpen, setDebugMenuOpen] = useState(false)
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const debugMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (fileOpen) setRecentWorlds(getRecentWorlds())
@@ -76,8 +75,12 @@ export function MenuBar({
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      if (menuRef.current && !menuRef.current.contains(target)) {
         setFileOpen(false)
+      }
+      if (debugMenuRef.current && !debugMenuRef.current.contains(target)) {
+        setDebugMenuOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClick)
@@ -259,68 +262,82 @@ export function MenuBar({
               </select>
             </div>
           )}
-          {onToggleDisableTint && (
-            <div className="flex items-stretch border-l border-zinc-800">
+          {(onToggleDebug || onToggleInspect) && (
+            <div
+              ref={debugMenuRef}
+              className="relative flex items-stretch border-l border-zinc-800"
+            >
               <button
-                onClick={onToggleDisableTint}
-                title={
-                  disableTint
-                    ? 'Biome tint disabled — showing raw textures'
-                    : 'Disable biome tint (show raw texture)'
-                }
-                className={`flex items-center gap-1.5 px-3 text-xs transition-colors ${
-                  disableTint
-                    ? 'bg-yellow-950 text-yellow-300'
-                    : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
-              >
-                <span className="font-mono">RAW</span>
-              </button>
-            </div>
-          )}
-          {onToggleFallbackMagenta && (
-            <div className="flex items-stretch border-l border-zinc-800">
-              <button
-                onClick={onToggleFallbackMagenta}
-                title="Highlight blocks with no texture (magenta)"
-                className={`flex items-center gap-1.5 px-3 text-xs transition-colors ${
-                  showFallbackMagenta
-                    ? 'bg-pink-950 text-pink-300'
-                    : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300'
-                }`}
-              >
-                <span className="font-mono">FB</span>
-              </button>
-            </div>
-          )}
-          {onToggleDebug && (
-            <div className="flex items-stretch border-l border-zinc-800">
-              <button
-                onClick={onToggleDebug}
+                onClick={() => setDebugMenuOpen((o) => !o)}
                 className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
-                  debugOpen
+                  debugMenuOpen || debugOpen || inspectOpen
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 }`}
               >
                 <Bug className="h-4 w-4 shrink-0" aria-hidden />
                 Debug
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
               </button>
-            </div>
-          )}
-          {onToggleInspect && (
-            <div className="flex items-stretch border-l border-zinc-800">
-              <button
-                onClick={onToggleInspect}
-                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
-                  inspectOpen
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                }`}
-              >
-                <Search className="h-4 w-4 shrink-0" aria-hidden />
-                Inspect
-              </button>
+
+              {debugMenuOpen && (
+                <div className="absolute right-0 top-full z-50 min-w-56 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+                  {onToggleDebug && (
+                    <Item
+                      onClick={() => {
+                        setDebugMenuOpen(false)
+                        onToggleDebug()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Bug className="h-4 w-4 shrink-0" aria-hidden />
+                        Texture Debug Panel
+                        {debugOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                  {onToggleInspect && (
+                    <Item
+                      onClick={() => {
+                        setDebugMenuOpen(false)
+                        onToggleInspect()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Search className="h-4 w-4 shrink-0" aria-hidden />
+                        Block Colors
+                        {inspectOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                  <Separator />
+                  <Item
+                    onClick={() => {
+                      setDebugMenuOpen(false)
+                      if (worldPath) {
+                        void openExternal(
+                          `${API_BASE}/worlds/debug-texture-grid?world_path=${encodeURIComponent(worldPath)}`
+                        )
+                      }
+                    }}
+                  >
+                    <span className="flex w-full items-center gap-1.5">
+                      <ExternalLink className="h-4 w-4 shrink-0" aria-hidden />
+                      Texture grid (browser)
+                    </span>
+                  </Item>
+                </div>
+              )}
             </div>
           )}
         </div>

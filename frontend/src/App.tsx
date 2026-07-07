@@ -44,8 +44,6 @@ export default function App() {
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
   const [inspectOpen, setInspectOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
-  const [showFallbackMagenta, setShowFallbackMagenta] = useState(false)
-  const [disableTint, setDisableTint] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState('journeymap')
   const [elevOverride, setElevOverride] = useState<
     'preset' | 'off' | 'subtle' | 'strong' | 'relief' | 'heightmap' | 'contours'
@@ -77,7 +75,7 @@ export default function App() {
   )
 
   // ── Render config ───────────────────────────────────────────────────────
-  // Derived from the active preset plus per-session overrides (RAW / FB toggles).
+  // Derived from the active preset plus per-session elevation / texture-filter overrides.
   const preset =
     BUILT_IN_PRESETS.find((p) => p.id === selectedPresetId) ??
     BUILT_IN_PRESETS[0]
@@ -104,8 +102,6 @@ export default function App() {
     }
     return {
       ...base,
-      biomeTint: disableTint ? false : base.biomeTint,
-      showFallbackMagenta: showFallbackMagenta || base.showFallbackMagenta,
       elevationMode,
       elevationStrength,
       contourMode,
@@ -114,13 +110,7 @@ export default function App() {
           ? preset.textureFilter
           : textureFilterOverride,
     }
-  }, [
-    preset,
-    disableTint,
-    showFallbackMagenta,
-    elevOverride,
-    textureFilterOverride,
-  ])
+  }, [preset, elevOverride, textureFilterOverride])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
@@ -221,7 +211,6 @@ export default function App() {
     setDimensionPath(null)
     setInspectOpen(false)
     setDebugOpen(false)
-    setShowFallbackMagenta(false)
   }
 
   function handleSelectDimension(dim: DimensionInfo) {
@@ -262,14 +251,6 @@ export default function App() {
         onToggleInspect={worldPath ? handleToggleInspect : undefined}
         debugOpen={debugOpen}
         onToggleDebug={worldPath ? handleToggleDebug : undefined}
-        showFallbackMagenta={showFallbackMagenta}
-        onToggleFallbackMagenta={
-          worldPath ? () => setShowFallbackMagenta((v) => !v) : undefined
-        }
-        disableTint={disableTint}
-        onToggleDisableTint={
-          worldPath ? () => setDisableTint((v) => !v) : undefined
-        }
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
       />
