@@ -20,6 +20,92 @@ from app.services.blockcolor.service import (
 
 router = APIRouter()
 
+# Heuristic block-category buckets for the texture-grid filter, keyed off keywords in
+# the registry name. The frontend render-rules don't tag machines, so name matching gives
+# a more useful split here. First matching rule wins; order = most specific first.
+_CATEGORY_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("Ores", ("ore",)),
+    (
+        "Machines",
+        (
+            "machine",
+            "generator",
+            "reactor",
+            "boiler",
+            "turbine",
+            "dynamo",
+            "pump",
+            "miner",
+            "assembl",
+            "furnace",
+            "smelter",
+            "electrolyz",
+            "centrifuge",
+            "hatch",
+            "casing",
+            "controller",
+            "engine",
+            "battery",
+            "transformer",
+            "capacitor",
+            "quantum",
+        ),
+    ),
+    ("Cables / wires", ("cable", "wire", "conduit")),
+    ("Pipes", ("pipe", "duct")),
+    ("Rails", ("rail", "track")),
+    ("Storage", ("chest", "tank", "drawer", "barrel", "crate", "cell", "storage", "silo")),
+    (
+        "Plants",
+        (
+            "flower",
+            "crop",
+            "sapling",
+            "leaf",
+            "leaves",
+            "plant",
+            "mushroom",
+            "vine",
+            "flora",
+            "bush",
+            "cactus",
+            "reed",
+            "lily",
+            "sprout",
+            "berry",
+            "flax",
+            "log",
+            "wood",
+            "pam",
+        ),
+    ),
+    ("Fluids", ("water", "lava", "fluid", "liquid")),
+    ("Glass", ("glass",)),
+    (
+        "Terrain / stone",
+        (
+            "stone",
+            "dirt",
+            "sand",
+            "gravel",
+            "cobble",
+            "granite",
+            "basalt",
+            "marble",
+            "clay",
+        ),
+    ),
+]
+
+
+def _block_category(name: str) -> str:
+    """Rough category for the grid filter, from keywords in the registry name."""
+    n = (name.split(":", 1)[-1] if ":" in name else name).lower()
+    for label, keywords in _CATEGORY_RULES:
+        if any(k in n for k in keywords):
+            return label
+    return "Building / other"
+
 
 @router.get("/debug-colors")
 async def debug_colors(world_path: str = Query(...)) -> dict[str, object]:
@@ -388,6 +474,15 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         for ns, c in sorted(ns_counts.items(), key=lambda kv: (-kv[1], kv[0]))
     )
 
+    # Category dropdown options (heuristic buckets), sorted by block count desc.
+    cat_counts: dict[str, int] = {}
+    for nm in id_map.values():
+        cat_counts[_block_category(nm)] = cat_counts.get(_block_category(nm), 0) + 1
+    cat_options = f'<option value="">All categories ({total})</option>' + "".join(
+        f'<option value="{cat}">{cat} ({c})</option>'
+        for cat, c in sorted(cat_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+
     def row_html(bid: int, name: str, rgb: tuple[int, int, int], has_texture: bool) -> str:
         hex_col = "#{:02x}{:02x}{:02x}".format(*rgb)
         r, g, b = rgb
@@ -409,7 +504,8 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
             sw_cell = f'<div class="sw" style="background:{hex_col}"></div>'
         return (
             f'<div class="row" data-f="{bid} {name.lower()} {hex_col}" data-name="{name}" '
-            f'data-id="{bid}" data-hex="{hex_col}" data-mod="{_namespace(name)}"{tex_attr} '
+            f'data-id="{bid}" data-hex="{hex_col}" data-mod="{_namespace(name)}" '
+            f'data-cat="{_block_category(name)}"{tex_attr} '
             f'title="rgb({r}, {g}, {b}) — click to copy name">'
             f"{sw_cell}"
             f'<span class="id">{bid}</span>'
@@ -481,7 +577,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
   .rows .row:nth-child(odd) { background:#151515; }
   .rows .row:hover { background:#242424; }
   .sw { width:22px; height:22px; border:1px solid #555; border-radius:3px; }
-  img.thumb { image-rendering:pixelated; object-fit:cover; }
+  img.thumb { image-rendering:pixelated; object-fit:cover; object-position:top; }
   .id { color:#999; text-align:right; }
   .nm { color:#e0e0e0; font-size:12px; overflow:hidden; text-overflow:ellipsis;
         white-space:nowrap; }
@@ -497,7 +593,8 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
              pointer-events:none; }
   #pv-box { width:320px; height:320px; margin:0 auto; display:flex; align-items:center;
             justify-content:center; }
-  #pv-img { width:320px; height:320px; image-rendering:pixelated; display:none; }
+  #pv-img { width:320px; height:320px; image-rendering:pixelated; display:none;
+            object-fit:cover; object-position:top; }
   #pv-none { color:#666; font-size:13px; }
   #pv-sw { height:16px; margin:10px 0 0; border:1px solid #333; border-radius:3px; }
   #pv-name { color:#eee; font-size:13px; margin-top:10px; word-break:break-all; }
@@ -514,6 +611,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     <div class="controls">
       <input id="q" type="text" placeholder="filter by name or id…" autofocus>
       <select id="mod" title="Filter by mod / namespace">__MOD_OPTIONS__</select>
+      <select id="cat" title="Filter by category (heuristic)">__CAT_OPTIONS__</select>
       <select id="show" title="Filter by texture presence">
         <option value="all">All</option>
         <option value="tex">With texture</option>
@@ -539,18 +637,21 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
       clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('show'), 1200);
     }
     const modSel = document.getElementById('mod');
+    const catSel = document.getElementById('cat');
     const showSel = document.getElementById('show');
     function filterRows() {
       const term = q.value.trim().toLowerCase();
       const mod = modSel.value;
+      const cat = catSel.value;
       const show = showSel.value;
-      const active = term || mod || show !== 'all';
+      const active = term || mod || cat || show !== 'all';
       document.querySelectorAll('details[data-section]').forEach(det => {
         let shown = 0;
         det.querySelectorAll('.row').forEach(r => {
           const hasTex = r.dataset.tex !== undefined;
           const match = (!term || r.dataset.f.includes(term))
             && (!mod || r.dataset.mod === mod)
+            && (!cat || r.dataset.cat === cat)
             && (show === 'all' || (show === 'tex') === hasTex);
           r.style.display = match ? '' : 'none';
           if (match) shown++;
@@ -562,6 +663,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     }
     q.addEventListener('input', filterRows);
     modSel.addEventListener('change', filterRows);
+    catSel.addEventListener('change', filterRows);
     showSel.addEventListener('change', filterRows);
 
     // Hover preview: show the block's real texture (or its swatch when it has none).
@@ -573,6 +675,13 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     pvImg.addEventListener('error', () => {
       pvImg.style.display = 'none';
       pvNone.textContent = 'texture unavailable'; pvNone.style.display = '';
+    });
+    pvImg.addEventListener('load', () => {
+      // Animated textures are a tall filmstrip of frames; we show frame 1.
+      if (pvImg.naturalHeight > pvImg.naturalWidth) {
+        pvMeta.textContent += ' · animated (' +
+          Math.round(pvImg.naturalHeight / pvImg.naturalWidth) + ' frames)';
+      }
     });
     document.getElementById('wrap').addEventListener('mouseover', e => {
       const row = e.target.closest('.row');
@@ -628,6 +737,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         .replace("__FB__", str(fallback_count))
         .replace("__PCT__", str(pct))
         .replace("__MOD_OPTIONS__", mod_options)
+        .replace("__CAT_OPTIONS__", cat_options)
         .replace("__SECTIONS__", sections_html)
     )
     return HTMLResponse(content=html)
