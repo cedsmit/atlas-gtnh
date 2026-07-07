@@ -62,6 +62,27 @@ describe('computeEdgeHeights', () => {
     const heights = computeEdgeHeights(chunk, 'n', reg, config)
     expect(heights[0]).toBe(64 + 5)
   })
+
+  it('skips a hidden-tagged solid so the height is the block beneath (3.1)', () => {
+    const reg = new BlockRenderRegistry()
+    reg.loadJson({
+      format: 1,
+      source: 'test.json',
+      blocks: { 'mod:pipe': { category: 'solid', blockTags: ['pipe'] } },
+    } as never)
+    reg.resolveNames({ 2: 'mod:pipe' })
+    // Tagged pipe (id 2) on top at y=9, solid terrain (id 1) below at y=5.
+    const chunk = makeChunk((_x, _z, y) => (y <= 5 ? 1 : y === 9 ? 2 : 0))
+    const shown = { foliageMode: 'full', hiddenTags: new Set() } as never
+    const hidden = {
+      foliageMode: 'full',
+      hiddenTags: new Set(['pipe']),
+    } as never
+    // Pipes visible: the pipe is the surface.
+    expect(computeEdgeHeights(chunk, 'n', reg, shown)[0]).toBe(64 + 9)
+    // Pipes hidden: skipped, so the terrain beneath shows through.
+    expect(computeEdgeHeights(chunk, 'n', reg, hidden)[0]).toBe(64 + 5)
+  })
 })
 
 describe('computeHillshade', () => {

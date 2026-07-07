@@ -222,6 +222,15 @@ export class BlockRenderRegistry {
     def: BlockRenderDefinition
     source: string
   }[] = []
+  // Per-metadata overrides, keyed by base block name → meta → def. JSON keys of
+  // the form "name:<int>" (e.g. "Thaumcraft:blockMetalDevice:7") land here so a
+  // single block id can classify its variants differently (a lamp meta vs an
+  // alembic meta). Resolved to byIdMeta once the FML name→id map is known.
+  private readonly byNameMeta = new Map<
+    string,
+    Map<number, { def: BlockRenderDefinition; source: string }>
+  >()
+  private readonly byIdMeta = new Map<string, ResolvedDefinition>() // `${id}:${meta}`
 
   constructor() {
     for (const [rawId, def] of Object.entries(VANILLA_BY_ID)) {
@@ -242,6 +251,21 @@ export class BlockRenderRegistry {
           def: partial as BlockRenderDefinition,
           source,
         })
+        continue
+      }
+      // "baseName:<int>" is a per-metadata override (block names already contain
+      // colons, so only a trailing all-digits segment counts as a meta).
+      const lastColon = name.lastIndexOf(':')
+      const metaStr = lastColon >= 0 ? name.slice(lastColon + 1) : ''
+      if (metaStr !== '' && /^\d+$/.test(metaStr)) {
+        const base = name.slice(0, lastColon)
+        const meta = Number(metaStr)
+        let metas = this.byNameMeta.get(base)
+        if (!metas) {
+          metas = new Map()
+          this.byNameMeta.set(base, metas)
+        }
+        metas.set(meta, { def: partial as BlockRenderDefinition, source })
       } else {
         this.byName.set(name, { def: partial as BlockRenderDefinition, source })
       }
@@ -272,11 +296,30 @@ export class BlockRenderRegistry {
           resolverSource: entry.source,
         })
       }
+      // Resolve any per-metadata overrides for this name into id:meta keys.
+      const metas = this.byNameMeta.get(name)
+      if (metas) {
+        const id = Number(rawId)
+        for (const [meta, e] of metas) {
+          this.byIdMeta.set(`${id}:${meta}`, {
+            ...e.def,
+            resolverSource: e.source,
+          })
+        }
+      }
     }
   }
 
-  /** O(1) lookup by numeric block ID. Returns default (solid) if not registered. */
-  lookup(id: number): ResolvedDefinition {
+  /**
+   * O(1) lookup by numeric block ID, with an optional metadata for blocks whose
+   * variants classify differently (a per-meta override wins over the id-level def).
+   * Returns default (solid) if nothing is registered.
+   */
+  lookup(id: number, meta?: number): ResolvedDefinition {
+    if (meta !== undefined) {
+      const m = this.byIdMeta.get(`${id}:${meta}`)
+      if (m) return m
+    }
     return this.byId.get(id) ?? DEFAULT_DEF
   }
 
@@ -310,16 +353,16 @@ export class BlockRenderRegistry {
   }
 
   /**
-   * Numeric ids of overlay blocks the current preset hides — their blockTags are
-   * in *hiddenTags* (e.g. torch/rail/redstone in JourneyMap). The detailed
-   * renderer omits these overlays, so the overview skips them too and shows the
-   * terrain beneath instead of a stray dot. Untagged overlays that visually cover
-   * the block (snow, carpet) have no matching tag and are kept.
+   * Numeric ids of every block the current preset hides via a tag in *hiddenTags*
+   * — overlays (torch/rail/redstone) *and* solid infrastructure (pipe/cable/machine
+   * toggled off). The detailed renderer skips these and shows the terrain beneath,
+   * so the overview skips them too (via the surface fetch's skip set) instead of
+   * painting them. Untagged blocks that visually cover terrain (snow, carpet) have
+   * no matching tag and are kept.
    */
-  hiddenOverlayIds(hiddenTags: ReadonlySet<string>): number[] {
+  hiddenTaggedIds(hiddenTags: ReadonlySet<string>): number[] {
     const out: number[] = []
     for (const [id, def] of this.byId) {
-      if (def.category !== 'overlay') continue
       const tags = def.blockTags
       if (tags && tags.some((t) => hiddenTags.has(t))) out.push(id)
     }

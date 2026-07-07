@@ -6,7 +6,10 @@
     "ThermalExpansion:blockDevice": { "category": "solid" },
     "ThermalExpansion:blockCell": { "category": "solid" },
     "ThermalExpansion:blockTank": { "category": "solid" },
-    "ThermalExpansion:blockDuct": { "category": "solid" },
+    "ThermalExpansion:blockDuct": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
     "ThermalExpansion:blockStrongbox": { "category": "solid" },
     "ThermalExpansion:blockSatchel": { "category": "solid" },
     "ThermalExpansion:blockGlassair": {

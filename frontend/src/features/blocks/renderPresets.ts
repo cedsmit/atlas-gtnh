@@ -381,6 +381,24 @@ export function presetToConfig(
 
 // ── Renderer helpers ──────────────────────────────────────────────────────────
 
+/**
+ * True when any of the block's tags is in the config's hidden set. Drives the
+ * layer toggles for *solid* infrastructure (pipes/cables/machines): a hidden
+ * tagged solid is skipped by the renderer so the terrain beneath shows through.
+ * (Overlays use the same tag check via shouldShowOverlay.)
+ */
+export function isTagHidden(
+  def: Pick<ResolvedDefinition, 'blockTags'>,
+  cfg: Pick<RenderConfig, 'hiddenTags'>
+): boolean {
+  const tags = def.blockTags
+  if (!tags) return false
+  for (const tag of tags) {
+    if (cfg.hiddenTags.has(tag)) return true
+  }
+  return false
+}
+
 /** True when an overlay block should be rendered given the current config. */
 export function shouldShowOverlay(
   def: ResolvedDefinition,
@@ -393,12 +411,5 @@ export function shouldShowOverlay(
     return false
 
   // Tag-based filtering (primary preset control)
-  const tags = def.blockTags
-  if (tags) {
-    for (const tag of tags) {
-      if (cfg.hiddenTags.has(tag)) return false
-    }
-  }
-
-  return true
+  return !isTagHidden(def, cfg)
 }

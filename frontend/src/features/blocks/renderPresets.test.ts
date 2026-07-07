@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BUILT_IN_PRESETS,
   applyLayerOverrides,
+  isTagHidden,
   presetShowsTag,
   presetToConfig,
 } from './renderPresets'
@@ -55,5 +56,26 @@ describe('layer overrides (Stage 3.1)', () => {
       })
       expect(merged.has('machine')).toBe(true)
     }
+  })
+})
+
+describe('isTagHidden (solid layer hiding)', () => {
+  const hidden = { hiddenTags: new Set(['pipe', 'cable']) }
+
+  it('is false for an untagged block', () => {
+    expect(isTagHidden({ blockTags: undefined }, hidden)).toBe(false)
+    expect(isTagHidden({ blockTags: ['machine'] }, hidden)).toBe(false)
+  })
+
+  it('is true when any tag is in the hidden set', () => {
+    expect(isTagHidden({ blockTags: ['pipe'] }, hidden)).toBe(true)
+    expect(isTagHidden({ blockTags: ['solid', 'cable'] }, hidden)).toBe(true)
+  })
+
+  it('a hidden pipe shows again once the tag is force-shown', () => {
+    const shown = applyLayerOverrides(hidden.hiddenTags, { pipe: true })
+    expect(isTagHidden({ blockTags: ['pipe'] }, { hiddenTags: shown })).toBe(
+      false
+    )
   })
 })

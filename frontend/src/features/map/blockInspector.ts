@@ -95,7 +95,10 @@ export async function showBlockInspector(
     for (let y = 15; y >= 0; y--) {
       const idx = (y << 8) | (lz << 4) | lx
       const id = sec.blocks[idx]
-      if (id !== 0 && registry.lookup(id).category !== 'ignore') {
+      if (
+        id !== 0 &&
+        registry.lookup(id, sec.data[idx]).category !== 'ignore'
+      ) {
         topId = id
         topMeta = sec.data[idx]
         topYv = sec.y * 16 + y
@@ -111,7 +114,7 @@ export async function showBlockInspector(
       const idx = (y << 8) | (lz << 4) | lx
       const id = sec.blocks[idx]
       if (id === 0) continue
-      const cat = registry.lookup(id).category
+      const cat = registry.lookup(id, sec.data[idx]).category
       if (cat !== 'ignore' && cat !== 'overlay') {
         terrainYv = sec.y * 16 + y
         break terrainScan
@@ -130,7 +133,7 @@ export async function showBlockInspector(
         const idx = (y << 8) | (nz << 4) | nx
         const id = sec.blocks[idx]
         if (id === 0) continue
-        const def = registry.lookup(id)
+        const def = registry.lookup(id, sec.data[idx])
         if (def.category === 'ignore' || def.category === 'overlay') continue
         if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
         return sec.y * 16 + y
@@ -185,7 +188,7 @@ export async function showBlockInspector(
           }${darkA >= 0.01 ? `shadow -${Math.round(darkA * 100)}%` : ''}  [${nbrStr}]`
 
   const biomeId = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
-  const topDef = registry.lookup(topId)
+  const topDef = registry.lookup(topId, topMeta)
   const texKey =
     metaTextureKeys?.[`${topId}:${topMeta}`] ?? textureKeys?.[topId] ?? null
   const texImg = texKey ? getTexture(texKey) : null

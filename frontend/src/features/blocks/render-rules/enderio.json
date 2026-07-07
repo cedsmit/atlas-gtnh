@@ -14,7 +14,10 @@
     "EnderIO:blockAlloyEncoder": { "category": "solid" },
     "EnderIO:blockAlloySmelter": { "category": "solid" },
     "EnderIO:blockCombustionGenerator": { "category": "solid" },
-    "EnderIO:blockConduitBundle": { "category": "overlay" },
+    "EnderIO:blockConduitBundle": {
+      "category": "overlay",
+      "blockTags": ["cable"]
+    },
     "EnderIO:blockDarkSteel": { "category": "solid" },
     "EnderIO:blockElectricalSteel": { "category": "solid" },
     "EnderIO:blockElectricGlass": {

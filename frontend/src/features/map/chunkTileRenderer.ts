@@ -22,7 +22,7 @@ import type {
 } from '../blocks/blockRenderRegistry'
 import { columnTally } from './columnTally'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
-import { shouldShowOverlay } from '../blocks/renderPresets'
+import { isTagHidden, shouldShowOverlay } from '../blocks/renderPresets'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import { getTexture } from '../textures/textureLoader'
 import { averageTextureColor } from '../textures/textureAverage'
@@ -92,9 +92,10 @@ export function computeEdgeHeights(
         const idx = (y << 8) | (z << 4) | x
         const id = section.blocks[idx]
         if (id === 0) continue
-        const def = registry.lookup(id)
+        const def = registry.lookup(id, section.data[idx])
         if (def.category === 'ignore' || def.category === 'overlay') continue
         if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
+        if (isTagHidden(def, config)) continue // hidden layer (pipes/cables/…)
         out[j] = section.y * 16 + y
         break scan
       }
@@ -264,7 +265,7 @@ export function renderChunkImage(
           const idx = (y << 8) | (z << 4) | x
           const id = section.blocks[idx]
           if (id === 0) continue
-          const def = registry.lookup(id)
+          const def = registry.lookup(id, section.data[idx])
           if (def.category === 'ignore') continue
           const absY = section.y * 16 + y
 
@@ -279,6 +280,9 @@ export function renderChunkImage(
               // so the structure underneath is revealed.
               if (config.foliageMode === 'hidden' && def.tint === 'foliage')
                 continue
+              // Hidden layer (pipes/cables/machines toggled off): skip the solid
+              // and keep scanning down so the terrain beneath shows through.
+              if (isTagHidden(def, config)) continue
               // Unknown block: remember the topmost one, but keep scanning down
               // for a renderable block to show beneath it instead of dropping to
               // a flat fallback colour.
@@ -373,7 +377,7 @@ export function renderChunkImage(
       const id = baseId[i]
       const meta = baseMeta[i]
       const blockY = baseY[i]
-      const baseDef = registry.lookup(id)
+      const baseDef = registry.lookup(id, meta)
       const isWater = baseDef.category === 'fluid' && baseDef.tint === 'water'
       const isTransparent = baseDef.category === 'transparent'
       const isGrass = baseDef.tint === 'grass'
@@ -508,7 +512,7 @@ export function renderChunkImage(
         // ── Transparent block: render terrain below, then glass on top ──
         const uId = underId[i]
         const uMeta = underMeta[i]
-        const uDef = registry.lookup(uId)
+        const uDef = registry.lookup(uId, uMeta)
         const uIsGrass = uDef.tint === 'grass'
         const uIsFoliage = uDef.tint === 'foliage'
         const uIsBiome = (uIsGrass || uIsFoliage) && config.biomeTint
@@ -664,7 +668,7 @@ export function renderChunkImage(
       const overlays = overlayLists[i]
       if (overlays) {
         for (const [ovId, ovMeta] of overlays) {
-          const ovDef = registry.lookup(ovId)
+          const ovDef = registry.lookup(ovId, ovMeta)
 
           // Only use mapRenderMode:'marker' when useMarkers is enabled.
           // Markers draw BEFORE the texture check: textureless multiparts

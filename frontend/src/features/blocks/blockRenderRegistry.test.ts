@@ -70,3 +70,60 @@ describe('user overrides (Stage 2.3)', () => {
     expect(reg.lookup(2).category).toBe('ignore')
   })
 })
+
+describe('hiddenTaggedIds (Stage 3.1 solid layer hiding)', () => {
+  it('collects tagged blocks of any category, not just overlays', () => {
+    const reg = new BlockRenderRegistry()
+    reg.loadJson({
+      source: 'test.json',
+      blocks: {
+        'mod:solidPipe': { category: 'solid', blockTags: ['pipe'] },
+        'mod:overlayCable': { category: 'overlay', blockTags: ['cable'] },
+        'mod:machine': { category: 'solid', blockTags: ['machine'] },
+        'mod:plainStone': { category: 'solid' },
+      },
+    } as never)
+    reg.resolveNames({
+      10: 'mod:solidPipe',
+      11: 'mod:overlayCable',
+      12: 'mod:machine',
+      13: 'mod:plainStone',
+    })
+    const hidden = reg.hiddenTaggedIds(new Set(['pipe', 'cable']))
+    expect(hidden).toContain(10) // solid pipe — the Stage 3.1 fix
+    expect(hidden).toContain(11) // overlay cable
+    expect(hidden).not.toContain(12) // machine tag not hidden
+    expect(hidden).not.toContain(13) // untagged
+  })
+})
+
+describe('per-metadata classification', () => {
+  it('a "name:meta" rule overrides only that meta; other metas use the id def', () => {
+    const reg = new BlockRenderRegistry()
+    reg.loadJson({
+      source: 'test.json',
+      blocks: {
+        // Base block has no id-level rule (defaults to solid); only meta 7 is a light.
+        'Thaumcraft:blockMetalDevice:7': {
+          category: 'solid',
+          blockTags: ['torch'],
+        },
+      },
+    } as never)
+    reg.resolveNames({ 476: 'Thaumcraft:blockMetalDevice' })
+    // meta 7 → the light rule; meta 3 (alembic) and no-meta → id-level default.
+    expect(reg.lookup(476, 7).blockTags).toEqual(['torch'])
+    expect(reg.lookup(476, 3).blockTags).toBeUndefined()
+    expect(reg.lookup(476).blockTags).toBeUndefined()
+  })
+
+  it('does not treat a normal colon-name as a meta rule', () => {
+    const reg = new BlockRenderRegistry()
+    reg.loadJson({
+      source: 'test.json',
+      blocks: { 'BuildCraft|Transport:pipeBlock': { category: 'overlay' } },
+    } as never)
+    reg.resolveNames({ 200: 'BuildCraft|Transport:pipeBlock' })
+    expect(reg.lookup(200).category).toBe('overlay') // resolved as a full name
+  })
+})

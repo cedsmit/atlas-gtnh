@@ -22,7 +22,14 @@
     "BuildCraft|Factory:advancedCraftingTableBlock": { "category": "solid" },
 
     "BuildCraft|Transport:filteredBufferBlock": { "category": "solid" },
-    "BuildCraft|Transport:pipeBlock": { "category": "overlay" },
+    "BuildCraft|Transport:pipeBlock": {
+      "category": "overlay",
+      "blockTags": ["pipe"]
+    },
+    "BuildCraft|Factory:plainPipeBlock": {
+      "category": "overlay",
+      "blockTags": ["pipe"]
+    },
 
     "BuildCraft|Energy:blockOil": { "category": "fluid" },
     "BuildCraft|Energy:blockFuel": { "category": "fluid" },

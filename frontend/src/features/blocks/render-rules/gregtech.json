@@ -42,7 +42,10 @@
       "category": "transparent",
       "alphaMode": "blend"
     },
-    "gregtech:gt.block.longdistancepipe": { "category": "solid" },
+    "gregtech:gt.block.longdistancepipe": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
     "gregtech:gt.blockcasings.cyclotron_coils": { "category": "solid" },
     "gregtech:gt.laserplate": { "category": "solid" },
     "gregtech:tile.gt.dronerender": { "category": "ignore" },

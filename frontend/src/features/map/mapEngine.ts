@@ -997,7 +997,7 @@ export class MapEngine {
           tags.delete('tallgrass')
         }
         const set = new Set<number>(reg.ignoredIds())
-        for (const id of reg.hiddenOverlayIds(tags)) set.add(id)
+        for (const id of reg.hiddenTaggedIds(tags)) set.add(id)
         if (!cfg.highlightPlants) for (const id of reg.plantIds()) set.add(id)
         const ids = [...set]
         const csv = ids.join(',')
