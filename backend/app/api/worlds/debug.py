@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
@@ -14,6 +15,7 @@ from app.services.blockcolor.diagnostics import (
 from app.services.blockcolor.resolution import find_minecraft_dir
 from app.services.blockcolor.service import (
     build_block_color_map,
+    build_block_texture_map,
 )
 
 router = APIRouter()
@@ -336,6 +338,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
 
     id_map = read_block_id_map(Path(world_path))
     color_map = build_block_color_map(world_path)
+    texture_map = build_block_texture_map(world_path)  # block_id -> texture key (PNG)
 
     # Build rows: resolved blocks first, then fallbacks, both sorted by ID
     resolved_rows: list[tuple[int, str, tuple[int, int, int], bool]] = []
@@ -368,73 +371,234 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
             rgb_fb = (int((r + m) * 255), int((g + m) * 255), int((b + m) * 255))
             fallback_rows.append((bid, name, rgb_fb, False))
 
-    def swatch(bid: int, name: str, rgb: tuple[int, int, int], has_texture: bool) -> str:
+    texture_count = len(resolved_rows)
+    fallback_count = len(fallback_rows)
+    total = texture_count + fallback_count
+    pct = round(texture_count * 100 / total, 1) if total else 0
+
+    def row_html(bid: int, name: str, rgb: tuple[int, int, int], has_texture: bool) -> str:
         hex_col = "#{:02x}{:02x}{:02x}".format(*rgb)
-        _bs = "padding:1px 5px;border-radius:3px;font-size:10px"
-        badge_style_ok = f"background:#2a6;color:#fff;{_bs}"
-        badge_style_fb = f"background:#a62;color:#fff;{_bs}"
+        r, g, b = rgb
         badge = (
-            f'<span style="{badge_style_ok}">texture</span>'
+            '<span class="badge ok">texture</span>'
             if has_texture
-            else f'<span style="{badge_style_fb}">fallback</span>'
+            else '<span class="badge fb">fallback</span>'
         )
+        # data-f: lowercased searchable text; data-name: copied to clipboard on click;
+        # data-tex: texture key for the hover preview (absent when the block has no PNG).
+        tex_key = texture_map.get(bid)
+        tex_attr = f' data-tex="{tex_key}"' if tex_key else ""
+        if tex_key:
+            sw_cell = (
+                f'<img class="sw thumb" loading="lazy" alt="" '
+                f'src="/worlds/textures?key={quote(tex_key, safe="")}">'
+            )
+        else:
+            sw_cell = f'<div class="sw" style="background:{hex_col}"></div>'
         return (
-            f'<div style="display:flex;align-items:center;gap:8px;padding:3px 6px;'
-            f'border-bottom:1px solid #222">'
-            f'<div style="width:24px;height:24px;background:{hex_col};'
-            f'border:1px solid #444;flex-shrink:0"></div>'
-            f'<span style="color:#aaa;width:50px;flex-shrink:0">{bid}</span>'
-            f'<span style="color:#ddd;flex:1;font-size:11px">{name}</span>'
-            f'<span style="color:#888;width:60px;font-size:11px">{hex_col}</span>'
+            f'<div class="row" data-f="{bid} {name.lower()} {hex_col}" data-name="{name}" '
+            f'data-id="{bid}" data-hex="{hex_col}"{tex_attr} '
+            f'title="rgb({r}, {g}, {b}) — click to copy name">'
+            f"{sw_cell}"
+            f'<span class="id">{bid}</span>'
+            f'<span class="nm">{name}</span>'
+            f'<span class="hex">{hex_col}</span>'
             f"{badge}"
             f"</div>"
         )
 
-    rows_html = "\n".join(
-        swatch(bid, name, rgb, tex) for bid, name, rgb, tex in resolved_rows + fallback_rows
-    )
-    texture_count = len(resolved_rows)
-    fallback_count = len(fallback_rows)
-    total = texture_count + fallback_count
+    def section(title: str, rows: list[tuple[int, str, tuple[int, int, int], bool]]) -> str:
+        head = (
+            '<div class="head"><span></span><span class="id">ID</span>'
+            '<span>Name</span><span class="hex">Hex</span><span>Source</span></div>'
+        )
+        body = "\n".join(row_html(*r) for r in rows)
+        return (
+            "<details open data-section>"
+            f'<summary><span class="arrow">▶</span>{title}'
+            '<button class="copyall" title="Copy all block names in this section '
+            'to the clipboard (respects the filter)">copy all</button>'
+            f'<span class="count" data-total="{len(rows)}">{len(rows)}</span></summary>'
+            f'{head}<div class="rows">{body}</div>'
+            "</details>"
+        )
 
-    html = f"""<!DOCTYPE html>
+    sections_html = section("Texture-resolved", resolved_rows) + section("Fallback", fallback_rows)
+
+    template = """<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <title>Atlas GTNH — Block Color Grid</title>
-  <style>
-    body {{ background:#111; color:#ccc; font-family:monospace; margin:0; padding:12px; }}
-    h1 {{ color:#fff; margin:0 0 4px }}
-    .stats {{ color:#888; margin-bottom:12px; font-size:13px }}
-    .filter {{ margin-bottom:8px }}
-    input {{ background:#222; color:#ccc; border:1px solid #444; padding:4px 8px;
-             border-radius:4px; font-family:monospace; width:300px }}
-    #grid {{ max-width:700px }}
-  </style>
+<meta charset="utf-8">
+<title>Atlas GTNH — Block Color Grid</title>
+<style>
+  * { box-sizing:border-box; }
+  body { background:#111; color:#ccc; margin:0;
+         font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .toolbar { position:sticky; top:0; z-index:10; background:#111; border-bottom:1px solid #333; }
+  .bar { max-width:860px; margin:0 auto; padding:14px 16px; }
+  h1 { color:#fff; margin:0 0 6px; font-size:18px; }
+  .stats { color:#888; font-size:13px; }
+  .chip-ok { color:#5c5; } .chip-fb { color:#d95; }
+  .controls { margin-top:10px; display:flex; gap:8px; align-items:center; }
+  input#q { flex:1; max-width:360px; background:#1c1c1c; color:#ddd; border:1px solid #444;
+            padding:6px 10px; border-radius:6px; font-family:inherit; font-size:13px; }
+  .btn { background:#222; color:#bbb; border:1px solid #444; padding:6px 12px; border-radius:6px;
+         cursor:pointer; font-family:inherit; font-size:12px; }
+  .btn:hover { background:#2a2a2a; color:#fff; }
+  .wrap { max-width:860px; margin:0 auto; padding:0 16px 48px; }
+  details { margin-top:14px; }
+  summary { cursor:pointer; list-style:none; user-select:none; display:flex; align-items:center;
+            gap:8px; padding:8px 12px; background:#1a1a1a; border:1px solid #333; border-radius:6px;
+            color:#eee; font-size:13px; font-weight:600; }
+  summary::-webkit-details-marker { display:none; }
+  .arrow { color:#888; transition:transform .15s; font-size:10px; }
+  details[open] .arrow { transform:rotate(90deg); }
+  .copyall { margin-left:auto; background:#222; color:#bbb; border:1px solid #444;
+             border-radius:5px; padding:2px 9px; font-family:inherit; font-size:11px;
+             cursor:pointer; }
+  .copyall:hover { background:#2a2a2a; color:#fff; }
+  .count { margin-left:8px; color:#888; font-weight:400; font-size:12px;
+           background:#111; border:1px solid #333; border-radius:10px; padding:0 8px; }
+  .head, .row { display:grid; grid-template-columns:26px 52px 1fr 92px 74px; align-items:center;
+                gap:12px; padding:4px 12px; }
+  .head { color:#666; font-size:10px; text-transform:uppercase; letter-spacing:.06em;
+          border-bottom:1px solid #333; }
+  .rows .row { border-bottom:1px solid #1c1c1c; cursor:pointer; }
+  .rows .row:nth-child(odd) { background:#151515; }
+  .rows .row:hover { background:#242424; }
+  .sw { width:22px; height:22px; border:1px solid #555; border-radius:3px; }
+  img.thumb { image-rendering:pixelated; object-fit:cover; }
+  .id { color:#999; text-align:right; }
+  .nm { color:#e0e0e0; font-size:12px; overflow:hidden; text-overflow:ellipsis;
+        white-space:nowrap; }
+  .hex { color:#888; font-size:12px; text-align:right; }
+  .badge { font-size:10px; padding:2px 0; border-radius:3px; text-align:center; color:#fff; }
+  .badge.ok { background:#2a6; } .badge.fb { background:#a62; }
+  #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:#2a6;
+           color:#fff; padding:7px 14px; border-radius:6px; font-size:12px; opacity:0;
+           pointer-events:none; transition:opacity .2s; }
+  #toast.show { opacity:1; }
+  #preview { position:fixed; top:50%; right:max(16px, calc(25vw - 375px));
+             transform:translateY(-50%); width:320px; text-align:center; z-index:5;
+             pointer-events:none; }
+  #pv-box { width:320px; height:320px; margin:0 auto; display:flex; align-items:center;
+            justify-content:center; }
+  #pv-img { width:320px; height:320px; image-rendering:pixelated; display:none; }
+  #pv-none { color:#666; font-size:13px; }
+  #pv-sw { height:16px; margin:10px 0 0; border:1px solid #333; border-radius:3px; }
+  #pv-name { color:#eee; font-size:13px; margin-top:10px; word-break:break-all; }
+  #pv-meta { color:#888; font-size:11px; margin-top:3px; word-break:break-all; }
+  @media (max-width:1200px) { #preview { display:none; } }
+</style>
 </head>
 <body>
-  <h1>Block Color Grid</h1>
-  <div class="stats">
-    {total} blocks &nbsp;|&nbsp;
-    <span style="color:#4c4">{texture_count} texture-resolved</span> &nbsp;|&nbsp;
-    <span style="color:#c84">{fallback_count} fallback</span> &nbsp;|&nbsp;
-    {round(texture_count * 100 / total, 1) if total else 0}% resolved
+  <div class="toolbar"><div class="bar">
+    <h1>Block Color Grid</h1>
+    <div class="stats">__TOTAL__ blocks &nbsp;·&nbsp;
+      <span class="chip-ok">__TEX__ texture</span> &nbsp;·&nbsp;
+      <span class="chip-fb">__FB__ fallback</span> &nbsp;·&nbsp; __PCT__% resolved</div>
+    <div class="controls">
+      <input id="q" type="text" placeholder="filter by name or id…" autofocus>
+      <button class="btn" id="toggleAll">Collapse all</button>
+    </div>
+  </div></div>
+  <div class="wrap" id="wrap">__SECTIONS__</div>
+  <div id="preview">
+    <div id="pv-box"><img id="pv-img" alt=""><span id="pv-none">hover a block</span></div>
+    <div id="pv-sw"></div>
+    <div id="pv-name">—</div>
+    <div id="pv-meta"></div>
   </div>
-  <div class="filter">
-    <input id="q" type="text" placeholder="filter by name or id..." oninput="filterRows()">
-  </div>
-  <div id="grid">{rows_html}</div>
+  <div id="toast"></div>
   <script>
-    const rows = document.querySelectorAll('#grid > div');
-    function filterRows() {{
-      const q = document.getElementById('q').value.toLowerCase();
-      rows.forEach(r => {{
-        r.style.display = r.textContent.toLowerCase().includes(q) ? '' : 'none';
-      }});
-    }}
+    const q = document.getElementById('q');
+    const toast = document.getElementById('toast');
+    let toastT;
+    function showToast(msg) {
+      toast.textContent = msg; toast.classList.add('show');
+      clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('show'), 1200);
+    }
+    function filterRows() {
+      const term = q.value.trim().toLowerCase();
+      document.querySelectorAll('details[data-section]').forEach(det => {
+        let shown = 0;
+        det.querySelectorAll('.row').forEach(r => {
+          const match = !term || r.dataset.f.includes(term);
+          r.style.display = match ? '' : 'none';
+          if (match) shown++;
+        });
+        const c = det.querySelector('.count');
+        c.textContent = term ? shown + ' / ' + c.dataset.total : c.dataset.total;
+        if (term) det.open = shown > 0;
+      });
+    }
+    q.addEventListener('input', filterRows);
+
+    // Hover preview: show the block's real texture (or its swatch when it has none).
+    const pvImg = document.getElementById('pv-img');
+    const pvNone = document.getElementById('pv-none');
+    const pvSw = document.getElementById('pv-sw');
+    const pvName = document.getElementById('pv-name');
+    const pvMeta = document.getElementById('pv-meta');
+    pvImg.addEventListener('error', () => {
+      pvImg.style.display = 'none';
+      pvNone.textContent = 'texture unavailable'; pvNone.style.display = '';
+    });
+    document.getElementById('wrap').addEventListener('mouseover', e => {
+      const row = e.target.closest('.row');
+      if (!row) return;
+      pvSw.style.background = row.dataset.hex || 'transparent';
+      pvName.textContent = row.dataset.name;
+      const tex = row.dataset.tex;
+      if (tex) {
+        pvMeta.textContent = 'id ' + row.dataset.id + ' · ' + tex;
+        pvNone.style.display = 'none';
+        pvImg.style.display = 'block';
+        pvImg.src = '/worlds/textures?key=' + encodeURIComponent(tex);
+      } else {
+        pvImg.removeAttribute('src');
+        pvImg.style.display = 'none';
+        pvNone.textContent = 'no texture';
+        pvNone.style.display = '';
+        pvMeta.textContent = 'id ' + row.dataset.id;
+      }
+    });
+
+    document.getElementById('wrap').addEventListener('click', e => {
+      const copyAll = e.target.closest('.copyall');
+      if (copyAll) {
+        e.preventDefault(); e.stopPropagation();
+        const det = copyAll.closest('details');
+        const names = [...det.querySelectorAll('.row')]
+          .filter(r => r.style.display !== 'none')
+          .map(r => r.dataset.name);
+        navigator.clipboard.writeText(names.join('\\n'))
+          .then(() => showToast('Copied ' + names.length + ' names'));
+        return;
+      }
+      const row = e.target.closest('.row');
+      if (!row) return;
+      navigator.clipboard.writeText(row.dataset.name)
+        .then(() => showToast('Copied: ' + row.dataset.name));
+    });
+    const toggle = document.getElementById('toggleAll');
+    toggle.addEventListener('click', () => {
+      const dets = [...document.querySelectorAll('details[data-section]')];
+      const anyClosed = dets.some(d => !d.open);
+      dets.forEach(d => d.open = anyClosed);
+      toggle.textContent = anyClosed ? 'Collapse all' : 'Expand all';
+    });
   </script>
 </body>
 </html>"""
+
+    html = (
+        template.replace("__TOTAL__", str(total))
+        .replace("__TEX__", str(texture_count))
+        .replace("__FB__", str(fallback_count))
+        .replace("__PCT__", str(pct))
+        .replace("__SECTIONS__", sections_html)
+    )
     return HTMLResponse(content=html)
 
 
