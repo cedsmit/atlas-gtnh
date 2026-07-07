@@ -29,6 +29,11 @@ _OVERRIDES: dict[str, str] = {
     "minecraft:stained_glass_pane": "minecraft:glass_pane_top",
     "minecraft:piston": "minecraft:piston_top_normal",
     "minecraft:sticky_piston": "minecraft:piston_top_sticky",
+    # Chests are TESR-rendered (getIcon returns plain planks). ExtraUtilities' full
+    # chest top is a proper chest texture and ships in every GTNH pack; fall through
+    # to planks automatically if that mod is ever absent.
+    "minecraft:chest": "extrautils:fullblockchest_top",
+    "minecraft:trapped_chest": "extrautils:fullblockchest_top",
     "minecraft:oak_stairs": "minecraft:planks_oak",
     "minecraft:stone_stairs": "minecraft:stone",
     "minecraft:stone_brick_stairs": "minecraft:stonebrick",
