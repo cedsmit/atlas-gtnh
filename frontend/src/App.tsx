@@ -33,6 +33,11 @@ import {
   applyLayerOverrides,
   presetToConfig,
 } from './features/blocks/renderPresets'
+import {
+  type ElevOverride,
+  loadRenderPrefs,
+  saveRenderPrefs,
+} from './features/blocks/renderPrefs'
 import { getTextureState } from './features/textures/textureLoader'
 import { textureDebugStore } from './features/textures/textureDebugStore'
 
@@ -46,16 +51,30 @@ export default function App() {
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
   const [inspectOpen, setInspectOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
-  const [selectedPresetId, setSelectedPresetId] = useState('journeymap')
-  const [elevOverride, setElevOverride] = useState<
-    'preset' | 'off' | 'subtle' | 'strong' | 'relief' | 'heightmap' | 'contours'
-  >('preset')
+  // The render view (preset + overrides) is restored from localStorage on startup
+  // and written back on change (Stage 3.3), so a customized view sticks across sessions.
+  const [selectedPresetId, setSelectedPresetId] = useState(
+    () => loadRenderPrefs().presetId
+  )
+  const [elevOverride, setElevOverride] = useState<ElevOverride>(
+    () => loadRenderPrefs().elevOverride
+  )
   const [textureFilterOverride, setTextureFilterOverride] = useState<
     'preset' | TextureFilter
-  >('preset')
-  // User layer toggles that override the active preset's category visibility
-  // (Stage 3.1). Session-only, like the elevation/filter overrides.
-  const [layerOverrides, setLayerOverrides] = useState<LayerOverrides>({})
+  >(() => loadRenderPrefs().textureFilter)
+  // User layer toggles that override the active preset's category visibility (3.1).
+  const [layerOverrides, setLayerOverrides] = useState<LayerOverrides>(
+    () => loadRenderPrefs().layerOverrides
+  )
+
+  useEffect(() => {
+    saveRenderPrefs({
+      presetId: selectedPresetId,
+      elevOverride,
+      textureFilter: textureFilterOverride,
+      layerOverrides,
+    })
+  }, [selectedPresetId, elevOverride, textureFilterOverride, layerOverrides])
 
   // ── Data fetching ──────────────────────────────────────────────────────
   const {
