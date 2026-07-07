@@ -1,13 +1,25 @@
 import type { RenderPrefs } from './renderPrefs'
 
+/** Map centre + zoom captured when a view was saved (a location bookmark). */
+export interface SavedCamera {
+  cx: number
+  cz: number
+  scale: number
+}
+
 /**
  * A named snapshot of a render view — the base preset plus the session overrides
- * (elevation / texture filter / layer toggles). Stage 3.3: users save the current
- * view and re-apply it later. Stored in localStorage.
+ * (elevation / texture filter / layer toggles) and, when saved from the map, the
+ * camera location + zoom so re-applying jumps back to that spot. Stage 3.3: users
+ * save the current view and re-apply it later. Stored in localStorage.
  */
 export interface UserPreset extends RenderPrefs {
   id: string
   name: string
+  /** Camera bookmark captured at save time; absent for views saved before 3.3.1. */
+  camera?: SavedCamera
+  /** Dimension the camera belongs to — the camera only restores in a match. */
+  dimensionPath?: string
 }
 
 const KEY = 'atlas:userPresets'

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 import { LocateFixed } from 'lucide-react'
 
 import type { BlockColorMap } from '../blocks/api/blockColors'
@@ -20,6 +20,7 @@ import {
 import { ChunkTools } from '../chunk-ops/ChunkTools'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
 import { MapEngine } from './mapEngine'
+import { loadLastView, saveLastView } from './lastView'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
 
@@ -35,6 +36,9 @@ interface Props {
   registry?: BlockRenderRegistry
   config?: RenderConfig
   debugMode?: boolean
+  // Lifted so App can read the camera when saving a view and move it when
+  // applying one. WorldMap populates it with the live engine (or null when torn down).
+  engineRef?: MutableRefObject<MapEngine | null>
 }
 
 export function WorldMap({
@@ -49,6 +53,7 @@ export function WorldMap({
   registry: registryProp,
   config: configProp,
   debugMode = false,
+  engineRef: engineRefProp,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -89,7 +94,10 @@ export function WorldMap({
   regionsRef.current = regions
   const syncRegionsRef = useRef<(() => void) | null>(null)
   const fitCameraRef = useRef<(() => void) | null>(null)
-  const engineRef = useRef<MapEngine | null>(null)
+  // Use App's lifted ref when provided (so it can read/move the camera for saved
+  // views); otherwise keep a local ref so WorldMap still works standalone.
+  const localEngineRef = useRef<MapEngine | null>(null)
+  const engineRef = engineRefProp ?? localEngineRef
 
   // Enable/disable debug store when prop changes
   useEffect(() => {
@@ -115,13 +123,27 @@ export function WorldMap({
       regionsRef,
       syncRegionsRef,
       fitCameraRef,
+      // Resume where the user left off in this dimension (null = fit instead).
+      initialView: loadLastView(dimensionPath),
     })
     engineRef.current = engine
+    // Persist the camera so closing the app or the world resumes here on reopen.
+    // Periodic (covers a hard app close) plus a final save before teardown
+    // (covers closing the world / switching dimension). saveLastView de-dupes.
+    const persist = () => {
+      const vp = engine.getViewport()
+      saveLastView(dimensionPath, { cx: vp.cx, cz: vp.cz, scale: vp.scale })
+    }
+    const persistId = setInterval(persist, 1000)
     return () => {
+      clearInterval(persistId)
+      persist()
       engine.dispose()
       engineRef.current = null
     }
-  }, [dimensionPath])
+    // engineRef is a stable ref (App passes the same object); listed to satisfy
+    // exhaustive-deps now that it's `prop ?? local` rather than a bare useRef.
+  }, [dimensionPath, engineRef])
 
   useEffect(() => {
     syncRegionsRef.current?.()

@@ -372,7 +372,7 @@ export function MenuBar({
             >
               <button
                 onClick={() => setPresetsMenuOpen((o) => !o)}
-                title="Saved views — save the current preset + overrides, re-apply later"
+                title="Saved views — bookmark the current location, zoom + look, re-apply later"
                 className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
                   presetsMenuOpen
                     ? 'bg-zinc-800 text-zinc-100'
@@ -420,10 +420,23 @@ export function MenuBar({
                             onApplyPreset?.(p)
                             setPresetsMenuOpen(false)
                           }}
-                          title={`Apply "${p.name}"`}
-                          className="min-w-0 flex-1 truncate px-3 py-1.5 text-left text-sm text-zinc-300 hover:text-zinc-100"
+                          title={
+                            p.camera
+                              ? `Apply "${p.name}" — jumps to ${Math.round(p.camera.cx)}, ${Math.round(p.camera.cz)}`
+                              : `Apply "${p.name}"`
+                          }
+                          className="min-w-0 flex-1 px-3 py-1.5 text-left hover:text-zinc-100"
                         >
-                          {p.name}
+                          <span className="block truncate text-sm text-zinc-300">
+                            {p.name}
+                          </span>
+                          {p.camera && (
+                            <span className="block truncate font-mono text-[10px] text-zinc-500">
+                              {Math.round(p.camera.cx)},{' '}
+                              {Math.round(p.camera.cz)} · ×
+                              {p.camera.scale.toFixed(1)}
+                            </span>
+                          )}
                         </button>
                         <button
                           onClick={() => onDeletePreset?.(p.id)}

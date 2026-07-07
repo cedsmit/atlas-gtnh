@@ -50,6 +50,21 @@ describe('user presets (Stage 3.3)', () => {
     expect(deleteUserPreset(list[0].id)).toEqual([])
   })
 
+  it('stores and reloads a camera bookmark + dimension', () => {
+    const camera = { cx: 128, cz: -256, scale: 4.5 }
+    const list = saveUserPreset({
+      name: 'Home',
+      ...view(),
+      camera,
+      dimensionPath: '/world/DIM0',
+    })
+    expect(list[0].camera).toEqual(camera)
+    expect(list[0].dimensionPath).toBe('/world/DIM0')
+    const reloaded = loadUserPresets()[0]
+    expect(reloaded.camera).toEqual(camera)
+    expect(reloaded.dimensionPath).toBe('/world/DIM0')
+  })
+
   it('returns empty on corrupt storage', () => {
     localStorage.setItem('atlas:userPresets', 'not json')
     expect(loadUserPresets()).toEqual([])

@@ -32,6 +32,7 @@ import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 import { showBlockInspector } from './blockInspector'
 import { attachMapInput } from './mapInput'
 import { MapScene } from './mapScene'
+import type { SavedView } from './lastView'
 
 const {
   minScale: MIN_SCALE,
@@ -65,6 +66,8 @@ interface MapEngineDeps {
   regionsRef: MutableRefObject<RegionSummary[]>
   syncRegionsRef: MutableRefObject<(() => void) | null>
   fitCameraRef: MutableRefObject<(() => void) | null>
+  // Last camera for this dimension: restored instead of fitting on first load.
+  initialView?: SavedView | null
 }
 
 export class MapEngine {
@@ -99,9 +102,14 @@ export class MapEngine {
       regionsRef,
       syncRegionsRef,
       fitCameraRef,
+      initialView,
     } = deps
 
     inspector.addEventListener('mousedown', (e) => e.stopPropagation())
+
+    // One-shot: on the first sync that has regions, restore the saved camera
+    // (resume where the user left off) instead of fitting the whole world.
+    let restorePending = !!initialView
 
     // Set in cleanup; async continuations (fetches, createImageBitmap) check it
     // so they don't write to torn-down state after unmount / dimension change.
@@ -238,9 +246,24 @@ export class MapEngine {
       tileCache.clear()
     }
 
-    function fitCamera() {
+    function fitCamera(force = false) {
       const regs = regionsRef.current
       if (regs.length === 0) return
+
+      // Resume the saved camera for this dimension on first load, rather than
+      // fitting the whole world. A user-triggered fit (force) always overrides.
+      if (!force && restorePending && initialView) {
+        restorePending = false
+        st.cam.cx = initialView.cx
+        st.cam.cz = initialView.cz
+        st.cam.scale = Math.max(
+          MIN_SCALE,
+          Math.min(MAX_SCALE, initialView.scale)
+        )
+        updateCam()
+        return
+      }
+      restorePending = false // a real fit also cancels any pending restore
 
       // Compute median X and Z so a single distant outlier region (e.g. a mod dimension
       // that wrote chunks at extreme coordinates) cannot pull the initial view off into space.
@@ -301,7 +324,7 @@ export class MapEngine {
     }
 
     syncRegionsRef.current = syncRegions
-    fitCameraRef.current = fitCamera
+    fitCameraRef.current = () => fitCamera(true) // the fit button always fits
     syncRegions()
 
     // ── Cross-chunk shading support ──
@@ -1383,6 +1406,18 @@ export class MapEngine {
   ): void {
     this._mapScene.setPreviewRect(chunkRect(sel))
     this._st.forceFrame = true
+  }
+
+  /**
+   * Jump the camera to a saved centre + zoom (a saved-view bookmark). Scale is
+   * clamped to the engine's zoom range; the world centre is set as-is.
+   */
+  setCamera(cam: { cx: number; cz: number; scale: number }): void {
+    const st = this._st
+    st.cam.cx = cam.cx
+    st.cam.cz = cam.cz
+    st.cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale))
+    st.forceFrame = true
   }
 }
 

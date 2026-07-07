@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
@@ -19,6 +19,7 @@ import { LoadingScreen, type LoadingStage } from './shared/LoadingScreen'
 import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
+import type { MapEngine } from './features/map/mapEngine'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
@@ -82,14 +83,22 @@ export default function App() {
     })
   }, [selectedPresetId, elevOverride, textureFilterOverride, layerOverrides])
 
-  // Named user presets (Stage 3.3) — saved snapshots of a render view.
+  // Named user presets (Stage 3.3) — saved snapshots of a render view. The map
+  // engine lives inside WorldMap; this lifted ref lets us read the camera when
+  // saving a view and move it when applying one.
   const [userPresets, setUserPresets] = useState(loadUserPresets)
+  const engineRef = useRef<MapEngine | null>(null)
 
   function applyUserPreset(p: UserPreset) {
     setSelectedPresetId(p.presetId)
     setElevOverride(p.elevOverride)
     setTextureFilterOverride(p.textureFilter)
     setLayerOverrides(p.layerOverrides)
+    // Restore the saved location — but only in the dimension it was saved in,
+    // since map coords are per-dimension. Views saved before 3.3.1 have no camera.
+    if (p.camera && p.dimensionPath === dimensionPath) {
+      engineRef.current?.setCamera(p.camera)
+    }
   }
 
   // ── Data fetching ──────────────────────────────────────────────────────
@@ -305,7 +314,10 @@ export default function App() {
         userPresets={userPresets}
         onSavePreset={
           worldPath
-            ? (name) =>
+            ? (name) => {
+                // Capture the current map location + zoom so the view is a
+                // location bookmark, not just a render-settings snapshot.
+                const vp = engineRef.current?.getViewport()
                 setUserPresets(
                   saveUserPreset({
                     name,
@@ -313,8 +325,13 @@ export default function App() {
                     elevOverride,
                     textureFilter: textureFilterOverride,
                     layerOverrides,
+                    camera: vp
+                      ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
+                      : undefined,
+                    dimensionPath: dimensionPath ?? undefined,
                   })
                 )
+              }
             : undefined
         }
         onApplyPreset={worldPath ? applyUserPreset : undefined}
@@ -369,6 +386,7 @@ export default function App() {
               registry={registry}
               config={config}
               debugMode={debugOpen}
+              engineRef={engineRef}
             />
             <DumpMismatchBanner worldPath={worldPath} />
           </div>
