@@ -187,10 +187,7 @@ export async function showBlockInspector(
   const biomeId = data.biomes.length === 256 ? data.biomes[lx + lz * 16] : -1
   const topDef = registry.lookup(topId)
   const texKey =
-    topDef.textureAlias ??
-    metaTextureKeys?.[`${topId}:${topMeta}`] ??
-    textureKeys?.[topId] ??
-    null
+    metaTextureKeys?.[`${topId}:${topMeta}`] ?? textureKeys?.[topId] ?? null
   const texImg = texKey ? getTexture(texKey) : null
   const hasTexture = !!texImg
   const name = blockNames?.[topId] ?? `block:${topId}`
@@ -251,7 +248,7 @@ export async function showBlockInspector(
     `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}<br>` +
     `slope: <span style="opacity:.75">${slopeStr}</span><br>` +
     `render: <span style="opacity:.75">${renderInfo}</span><br>` +
-    `tex: ${texKey ?? 'none'}${topDef.textureAlias ? ' (alias)' : ''} — ${texStatus}<br>` +
+    `tex: ${texKey ?? 'none'} — ${texStatus}<br>` +
     `color: <span style="display:inline-block;width:10px;height:10px;background:${hex};border:1px solid #888"></span> ${hex}` +
     `  <span style="opacity:.6">(${colorSrc})</span>` +
     `<br><button id="atlas-copy-block" style="margin-top:4px;background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.25);border-radius:3px;padding:1px 6px;font-size:10px;cursor:pointer;color:#ccc">copy</button>`
@@ -264,7 +261,7 @@ export async function showBlockInspector(
         name,
         `id: ${topId}  meta: ${topMeta}  biome: ${biomeId}`,
         `slope: ${slopeStr}`,
-        `tex: ${texKey ?? 'none'}${topDef.textureAlias ? ' (alias)' : ''} — ${texStatus}`,
+        `tex: ${texKey ?? 'none'} — ${texStatus}`,
         `color: ${hex} (${colorSrc})`,
       ]
       await navigator.clipboard.writeText(lines.join('\n'))

@@ -183,14 +183,11 @@ export function renderRegionTile(
     // Resolve the texture the detailed renderer would draw for this block, and
     // its average colour — so the overview shows what a mip-collapsed detail tile
     // shows (the texture, for opaque blocks) instead of a generic per-id colour
-    // that ignores texture aliases and per-metadata textures. Keeps the LOD swap
-    // seamless and, for modded blocks absent from the colour map, avoids the
-    // arbitrary hashed fallback colour.
+    // that ignores per-metadata textures. Keeps the LOD swap seamless and, for
+    // modded blocks absent from the colour map, avoids the arbitrary hashed
+    // fallback colour.
     const texKey =
-      def.textureAlias ??
-      metaTextureKeys?.[`${id}:${meta}`] ??
-      textureKeys?.[id] ??
-      null
+      metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null
     const texAvg = texKey ? averageTextureColor(texKey) : null
 
     if (def.tint === 'grass' && sc) {

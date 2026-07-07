@@ -64,10 +64,10 @@ export interface BlockRenderDefinition {
   // Well-known tags: torch, flower, tallgrass, rail, redstone, machine, pipe, cable
   blockTags?: readonly string[]
 
-  // ── Texture alias + tinting ────────────────────────────────────────────
-  // For blocks that inherit another block's texture and/or apply a per-meta
-  // color tint at render time (e.g. Ztones glaxx uses vanilla glass + dye tint).
-  textureAlias?: string // use this texture key instead of the block's own
+  // ── Per-meta texture tinting ───────────────────────────────────────────
+  // For blocks whose textures aren't scannable, so a per-meta colour is applied
+  // at render time (e.g. Ztones glaxx: a texture-sheet block Atlas can't scan,
+  // coloured from textureTintColors below).
   textureTint?: 'none' | 'metadata16' | 'custom' // how to derive the block's color tint
   textureTintColors?: readonly string[] // hex colors indexed by metadata (for 'custom')
   preserveAlpha?: boolean // keep texture alpha through tint compositing

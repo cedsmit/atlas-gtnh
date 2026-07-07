@@ -221,12 +221,7 @@ export function renderChunkImage(
     def: ResolvedDefinition
   ): boolean => {
     if (def.tint) return false // grass/foliage/water are always renderable
-    if (
-      def.textureAlias ??
-      metaTextureKeys?.[`${id}:${meta}`] ??
-      textureKeys?.[id]
-    )
-      return false // has a texture key
+    if (metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id]) return false // has a texture key
     if (colorMap?.[id]) return false // scanned colour
     if (metaBlockColorRGB(id, meta)) return false // hardcoded per-meta colour
     if (hardcodedBlockColor(id)) return false // hardcoded per-id colour
@@ -393,10 +388,7 @@ export function renderChunkImage(
             textureKeys?.[floorId[i]] ??
             null)
           : null
-        : (baseDef.textureAlias ??
-          metaTextureKeys?.[`${id}:${meta}`] ??
-          textureKeys?.[id] ??
-          null)
+        : (metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null)
 
       // ── Base color: biome tint or block color ──────────────────────
       let r: number, g: number, b: number
