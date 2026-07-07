@@ -376,6 +376,18 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     total = texture_count + fallback_count
     pct = round(texture_count * 100 / total, 1) if total else 0
 
+    def _namespace(nm: str) -> str:
+        return nm.split(":", 1)[0] if ":" in nm else "(none)"
+
+    # Mod/namespace dropdown options, sorted by block count (desc) then name.
+    ns_counts: dict[str, int] = {}
+    for nm in id_map.values():
+        ns_counts[_namespace(nm)] = ns_counts.get(_namespace(nm), 0) + 1
+    mod_options = f'<option value="">All mods ({total})</option>' + "".join(
+        f'<option value="{ns}">{ns} ({c})</option>'
+        for ns, c in sorted(ns_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    )
+
     def row_html(bid: int, name: str, rgb: tuple[int, int, int], has_texture: bool) -> str:
         hex_col = "#{:02x}{:02x}{:02x}".format(*rgb)
         r, g, b = rgb
@@ -397,7 +409,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
             sw_cell = f'<div class="sw" style="background:{hex_col}"></div>'
         return (
             f'<div class="row" data-f="{bid} {name.lower()} {hex_col}" data-name="{name}" '
-            f'data-id="{bid}" data-hex="{hex_col}"{tex_attr} '
+            f'data-id="{bid}" data-hex="{hex_col}" data-mod="{_namespace(name)}"{tex_attr} '
             f'title="rgb({r}, {g}, {b}) — click to copy name">'
             f"{sw_cell}"
             f'<span class="id">{bid}</span>'
@@ -442,6 +454,8 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
   .controls { margin-top:10px; display:flex; gap:8px; align-items:center; }
   input#q { flex:1; max-width:360px; background:#1c1c1c; color:#ddd; border:1px solid #444;
             padding:6px 10px; border-radius:6px; font-family:inherit; font-size:13px; }
+  .controls select { background:#1c1c1c; color:#ddd; border:1px solid #444; border-radius:6px;
+                     padding:6px 8px; font-family:inherit; font-size:12px; cursor:pointer; }
   .btn { background:#222; color:#bbb; border:1px solid #444; padding:6px 12px; border-radius:6px;
          cursor:pointer; font-family:inherit; font-size:12px; }
   .btn:hover { background:#2a2a2a; color:#fff; }
@@ -499,6 +513,12 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
       <span class="chip-fb">__FB__ fallback</span> &nbsp;·&nbsp; __PCT__% resolved</div>
     <div class="controls">
       <input id="q" type="text" placeholder="filter by name or id…" autofocus>
+      <select id="mod" title="Filter by mod / namespace">__MOD_OPTIONS__</select>
+      <select id="show" title="Filter by texture presence">
+        <option value="all">All</option>
+        <option value="tex">With texture</option>
+        <option value="notex">No texture</option>
+      </select>
       <button class="btn" id="toggleAll">Collapse all</button>
     </div>
   </div></div>
@@ -518,21 +538,31 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
       toast.textContent = msg; toast.classList.add('show');
       clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('show'), 1200);
     }
+    const modSel = document.getElementById('mod');
+    const showSel = document.getElementById('show');
     function filterRows() {
       const term = q.value.trim().toLowerCase();
+      const mod = modSel.value;
+      const show = showSel.value;
+      const active = term || mod || show !== 'all';
       document.querySelectorAll('details[data-section]').forEach(det => {
         let shown = 0;
         det.querySelectorAll('.row').forEach(r => {
-          const match = !term || r.dataset.f.includes(term);
+          const hasTex = r.dataset.tex !== undefined;
+          const match = (!term || r.dataset.f.includes(term))
+            && (!mod || r.dataset.mod === mod)
+            && (show === 'all' || (show === 'tex') === hasTex);
           r.style.display = match ? '' : 'none';
           if (match) shown++;
         });
         const c = det.querySelector('.count');
-        c.textContent = term ? shown + ' / ' + c.dataset.total : c.dataset.total;
-        if (term) det.open = shown > 0;
+        c.textContent = active ? shown + ' / ' + c.dataset.total : c.dataset.total;
+        if (active) det.open = shown > 0;
       });
     }
     q.addEventListener('input', filterRows);
+    modSel.addEventListener('change', filterRows);
+    showSel.addEventListener('change', filterRows);
 
     // Hover preview: show the block's real texture (or its swatch when it has none).
     const pvImg = document.getElementById('pv-img');
@@ -597,6 +627,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         .replace("__TEX__", str(texture_count))
         .replace("__FB__", str(fallback_count))
         .replace("__PCT__", str(pct))
+        .replace("__MOD_OPTIONS__", mod_options)
         .replace("__SECTIONS__", sections_html)
     )
     return HTMLResponse(content=html)
