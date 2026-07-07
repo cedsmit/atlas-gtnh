@@ -55,18 +55,18 @@
       "category": "overlay",
       "blockTags": ["flower"]
     },
-    "harvestcraft:textilegarden": { "category": "solid" },
-    "harvestcraft:berrygarden": { "category": "solid" },
-    "harvestcraft:grassgarden": { "category": "solid" },
-    "harvestcraft:gourdgarden": { "category": "solid" },
-    "harvestcraft:leafygarden": { "category": "solid" },
-    "harvestcraft:groundgarden": { "category": "solid" },
-    "harvestcraft:herbgarden": { "category": "solid" },
-    "harvestcraft:mushroomgarden": { "category": "solid" },
-    "harvestcraft:stalkgarden": { "category": "solid" },
-    "harvestcraft:tropicalgarden": { "category": "solid" },
-    "harvestcraft:desertgarden": { "category": "solid" },
-    "harvestcraft:watergarden": { "category": "solid" },
+    "harvestcraft:textilegarden": { "category": "overlay" },
+    "harvestcraft:berrygarden": { "category": "overlay" },
+    "harvestcraft:grassgarden": { "category": "overlay" },
+    "harvestcraft:gourdgarden": { "category": "overlay" },
+    "harvestcraft:leafygarden": { "category": "overlay" },
+    "harvestcraft:groundgarden": { "category": "overlay" },
+    "harvestcraft:herbgarden": { "category": "overlay" },
+    "harvestcraft:mushroomgarden": { "category": "overlay" },
+    "harvestcraft:stalkgarden": { "category": "overlay" },
+    "harvestcraft:tropicalgarden": { "category": "overlay" },
+    "harvestcraft:desertgarden": { "category": "overlay" },
+    "harvestcraft:watergarden": { "category": "overlay" },
 
     "Witchery:witchsapling": { "category": "overlay", "blockTags": ["flower"] },
     "Witchery:witchwoodlog": { "category": "solid" },
@@ -160,6 +160,7 @@
       "category": "overlay",
       "blockTags": ["torch"]
     },
+    "ExtraUtilities:magnumTorch": { "category": "overlay" },
     "ExtraUtilities:block.extrautils.coloredwood": { "category": "solid" },
     "ExtraUtilities:block.extrautils.coloredstone": { "category": "solid" },
     "ExtraUtilities:block.extrautils.coloredleaf": {
@@ -243,8 +244,14 @@
 
     "OpenPeripheral:terminal": { "category": "solid" },
 
-    "PneumaticCraft:pressureTube": { "category": "overlay" },
-    "PneumaticCraft:advancedPressureTube": { "category": "overlay" },
+    "PneumaticCraft:pressureTube": {
+      "category": "overlay",
+      "blockTags": ["pipe"]
+    },
+    "PneumaticCraft:advancedPressureTube": {
+      "category": "overlay",
+      "blockTags": ["pipe"]
+    },
     "PneumaticCraft:airCompressor": { "category": "solid" },
     "PneumaticCraft:advancedAirCompressor": { "category": "solid" },
     "PneumaticCraft:pressureChamberWall": { "category": "solid" },
@@ -256,9 +263,18 @@
     "PneumaticCraft:elevatorBase": { "category": "solid" },
     "PneumaticCraft:elevatorFrame": { "category": "solid" },
 
-    "LogisticsPipes:logisticsPipeBlock": { "category": "overlay" },
-    "LogisticsPipes:pipeBlockRequestTable": { "category": "solid" },
-    "LogisticsPipes:pipeBlockRemoteOrderer": { "category": "solid" },
+    "LogisticsPipes:logisticsPipeBlock": {
+      "category": "overlay",
+      "blockTags": ["pipe"]
+    },
+    "LogisticsPipes:pipeBlockRequestTable": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+    "LogisticsPipes:pipeBlockRemoteOrderer": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
     "LogisticsPipes:blockframe": { "category": "solid" },
 
     "StorageDrawers:halfDrawers2": { "category": "solid" },
@@ -280,8 +296,14 @@
     "ImmersiveEngineering:stoneDecoration": { "category": "solid" },
     "ImmersiveEngineering:woodenDecoration": { "category": "solid" },
     "ImmersiveEngineering:cloth": { "category": "solid" },
-    "ImmersiveEngineering:connector": { "category": "overlay" },
-    "ImmersiveEngineering:wire": { "category": "overlay" },
+    "ImmersiveEngineering:connector": {
+      "category": "overlay",
+      "blockTags": ["cable"]
+    },
+    "ImmersiveEngineering:wire": {
+      "category": "overlay",
+      "blockTags": ["cable"]
+    },
     "ImmersiveEngineering:ore": { "category": "solid" }
   }
 }

@@ -11,11 +11,20 @@
     },
     "Thaumcraft:blockJar": { "category": "overlay" },
     "Thaumcraft:blockCandle": { "category": "overlay", "blockTags": ["torch"] },
-    "Thaumcraft:blockCustomPlant": {
-      "category": "overlay",
-      "blockTags": ["flower"]
-    },
+    "Thaumcraft:blockCustomPlant": { "category": "overlay" },
     "Thaumcraft:blockTube": { "category": "solid", "blockTags": ["pipe"] },
+    "Thaumcraft:blockMetalDevice:7": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
+    "Thaumcraft:blockMetalDevice:8": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
+    "Thaumcraft:blockMetalDevice:13": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
     "Thaumcraft:blockArcaneLog": { "category": "solid" },
     "Thaumcraft:blockMagicalLog": { "category": "solid" },
     "Thaumcraft:blockTaintFibre": {
