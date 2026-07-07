@@ -962,7 +962,8 @@ export class MapEngine {
       // hidden overlays, and plants (kept when highlightPlants is on). Bumping
       // lodVersion re-fetches overview tiles so they drop the newly-known ids.
       const reg = registryRef.current
-      if (reg !== st.lastRegistryForSkip || cfg !== st.lastConfigForSkip) {
+      const regChanged = reg !== st.lastRegistryForSkip
+      if (regChanged || cfg !== st.lastConfigForSkip) {
         st.lastRegistryForSkip = reg
         st.lastConfigForSkip = cfg
         // Plants are the flower/tallgrass-tagged (and grass/foliage-tinted)
@@ -980,6 +981,15 @@ export class MapEngine {
         if (csv !== st.surfaceSkipCsv) {
           st.surfaceSkipIds = ids
           st.surfaceSkipCsv = csv
+          st.lodVersion++
+          st.forceFrame = true
+        }
+        // A registry change (e.g. a saved user override, solid→transparent) can
+        // alter a block's category/tint/alpha without touching the skip set, so
+        // force a re-render of BOTH LODs — cached detail tiles otherwise keep the
+        // old look until they happen to be redrawn.
+        if (regChanged) {
+          st.texVersion++
           st.lodVersion++
           st.forceFrame = true
         }

@@ -22,6 +22,7 @@ import { WorldMap } from './features/map/WorldMap'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
+import { useRenderOverrides } from './features/blocks/api/renderOverrides'
 import { columnTally } from './features/map/columnTally'
 import {
   type ElevationMode,
@@ -65,12 +66,14 @@ export default function App() {
   const { data: metaTextureKeys } = useMetaTextureKeys(worldPath)
   const { data: dimensions } = useDimensions(worldPath)
   const { data: regionData } = useRegions(dimensionPath ?? '')
+  const { data: renderOverrides } = useRenderOverrides()
 
   // ── Render registry ────────────────────────────────────────────────────
-  // Rebuilt when blockNames changes (new world = new FML ID mapping).
+  // Rebuilt when blockNames changes (new world = new FML ID mapping) or when the
+  // user saves a render override (Stage 2.3) — the override wins over bundled rules.
   const registry = useMemo(
-    () => createResolvedRegistry(blockNames),
-    [blockNames]
+    () => createResolvedRegistry(blockNames, renderOverrides),
+    [blockNames, renderOverrides]
   )
 
   // ── Render config ───────────────────────────────────────────────────────

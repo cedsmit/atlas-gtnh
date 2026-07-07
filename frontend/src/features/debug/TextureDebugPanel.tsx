@@ -5,13 +5,22 @@ import {
   ChevronRight,
   Copy,
   Loader2,
+  RotateCcw,
+  Save,
   Search,
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { API_BASE } from '../../shared/api'
-import { type BlockRenderRegistry } from '../blocks/blockRenderRegistry'
+import {
+  type BlockRenderRegistry,
+  type RenderCategory,
+} from '../blocks/blockRenderRegistry'
+import {
+  useRemoveRenderOverride,
+  useSaveRenderOverride,
+} from '../blocks/api/renderOverrides'
 import { getTexture, onTextureLoad } from '../textures/textureLoader'
 import {
   textureDebugStore,
@@ -87,6 +96,16 @@ interface PipelineReport {
   legacy_examples: Record<string, string[]>
   block_methods: Record<string, string>
 }
+
+// Categories a user can assign via the debug panel's override picker (Stage 2.3).
+const RENDER_CATEGORIES: readonly RenderCategory[] = [
+  'solid',
+  'overlay',
+  'transparent',
+  'fluid',
+  'partial',
+  'ignore',
+]
 
 const CATEGORY_LABELS: Record<string, string> = {
   no_blockstate: 'No blockstate (legacy also failed)',
@@ -751,6 +770,35 @@ function DebugRow({
   const tintClass = TINT_CLASS[b.tintType]
   const regDef = registry?.lookup(b.id)
 
+  // ── Render-override editor (Stage 2.3) ──────────────────────────────────
+  const save = useSaveRenderOverride()
+  const remove = useRemoveRenderOverride()
+  const [cat, setCat] = useState<RenderCategory>(regDef?.category ?? 'solid')
+  const [savedFlash, setSavedFlash] = useState(false)
+  // This block's classification currently comes from an authored override, so it
+  // can be reset back to the bundled/vanilla default.
+  const isOverridden = regDef?.resolverSource === 'authored'
+
+  function saveOverride() {
+    if (!b.name) return
+    const definition: Record<string, unknown> = { category: cat }
+    if (b.tintType !== 'none' && b.tintType !== 'water')
+      definition.tint = b.tintType
+    save.mutate(
+      { name: b.name, definition },
+      {
+        onSuccess: () => {
+          setSavedFlash(true)
+          setTimeout(() => setSavedFlash(false), 1500)
+        },
+      }
+    )
+  }
+
+  function resetOverride() {
+    if (b.name) remove.mutate(b.name)
+  }
+
   const renderMode =
     status === 'loaded' && b.tintType !== 'none' && b.tintType !== 'water'
       ? 'texture+tint'
@@ -928,23 +976,63 @@ function DebugRow({
               </div>
             )}
           </div>
-          {isFallback && (
-            <div className="flex shrink-0 gap-1">
-              {worldPath && b.name && (
-                <button
-                  onClick={() => void traceBlockPipeline()}
-                  disabled={tracing}
-                  className="inline-flex items-center gap-1 rounded bg-indigo-900 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
-                  title="Trace blockstate pipeline to console"
+          <div className="flex shrink-0 items-center gap-1">
+            {/* Render-override editor: reclassify any block and persist it. */}
+            {b.name && (
+              <>
+                <select
+                  value={cat}
+                  onChange={(e) => setCat(e.target.value as RenderCategory)}
+                  className="rounded bg-zinc-800 px-1 py-0.5 font-mono text-[9px] text-zinc-300 ring-1 ring-zinc-700 focus:outline-none focus:ring-zinc-500"
+                  title="Set this block's render category, then Save to write it into the shipped render rules"
                 >
-                  {tracing ? (
-                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  {RENDER_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={saveOverride}
+                  disabled={save.isPending}
+                  className="inline-flex items-center gap-1 rounded bg-violet-900 px-1.5 py-0.5 font-mono text-[9px] text-violet-300 hover:bg-violet-800 hover:text-violet-100 disabled:opacity-40"
+                  title="Save into the shipped render-rules/authored.json — re-renders now and ships to all users on next build"
+                >
+                  {savedFlash ? (
+                    <Check className="h-3 w-3" aria-hidden />
                   ) : (
-                    <Search className="h-3 w-3" aria-hidden />
+                    <Save className="h-3 w-3" aria-hidden />
                   )}
-                  {tracing ? '…' : 'trace'}
+                  {savedFlash ? 'saved!' : 'save'}
                 </button>
-              )}
+                {isOverridden && (
+                  <button
+                    onClick={resetOverride}
+                    disabled={remove.isPending}
+                    className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200 disabled:opacity-40"
+                    title="Remove this block's authored override — revert to the default classification and delete it from authored.json"
+                  >
+                    <RotateCcw className="h-3 w-3" aria-hidden /> reset
+                  </button>
+                )}
+              </>
+            )}
+            {isFallback && worldPath && b.name && (
+              <button
+                onClick={() => void traceBlockPipeline()}
+                disabled={tracing}
+                className="inline-flex items-center gap-1 rounded bg-indigo-900 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300 hover:bg-indigo-800 hover:text-indigo-100 disabled:opacity-40"
+                title="Trace blockstate pipeline to console"
+              >
+                {tracing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ) : (
+                  <Search className="h-3 w-3" aria-hidden />
+                )}
+                {tracing ? '…' : 'trace'}
+              </button>
+            )}
+            {isFallback && (
               <button
                 onClick={() => void copyJson()}
                 className="inline-flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[9px] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
@@ -957,8 +1045,8 @@ function DebugRow({
                 )}
                 {copied ? 'copied!' : 'copy JSON'}
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

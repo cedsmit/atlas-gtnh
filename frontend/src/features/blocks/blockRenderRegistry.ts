@@ -201,7 +201,7 @@ const VANILLA_BY_ID: Record<number, BlockRenderDefinition> = {
 }
 
 // ── JSON file format ─────────────────────────────────────────────────────────
-interface RegistryJson {
+export interface RegistryJson {
   format?: number
   source?: string
   blocks: Record<string, Partial<BlockRenderDefinition>>
@@ -330,12 +330,15 @@ export class BlockRenderRegistry {
 /**
  * Build a fully resolved registry for the given world.
  *
- * Loads all src/render-rules/*.json files (bundled by Vite at build time),
- * then resolves name-keyed entries to numeric IDs via blockNames.
+ * Loads all src/render-rules/*.json files (bundled by Vite at build time) — which
+ * includes the maintainer-authored `authored.json` — then re-applies the live-fetched
+ * authored overrides (Stage 2.3) last so an in-dev "Save" wins immediately, then
+ * resolves name-keyed entries to numeric IDs via blockNames.
  * Call once when a world is loaded and store the result in a ref.
  */
 export function createResolvedRegistry(
-  blockNames?: Record<number, string>
+  blockNames?: Record<number, string>,
+  userOverrides?: RegistryJson | null
 ): BlockRenderRegistry {
   const reg = new BlockRenderRegistry()
 
@@ -346,6 +349,13 @@ export function createResolvedRegistry(
   for (const mod of Object.values(modules)) {
     reg.loadJson(mod as RegistryJson)
   }
+
+  // Authored overrides load LAST so they take precedence (byName.set overwrites;
+  // exact names beat wildcard patterns). In dev this is the live-fetched
+  // authored.json for an instant post-Save preview; the same file is also bundled
+  // via the glob above, so shipped builds get it without the fetch — loading it
+  // twice is idempotent.
+  if (userOverrides?.blocks) reg.loadJson(userOverrides)
 
   if (blockNames) reg.resolveNames(blockNames)
   return reg

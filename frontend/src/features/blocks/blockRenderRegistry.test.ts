@@ -41,3 +41,32 @@ describe('BlockRenderRegistry wildcard rules', () => {
     expect(reg.lookup(101).category).toBe('overlay')
   })
 })
+
+describe('user overrides (Stage 2.3)', () => {
+  it('a later loadJson (user override) wins over an earlier bundled rule', () => {
+    const reg = new BlockRenderRegistry()
+    // bundled rule, then the user override loaded last (as createResolvedRegistry does)
+    reg.loadJson({
+      source: 'chisel.json',
+      blocks: { 'mod:x': { category: 'solid' } },
+    } as never)
+    reg.loadJson({
+      source: 'user-overrides',
+      blocks: { 'mod:x': { category: 'transparent' } },
+    } as never)
+    reg.resolveNames({ 100: 'mod:x' })
+    expect(reg.lookup(100).category).toBe('transparent')
+    expect(reg.lookup(100).resolverSource).toBe('user-overrides')
+  })
+
+  it('a user override beats a built-in vanilla definition', () => {
+    const reg = new BlockRenderRegistry()
+    // vanilla id 2 (grass) is a built-in 'solid' + grass tint; override to ignore
+    reg.loadJson({
+      source: 'user-overrides',
+      blocks: { 'minecraft:grass': { category: 'ignore' } },
+    } as never)
+    reg.resolveNames({ 2: 'minecraft:grass' })
+    expect(reg.lookup(2).category).toBe('ignore')
+  })
+})
