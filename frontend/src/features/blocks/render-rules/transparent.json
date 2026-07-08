@@ -158,6 +158,16 @@
     },
     "chisel:glass_pane": { "category": "overlay", "alphaMode": "blend" },
     "Botania:manaGlassPane": { "category": "overlay", "alphaMode": "blend" },
-    "Botania:elfGlassPane": { "category": "overlay", "alphaMode": "blend" }
+    "Botania:elfGlassPane": { "category": "overlay", "alphaMode": "blend" },
+
+    "bartworks:BW_GlasBlocks": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "bartworks:BW_GlasBlocks2": {
+      "category": "transparent",
+      "alphaMode": "blend"
+    },
+    "RIO:skylight": { "category": "transparent", "alphaMode": "blend" }
   }
 }
