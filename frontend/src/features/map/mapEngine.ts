@@ -88,6 +88,7 @@ export class MapEngine {
   }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
+  private _heatmap: THREE.Mesh | null = null
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
    *  live (e.g. after a delete), without a full reload. Set in the constructor. */
   invalidateChunks!: (chunks: [number, number][]) => void
@@ -1483,6 +1484,27 @@ export class MapEngine {
     }
     st.forceFrame = true
   }
+
+  /**
+   * Show a per-chunk heatmap overlay (Stage 5 stats prototype) in world space, or
+   * clear it with null. Values are normalised across vmin..vmax to a colour ramp.
+   */
+  setHeatmap(data: HeatmapData | null): void {
+    const scene = this._mapScene.scene
+    if (this._heatmap) {
+      scene.remove(this._heatmap)
+      const mat = this._heatmap.material as THREE.MeshBasicMaterial
+      mat.map?.dispose()
+      mat.dispose()
+      this._heatmap.geometry.dispose()
+      this._heatmap = null
+    }
+    if (data && data.cells.length) {
+      this._heatmap = buildHeatmapMesh(data)
+      scene.add(this._heatmap)
+    }
+    this._st.forceFrame = true
+  }
 }
 
 function chunkRect(
@@ -1495,4 +1517,85 @@ function chunkRect(
     maxX: (Math.max(sel.cx0, sel.cx1) + 1) * 16,
     maxZ: (Math.max(sel.cz0, sel.cz1) + 1) * 16,
   }
+}
+
+// ── Heatmap overlay (Stage 5 stats prototype) ───────────────────────────────
+export interface HeatmapCell {
+  cx: number
+  cz: number
+  v: number
+}
+export interface HeatmapData {
+  cells: HeatmapCell[]
+  vmin: number
+  vmax: number
+}
+
+/** Build a world-space plane painting one pixel per chunk, coloured by value. */
+function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
+  let minCx = Infinity,
+    minCz = Infinity,
+    maxCx = -Infinity,
+    maxCz = -Infinity
+  for (const c of data.cells) {
+    if (c.cx < minCx) minCx = c.cx
+    if (c.cx > maxCx) maxCx = c.cx
+    if (c.cz < minCz) minCz = c.cz
+    if (c.cz > maxCz) maxCz = c.cz
+  }
+  const w = maxCx - minCx + 1
+  const h = maxCz - minCz + 1
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(w, h)
+  const range = Math.max(1, data.vmax - data.vmin)
+  for (const c of data.cells) {
+    const [r, g, b] = heatColor((c.v - data.vmin) / range)
+    const o = ((c.cz - minCz) * w + (c.cx - minCx)) * 4
+    img.data[o] = r
+    img.data[o + 1] = g
+    img.data[o + 2] = b
+    img.data[o + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.magFilter = THREE.NearestFilter
+  tex.minFilter = THREE.NearestFilter
+  tex.colorSpace = THREE.SRGBColorSpace
+
+  const geo = new THREE.PlaneGeometry(w * 16, h * 16)
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    opacity: 0.6,
+    depthTest: false,
+  })
+  const mesh = new THREE.Mesh(geo, mat)
+  mesh.position.set(
+    (minCx * 16 + (maxCx + 1) * 16) / 2,
+    -((minCz * 16 + (maxCz + 1) * 16) / 2),
+    10
+  )
+  mesh.renderOrder = 999
+  return mesh
+}
+
+/** Cool→warm ramp: blue (low) → green → yellow → red (high). */
+function heatColor(t: number): [number, number, number] {
+  const x = Math.max(0, Math.min(1, t))
+  return hslToRgb(((1 - x) * 240) / 360, 1, 0.5)
+}
+
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const k = (n: number) => (n + h * 12) % 12
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))
+  return [
+    Math.round(f(0) * 255),
+    Math.round(f(8) * 255),
+    Math.round(f(4) * 255),
+  ]
 }

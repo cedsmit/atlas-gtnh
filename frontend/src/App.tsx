@@ -21,6 +21,7 @@ import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
 import type { MapEngine } from './features/map/mapEngine'
 import { SearchPanel } from './features/search/SearchPanel'
+import { useChunkStats } from './features/search/api/chunkStats'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
@@ -60,6 +61,7 @@ export default function App() {
   const [inspectOpen, setInspectOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [heatmapOn, setHeatmapOn] = useState(false)
   // The render view (preset + overrides) is restored from localStorage on startup
   // and written back on change (Stage 3.3), so a customized view sticks across sessions.
   const [selectedPresetId, setSelectedPresetId] = useState(
@@ -90,6 +92,7 @@ export default function App() {
   // saving a view and move it when applying one.
   const [userPresets, setUserPresets] = useState(loadUserPresets)
   const engineRef = useRef<MapEngine | null>(null)
+  const chunkStats = useChunkStats(dimensionPath ?? '')
 
   function applyUserPreset(p: UserPreset) {
     setSelectedPresetId(p.presetId)
@@ -290,6 +293,39 @@ export default function App() {
     setDebugOpen(false)
   }
 
+  // Per-chunk heatmap overlay (Stage 5 stats prototype) — an independent map layer.
+  // Metric: machine/infrastructure density (GT machines + casings + tagged
+  // pipes/cables), so factories light up and natural terrain stays unpainted.
+  function handleToggleHeatmap() {
+    if (heatmapOn) {
+      setHeatmapOn(false)
+      engineRef.current?.setHeatmap(null)
+      return
+    }
+    const ids = new Set<number>(
+      registry.hiddenTaggedIds(new Set(['pipe', 'cable', 'machine']))
+    )
+    if (blockNames) {
+      for (const [id, name] of Object.entries(blockNames)) {
+        if (/gt\.blockmachines|gt\.blockcasings/i.test(name))
+          ids.add(Number(id))
+      }
+    }
+    setHeatmapOn(true)
+    chunkStats.mutate(
+      { metric: 'density', ids: [...ids] },
+      {
+        onSuccess: (d) =>
+          engineRef.current?.setHeatmap({
+            cells: d.cells,
+            vmin: d.vmin,
+            vmax: d.vmax,
+          }),
+        onError: () => setHeatmapOn(false),
+      }
+    )
+  }
+
   // ── InspectPanel: pass textureKeys for accurate source classification ──
   // We also compute the effective texture key per block-id here so InspectPanel
   // can show 'texture' only for blocks that truly have a PNG key (not just a
@@ -316,6 +352,11 @@ export default function App() {
         searchOpen={searchOpen}
         onToggleSearch={
           worldPath && dimensionPath ? handleToggleSearch : undefined
+        }
+        heatmapOn={heatmapOn}
+        heatmapLoading={chunkStats.isPending}
+        onToggleHeatmap={
+          worldPath && dimensionPath ? handleToggleHeatmap : undefined
         }
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}

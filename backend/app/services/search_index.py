@@ -11,6 +11,7 @@ DB location: ~/.atlas_gtnh/search_index.db
 import hashlib
 import logging
 import sqlite3
+import statistics
 import threading
 from contextlib import closing
 from pathlib import Path
@@ -160,3 +161,39 @@ def query_index(
         capped=capped,
         block_ids=ids,
     )
+
+
+def chunk_stats(
+    dimension_path: str, metric: str, block_ids: list[int] | None = None
+) -> list[tuple[int, int, int]]:
+    """Per-chunk (cx, cz, value) over the index, for a heatmap overlay.
+
+    metric 'variety' = distinct block types per chunk (built areas score high);
+    metric 'density' = total count of *block_ids* per chunk (where those blocks are).
+    """
+    with closing(_connect()) as conn:
+        if metric == "density" and block_ids:
+            ids = sorted({int(b) for b in block_ids if 0 < int(b) < 65536})
+            if not ids:
+                return []
+            placeholders = ",".join("?" * len(ids))
+            rows = conn.execute(
+                "SELECT cx, cz, SUM(cnt) FROM chunk_blocks "
+                f"WHERE dim = ? AND block_id IN ({placeholders}) GROUP BY cx, cz",
+                (dimension_path, *ids),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT cx, cz, COUNT(DISTINCT block_id) FROM chunk_blocks "
+                "WHERE dim = ? GROUP BY cx, cz",
+                (dimension_path,),
+            ).fetchall()
+    cells = [(int(r[0]), int(r[1]), int(r[2])) for r in rows]
+    if not cells:
+        return []
+    # Drop outlier chunks (some mods write chunks at garbage coords, e.g. ~-2^21)
+    # so the heatmap's bounds stay sane — keep those within MAX_DIST of the median.
+    max_dist = 4096  # chunks (~128 regions)
+    mcx = statistics.median(c[0] for c in cells)
+    mcz = statistics.median(c[1] for c in cells)
+    return [c for c in cells if abs(c[0] - mcx) <= max_dist and abs(c[1] - mcz) <= max_dist]

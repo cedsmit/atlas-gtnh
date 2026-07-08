@@ -18,3 +18,16 @@ class SearchBlocksResponse(BaseModel):
     hit_chunks: int  # number of matching chunks returned
     capped: bool  # true when the scan stopped at the limit (more may exist)
     block_ids: list[int]
+
+
+class ChunkStatCell(BaseModel):
+    cx: int
+    cz: int
+    v: int  # metric value for this chunk
+
+
+class ChunkStatsResponse(BaseModel):
+    metric: str
+    cells: list[ChunkStatCell]
+    vmin: int
+    vmax: int

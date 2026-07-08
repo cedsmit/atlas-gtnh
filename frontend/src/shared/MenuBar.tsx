@@ -5,8 +5,10 @@ import {
   Check,
   ChevronDown,
   ExternalLink,
+  Flame,
   FolderOpen,
   Layers,
+  Loader2,
   Mountain,
   Palette,
   Search,
@@ -52,6 +54,9 @@ interface Props {
   onToggleDebug?: () => void
   searchOpen?: boolean
   onToggleSearch?: () => void
+  heatmapOn?: boolean
+  heatmapLoading?: boolean
+  onToggleHeatmap?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
   layerOverrides?: LayerOverrides
@@ -77,6 +82,9 @@ export function MenuBar({
   onToggleDebug,
   searchOpen,
   onToggleSearch,
+  heatmapOn,
+  heatmapLoading,
+  onToggleHeatmap,
   textureFilter,
   onSetTextureFilter,
   layerOverrides,
@@ -324,6 +332,29 @@ export function MenuBar({
               >
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
                 Search
+              </button>
+            </div>
+          )}
+          {onToggleHeatmap && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleHeatmap}
+                title="Chunk heatmap — colour each chunk by block variety (prototype)"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  heatmapOn
+                    ? 'bg-zinc-800 text-amber-300'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                {heatmapLoading ? (
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                ) : (
+                  <Flame className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                Heatmap
               </button>
             </div>
           )}
