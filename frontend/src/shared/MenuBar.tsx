@@ -50,6 +50,8 @@ interface Props {
   onToggleInspect?: () => void
   debugOpen?: boolean
   onToggleDebug?: () => void
+  searchOpen?: boolean
+  onToggleSearch?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
   layerOverrides?: LayerOverrides
@@ -73,6 +75,8 @@ export function MenuBar({
   onToggleInspect,
   debugOpen,
   onToggleDebug,
+  searchOpen,
+  onToggleSearch,
   textureFilter,
   onSetTextureFilter,
   layerOverrides,
@@ -305,6 +309,22 @@ export function MenuBar({
                 <option value="smooth">Filter: smooth</option>
                 <option value="journeymap">Filter: JM</option>
               </select>
+            </div>
+          )}
+          {onToggleSearch && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleSearch}
+                title="Search for blocks and jump to them"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  searchOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Search className="h-4 w-4 shrink-0" aria-hidden />
+                Search
+              </button>
             </div>
           )}
           {onSetLayer && (

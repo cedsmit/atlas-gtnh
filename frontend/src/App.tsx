@@ -20,6 +20,7 @@ import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
 import type { MapEngine } from './features/map/mapEngine'
+import { SearchPanel } from './features/search/SearchPanel'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
@@ -58,6 +59,7 @@ export default function App() {
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
   const [inspectOpen, setInspectOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   // The render view (preset + overrides) is restored from localStorage on startup
   // and written back on change (Stage 3.3), so a customized view sticks across sessions.
   const [selectedPresetId, setSelectedPresetId] = useState(
@@ -252,6 +254,7 @@ export default function App() {
     setDimensionPath(null)
     setInspectOpen(false)
     setDebugOpen(false)
+    setSearchOpen(false)
   }
 
   function handleCloseWorld() {
@@ -261,6 +264,7 @@ export default function App() {
     setDimensionPath(null)
     setInspectOpen(false)
     setDebugOpen(false)
+    setSearchOpen(false)
   }
 
   function handleSelectDimension(dim: DimensionInfo) {
@@ -271,11 +275,19 @@ export default function App() {
   function handleToggleInspect() {
     setInspectOpen((o) => !o)
     setDebugOpen(false)
+    setSearchOpen(false)
   }
 
   function handleToggleDebug() {
     setDebugOpen((o) => !o)
     setInspectOpen(false)
+    setSearchOpen(false)
+  }
+
+  function handleToggleSearch() {
+    setSearchOpen((o) => !o)
+    setInspectOpen(false)
+    setDebugOpen(false)
   }
 
   // ── InspectPanel: pass textureKeys for accurate source classification ──
@@ -301,6 +313,10 @@ export default function App() {
         onToggleInspect={worldPath ? handleToggleInspect : undefined}
         debugOpen={debugOpen}
         onToggleDebug={worldPath ? handleToggleDebug : undefined}
+        searchOpen={searchOpen}
+        onToggleSearch={
+          worldPath && dimensionPath ? handleToggleSearch : undefined
+        }
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
         layerOverrides={layerOverrides}
@@ -413,6 +429,18 @@ export default function App() {
               worldPath={worldPath ?? undefined}
               registry={registry}
               onClose={() => setDebugOpen(false)}
+            />
+          )}
+
+          {/* Block search panel */}
+          {searchOpen && dimensionPath && blockNames && (
+            <SearchPanel
+              blockNames={blockNames}
+              dimensionPath={dimensionPath}
+              onJump={(x, z) =>
+                engineRef.current?.animateCameraTo({ cx: x, cz: z, scale: 6 })
+              }
+              onClose={() => setSearchOpen(false)}
             />
           )}
         </div>

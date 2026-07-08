@@ -516,3 +516,64 @@ def read_region_surface(
             continue
         out.append(surface)
     return out
+
+
+@dataclass
+class RawBlockHit:
+    """A chunk containing one or more of the searched block ids."""
+
+    chunk_x: int
+    chunk_z: int
+    count: int  # matching blocks in this chunk
+    x: int  # world coords of the first match (jump target / marker)
+    y: int
+    z: int
+
+
+def scan_region_for_blocks(path: Path, id_arr: _NDArr) -> list[RawBlockHit]:
+    """Find every present chunk in a region containing any id in *id_arr*.
+
+    Scans full 3-D block data (all sections, so underground matches count) via the
+    fast numpy section decode. Returns one hit per matching chunk with the match
+    count and the first match's world coordinates.
+    """
+    data = _read_region_bytes(path)
+    if len(data) < 2 * SECTOR_SIZE:
+        return []
+    out: list[RawBlockHit] = []
+    for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
+        try:
+            xpos, zpos, _biomes, raw_sections = _fast_parse_chunk(_decompress_chunk(data, offset))
+        except Exception:
+            continue
+        count = 0
+        sample: tuple[int, int, int] | None = None
+        for sec in raw_sections:
+            arrays = _section_arrays(sec)
+            if arrays is None:
+                continue
+            blocks, _meta = arrays
+            mask = np.isin(blocks, id_arr)
+            c = int(mask.sum())
+            if not c:
+                continue
+            count += c
+            if sample is None:
+                idx = int(np.argmax(mask))
+                sample = (
+                    xpos * 16 + (idx & 0xF),
+                    int(sec.get("Y", 0)) * 16 + (idx >> 8),
+                    zpos * 16 + ((idx >> 4) & 0xF),
+                )
+        if count and sample is not None:
+            out.append(
+                RawBlockHit(
+                    chunk_x=xpos,
+                    chunk_z=zpos,
+                    count=count,
+                    x=sample[0],
+                    y=sample[1],
+                    z=sample[2],
+                )
+            )
+    return out

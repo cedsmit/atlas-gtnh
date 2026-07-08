@@ -75,6 +75,16 @@ export class MapEngine {
   private _st!: {
     cam: { cx: number; cz: number; scale: number }
     forceFrame: boolean
+    camAnim: {
+      fromCx: number
+      fromCz: number
+      fromScale: number
+      toCx: number
+      toCz: number
+      toScale: number
+      start: number
+      duration: number
+    } | null
   }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
@@ -123,6 +133,17 @@ export class MapEngine {
 
     const st = {
       cam: { cx: 0, cz: 0, scale: 1 },
+      // Active camera fly-to (search jump / bookmark); the loop interpolates it.
+      camAnim: null as null | {
+        fromCx: number
+        fromCz: number
+        fromScale: number
+        toCx: number
+        toCz: number
+        toScale: number
+        start: number
+        duration: number
+      },
       cache: new Map<string, 'empty' | 'error' | THREE.Mesh>(),
       dataCache: new Map<string, ChunkData>(),
       texVersion: 0,
@@ -957,6 +978,26 @@ export class MapEngine {
     }
 
     function loop() {
+      // Advance an active camera fly-to (search jump / bookmark) before reading
+      // the camera, so this frame renders the interpolated position.
+      if (st.camAnim) {
+        const a = st.camAnim
+        const t = Math.min(1, (performance.now() - a.start) / a.duration)
+        const e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2 // ease-in-out
+        st.cam.cx = a.fromCx + (a.toCx - a.fromCx) * e
+        st.cam.cz = a.fromCz + (a.toCz - a.fromCz) * e
+        // interpolate zoom in log space so it reads as a steady glide
+        st.cam.scale = a.fromScale * Math.pow(a.toScale / a.fromScale, e)
+        if (t >= 1) {
+          st.cam.cx = a.toCx
+          st.cam.cz = a.toCz
+          st.cam.scale = a.toScale
+          st.camAnim = null
+        }
+        updateCam()
+        st.forceFrame = true
+      }
+
       const { cx, cz, scale } = st.cam
       const halfW = W / (2 * scale),
         halfH = H / (2 * scale)
@@ -1414,9 +1455,32 @@ export class MapEngine {
    */
   setCamera(cam: { cx: number; cz: number; scale: number }): void {
     const st = this._st
+    st.camAnim = null // an instant set cancels any in-flight fly-to
     st.cam.cx = cam.cx
     st.cam.cz = cam.cz
     st.cam.scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale))
+    st.forceFrame = true
+  }
+
+  /**
+   * Smoothly fly the camera to a centre + zoom over ~`duration` ms (search jump).
+   * Cancels any in-flight fly-to; scale is clamped to the engine's zoom range.
+   */
+  animateCameraTo(
+    cam: { cx: number; cz: number; scale: number },
+    duration = 500
+  ): void {
+    const st = this._st
+    st.camAnim = {
+      fromCx: st.cam.cx,
+      fromCz: st.cam.cz,
+      fromScale: st.cam.scale,
+      toCx: cam.cx,
+      toCz: cam.cz,
+      toScale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale)),
+      start: performance.now(),
+      duration,
+    }
     st.forceFrame = true
   }
 }
