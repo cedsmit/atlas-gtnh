@@ -518,62 +518,46 @@ def read_region_surface(
     return out
 
 
-@dataclass
-class RawBlockHit:
-    """A chunk containing one or more of the searched block ids."""
+def scan_region_all_blocks(
+    path: Path,
+) -> list[tuple[int, int, int, int, int, int, int]]:
+    """Index rows for every non-air block in a region — one per (chunk, block id).
 
-    chunk_x: int
-    chunk_z: int
-    count: int  # matching blocks in this chunk
-    x: int  # world coords of the first match (jump target / marker)
-    y: int
-    z: int
-
-
-def scan_region_for_blocks(path: Path, id_arr: _NDArr) -> list[RawBlockHit]:
-    """Find every present chunk in a region containing any id in *id_arr*.
-
-    Scans full 3-D block data (all sections, so underground matches count) via the
-    fast numpy section decode. Returns one hit per matching chunk with the match
-    count and the first match's world coordinates.
+    Returns (chunk_x, chunk_z, block_id, count, sx, sy, sz): the per-chunk count of
+    each block id plus the world coords of its first occurrence. One numpy pass per
+    section (unique + first-index + counts). Feeds the persistent search index.
     """
     data = _read_region_bytes(path)
     if len(data) < 2 * SECTOR_SIZE:
         return []
-    out: list[RawBlockHit] = []
+    out: list[tuple[int, int, int, int, int, int, int]] = []
     for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
         try:
             xpos, zpos, _biomes, raw_sections = _fast_parse_chunk(_decompress_chunk(data, offset))
         except Exception:
             continue
-        count = 0
-        sample: tuple[int, int, int] | None = None
+        counts: dict[int, int] = {}
+        sample: dict[int, tuple[int, int, int]] = {}
         for sec in raw_sections:
             arrays = _section_arrays(sec)
             if arrays is None:
                 continue
             blocks, _meta = arrays
-            mask = np.isin(blocks, id_arr)
-            c = int(mask.sum())
-            if not c:
-                continue
-            count += c
-            if sample is None:
-                idx = int(np.argmax(mask))
-                sample = (
-                    xpos * 16 + (idx & 0xF),
-                    int(sec.get("Y", 0)) * 16 + (idx >> 8),
-                    zpos * 16 + ((idx >> 4) & 0xF),
-                )
-        if count and sample is not None:
-            out.append(
-                RawBlockHit(
-                    chunk_x=xpos,
-                    chunk_z=zpos,
-                    count=count,
-                    x=sample[0],
-                    y=sample[1],
-                    z=sample[2],
-                )
-            )
+            secy = int(sec.get("Y", 0))
+            uniq, first_idx, cnts = np.unique(blocks, return_index=True, return_counts=True)
+            for bid, fidx, cnt in zip(
+                uniq.tolist(), first_idx.tolist(), cnts.tolist(), strict=True
+            ):
+                if bid == 0:
+                    continue
+                counts[bid] = counts.get(bid, 0) + int(cnt)
+                if bid not in sample:
+                    sample[bid] = (
+                        xpos * 16 + (fidx & 0xF),
+                        secy * 16 + (fidx >> 8),
+                        zpos * 16 + ((fidx >> 4) & 0xF),
+                    )
+        for bid, cnt in counts.items():
+            sx, sy, sz = sample[bid]
+            out.append((xpos, zpos, bid, cnt, sx, sy, sz))
     return out
