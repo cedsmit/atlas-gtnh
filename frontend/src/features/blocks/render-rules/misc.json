@@ -23,6 +23,7 @@
     "ThaumicHorizons:lightSolar": { "category": "ignore" },
     "witchery:light": { "category": "ignore" },
     "etfuturum:light": { "category": "ignore" },
+    "etfuturum:cornflower": { "category": "overlay" },
     "DraconicEvolution:invisibleMultiblock": { "category": "ignore" },
     "GalacticraftMars:tile.telepadFake": { "category": "ignore" },
     "GalacticraftAmunRa:tile.blockFake": { "category": "ignore" },
@@ -87,6 +88,7 @@
     "Railcraft:brick": { "category": "solid" },
 
     "Natura:BerryBush": { "category": "overlay", "blockTags": ["flower"] },
+    "Natura:Bluebells": { "category": "overlay" },
     "Natura:N Crops": { "category": "overlay" },
     "Natura:Overworld Sapling": {
       "category": "overlay",
