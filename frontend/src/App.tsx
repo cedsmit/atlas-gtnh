@@ -19,6 +19,7 @@ import { LoadingScreen, type LoadingStage } from './shared/LoadingScreen'
 import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
+import { GridLabels } from './features/map/GridLabels'
 import type { MapEngine } from './features/map/mapEngine'
 import { SearchPanel } from './features/search/SearchPanel'
 import { useChunkStats } from './features/search/api/chunkStats'
@@ -62,6 +63,7 @@ export default function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [heatmapOn, setHeatmapOn] = useState(false)
+  const [gridOn, setGridOn] = useState(false)
   // The render view (preset + overrides) is restored from localStorage on startup
   // and written back on change (Stage 3.3), so a customized view sticks across sessions.
   const [selectedPresetId, setSelectedPresetId] = useState(
@@ -326,6 +328,13 @@ export default function App() {
     )
   }
 
+  // Chunk/region reference grid + coordinate labels (Stage 5).
+  function handleToggleGrid() {
+    const next = !gridOn
+    setGridOn(next)
+    engineRef.current?.setGrid(next)
+  }
+
   // ── InspectPanel: pass textureKeys for accurate source classification ──
   // We also compute the effective texture key per block-id here so InspectPanel
   // can show 'texture' only for blocks that truly have a PNG key (not just a
@@ -358,6 +367,8 @@ export default function App() {
         onToggleHeatmap={
           worldPath && dimensionPath ? handleToggleHeatmap : undefined
         }
+        gridOn={gridOn}
+        onToggleGrid={worldPath && dimensionPath ? handleToggleGrid : undefined}
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
         layerOverrides={layerOverrides}
@@ -445,6 +456,7 @@ export default function App() {
               debugMode={debugOpen}
               engineRef={engineRef}
             />
+            {gridOn && <GridLabels engineRef={engineRef} />}
             <DumpMismatchBanner worldPath={worldPath} />
           </div>
 

@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Flame,
   FolderOpen,
+  Grid3x3,
   Layers,
   Loader2,
   Mountain,
@@ -57,6 +58,8 @@ interface Props {
   heatmapOn?: boolean
   heatmapLoading?: boolean
   onToggleHeatmap?: () => void
+  gridOn?: boolean
+  onToggleGrid?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
   layerOverrides?: LayerOverrides
@@ -85,6 +88,8 @@ export function MenuBar({
   heatmapOn,
   heatmapLoading,
   onToggleHeatmap,
+  gridOn,
+  onToggleGrid,
   textureFilter,
   onSetTextureFilter,
   layerOverrides,
@@ -355,6 +360,22 @@ export function MenuBar({
                   <Flame className="h-4 w-4 shrink-0" aria-hidden />
                 )}
                 Heatmap
+              </button>
+            </div>
+          )}
+          {onToggleGrid && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleGrid}
+                title="Chunk/region grid + coordinate labels"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  gridOn
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Grid3x3 className="h-4 w-4 shrink-0" aria-hidden />
+                Grid
               </button>
             </div>
           )}

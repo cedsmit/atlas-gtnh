@@ -143,6 +143,13 @@ export class MapScene {
     MapScene.place(this.previewLine, rect)
   }
 
+  /** Brighten the region/chunk reference grid when the user turns it on; the
+   *  default is a subtle always-on grid. */
+  setGridProminent(on: boolean): void {
+    this.regionGridMat.color.setHex(on ? 0x5566aa : 0x2e2e48)
+    this.chunkGridMat.color.setHex(on ? 0x40405f : 0x1c1c2e)
+  }
+
   get domElement(): HTMLCanvasElement {
     return this.renderer.domElement
   }

@@ -1505,6 +1505,12 @@ export class MapEngine {
     }
     this._st.forceFrame = true
   }
+
+  /** Brighten the reference grid (paired with the coordinate-label overlay). */
+  setGrid(on: boolean): void {
+    this._mapScene.setGridProminent(on)
+    this._st.forceFrame = true
+  }
 }
 
 function chunkRect(
