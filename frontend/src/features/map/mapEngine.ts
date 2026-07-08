@@ -1550,9 +1550,11 @@ function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
   canvas.height = h
   const ctx = canvas.getContext('2d')!
   const img = ctx.createImageData(w, h)
-  const range = Math.max(1, data.vmax - data.vmin)
+  // Log scale so the whole cluster reads warm rather than one dense core chunk
+  // maxing out the ramp and leaving the rest blue.
+  const logMax = Math.log1p(Math.max(1, data.vmax - data.vmin))
   for (const c of data.cells) {
-    const [r, g, b] = heatColor((c.v - data.vmin) / range)
+    const [r, g, b] = heatColor(Math.log1p(c.v - data.vmin) / logMax)
     const o = ((c.cz - minCz) * w + (c.cx - minCx)) * 4
     img.data[o] = r
     img.data[o + 1] = g
