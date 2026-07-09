@@ -89,6 +89,7 @@
 
     "Natura:BerryBush": { "category": "overlay", "blockTags": ["flower"] },
     "Natura:Bluebells": { "category": "overlay" },
+    "thaumicbases:ashroom": { "category": "overlay" },
     "Natura:N Crops": { "category": "overlay" },
     "Natura:Overworld Sapling": {
       "category": "overlay",
