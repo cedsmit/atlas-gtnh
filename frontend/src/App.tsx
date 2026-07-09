@@ -29,6 +29,7 @@ import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
 import { useRenderOverrides } from './features/blocks/api/renderOverrides'
 import { columnTally } from './features/map/columnTally'
 import { VIEWER_CONFIG } from './features/map/viewerConfig'
+import { pipeSystemName } from './features/blocks/pipeSystems'
 import {
   type ElevationMode,
   type ContourMode,
@@ -65,6 +66,13 @@ export default function App() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [heatmapOn, setHeatmapOn] = useState(false)
   const [gridOn, setGridOn] = useState(false)
+  const [infraViewOn, setInfraViewOn] = useState(false)
+  // Infrastructure-View systems toggled off (empty = show all). Session-only.
+  const [hiddenPipeSystems, setHiddenPipeSystems] = useState<Set<string>>(
+    () => new Set()
+  )
+  // Include cables in the Infra network (off by default — cabling is noisiest).
+  const [showInfraCables, setShowInfraCables] = useState(false)
   // The render view (preset + overrides) is restored from localStorage on startup
   // and written back on change (Stage 3.3), so a customized view sticks across sessions.
   const [selectedPresetId, setSelectedPresetId] = useState(
@@ -163,12 +171,23 @@ export default function App() {
       elevationMode,
       elevationStrength,
       contourMode,
+      infraView: infraViewOn,
+      hiddenPipeSystems,
+      showCables: showInfraCables,
       textureFilter:
         textureFilterOverride === 'preset'
           ? preset.textureFilter
           : textureFilterOverride,
     }
-  }, [preset, elevOverride, textureFilterOverride, layerOverrides])
+  }, [
+    preset,
+    elevOverride,
+    textureFilterOverride,
+    layerOverrides,
+    infraViewOn,
+    hiddenPipeSystems,
+    showInfraCables,
+  ])
 
   // ── Texture preloading ──────────────────────────────────────────────────
   // Only preload textures for blocks registered in this world — not all mod textures.
@@ -336,6 +355,36 @@ export default function App() {
     engineRef.current?.setGrid(next)
   }
 
+  // Infrastructure View (Stage 5): draw pipe/cable runs as a connected network.
+  // It's a render-config flag, so the map re-renders chunks when it flips.
+  function handleToggleInfra() {
+    setInfraViewOn((o) => !o)
+  }
+
+  // Pipe/cable systems present in this world (by mod), for the Infra per-system
+  // filter — derived from the pipe/cable-tagged blocks in the registry.
+  const pipeSystems = useMemo(() => {
+    if (!blockNames) return []
+    const set = new Set<string>()
+    for (const id of registry.hiddenTaggedIds(new Set(['pipe', 'cable']))) {
+      set.add(pipeSystemName(blockNames[id]))
+    }
+    return [...set].sort()
+  }, [registry, blockNames])
+
+  function handleToggleInfraSystem(system: string, show: boolean) {
+    setHiddenPipeSystems((prev) => {
+      const next = new Set(prev)
+      if (show) next.delete(system)
+      else next.add(system)
+      return next
+    })
+  }
+
+  function handleToggleInfraCables() {
+    setShowInfraCables((o) => !o)
+  }
+
   // Paint the map highlight over the exact blocks the current search matched
   // (Stage 5). Stable so the SearchPanel effect driving it doesn't re-fire.
   const handleSearchHighlight = useCallback((columns: BlockColumn[] | null) => {
@@ -376,6 +425,13 @@ export default function App() {
         }
         gridOn={gridOn}
         onToggleGrid={worldPath && dimensionPath ? handleToggleGrid : undefined}
+        infraViewOn={infraViewOn}
+        onToggleInfra={worldPath ? handleToggleInfra : undefined}
+        pipeSystems={pipeSystems}
+        hiddenPipeSystems={hiddenPipeSystems}
+        onToggleInfraSystem={handleToggleInfraSystem}
+        showInfraCables={showInfraCables}
+        onToggleInfraCables={handleToggleInfraCables}
         textureFilter={textureFilterOverride}
         onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
         layerOverrides={layerOverrides}

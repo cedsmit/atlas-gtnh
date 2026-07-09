@@ -23,10 +23,12 @@ import { onTextureLoad } from '../textures/textureLoader'
 import {
   canvasDiagnostics,
   computeEdgeHeights,
+  computeEdgePipes,
   makeChunkTexture,
   renderChunkImage,
   upscaleCanvas,
   type NeighborHeights,
+  type NeighborPipes,
 } from './chunkTileRenderer'
 import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
 import { showBlockInspector } from './blockInspector'
@@ -368,6 +370,25 @@ export class MapEngine {
       }
     }
 
+    // Pipe/cable presence of the four adjacent chunks' facing edges (when their
+    // data is cached), so Infrastructure-View network connectors join across
+    // chunk borders. Only computed when infra view is on (see the call sites).
+    function neighborPipesFor(mcx: number, mcz: number): NeighborPipes {
+      const reg = registryRef.current
+      const cfg = configRef.current
+      const names = blockNamesRef.current
+      const n = st.dataCache.get(`${mcx},${mcz - 1}`)
+      const s = st.dataCache.get(`${mcx},${mcz + 1}`)
+      const w = st.dataCache.get(`${mcx - 1},${mcz}`)
+      const e = st.dataCache.get(`${mcx + 1},${mcz}`)
+      return {
+        n: n ? computeEdgePipes(n, 'n', reg, cfg, names) : null,
+        s: s ? computeEdgePipes(s, 's', reg, cfg, names) : null,
+        w: w ? computeEdgePipes(w, 'w', reg, cfg, names) : null,
+        e: e ? computeEdgePipes(e, 'e', reg, cfg, names) : null,
+      }
+    }
+
     // Mark already-rendered neighbors of a freshly-arrived chunk for a shading
     // re-render (their shared edge was drawn without this chunk's heights).
     // Only neighbors with cached block data are marked — bitmap-restored tiles
@@ -434,7 +455,8 @@ export class MapEngine {
         true,
         debugModeRef.current,
         blockNamesRef.current,
-        neighborHeightsFor(mcx, mcz)
+        neighborHeightsFor(mcx, mcz),
+        configRef.current.infraView ? neighborPipesFor(mcx, mcz) : undefined
       )
       textureDebugStore.addChunkStats(stats)
 
@@ -1146,7 +1168,10 @@ export class MapEngine {
               false,
               debugModeRef.current,
               blockNamesRef.current,
-              neighborHeightsFor(parseInt(rmxs), parseInt(rmzs))
+              neighborHeightsFor(parseInt(rmxs), parseInt(rmzs)),
+              configRef.current.infraView
+                ? neighborPipesFor(parseInt(rmxs), parseInt(rmzs))
+                : undefined
             )
             textureDebugStore.addChunkStats(reStats)
             if (debugModeRef.current) {

@@ -15,6 +15,7 @@ import {
   Search,
   Star,
   TriangleAlert,
+  Waypoints,
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -60,6 +61,13 @@ interface Props {
   onToggleHeatmap?: () => void
   gridOn?: boolean
   onToggleGrid?: () => void
+  infraViewOn?: boolean
+  onToggleInfra?: () => void
+  pipeSystems?: string[]
+  hiddenPipeSystems?: ReadonlySet<string>
+  onToggleInfraSystem?: (system: string, show: boolean) => void
+  showInfraCables?: boolean
+  onToggleInfraCables?: () => void
   textureFilter?: 'preset' | TextureFilter
   onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
   layerOverrides?: LayerOverrides
@@ -90,6 +98,13 @@ export function MenuBar({
   onToggleHeatmap,
   gridOn,
   onToggleGrid,
+  infraViewOn,
+  onToggleInfra,
+  pipeSystems,
+  hiddenPipeSystems,
+  onToggleInfraSystem,
+  showInfraCables,
+  onToggleInfraCables,
   textureFilter,
   onSetTextureFilter,
   layerOverrides,
@@ -103,6 +118,7 @@ export function MenuBar({
   const [fileOpen, setFileOpen] = useState(false)
   const [debugMenuOpen, setDebugMenuOpen] = useState(false)
   const [layersMenuOpen, setLayersMenuOpen] = useState(false)
+  const [infraMenuOpen, setInfraMenuOpen] = useState(false)
   const [presetsMenuOpen, setPresetsMenuOpen] = useState(false)
   const [newPresetName, setNewPresetName] = useState('')
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
@@ -110,6 +126,7 @@ export function MenuBar({
   const menuRef = useRef<HTMLDivElement>(null)
   const debugMenuRef = useRef<HTMLDivElement>(null)
   const layersMenuRef = useRef<HTMLDivElement>(null)
+  const infraMenuRef = useRef<HTMLDivElement>(null)
   const presetsMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -127,6 +144,9 @@ export function MenuBar({
       }
       if (layersMenuRef.current && !layersMenuRef.current.contains(target)) {
         setLayersMenuOpen(false)
+      }
+      if (infraMenuRef.current && !infraMenuRef.current.contains(target)) {
+        setInfraMenuOpen(false)
       }
       if (presetsMenuRef.current && !presetsMenuRef.current.contains(target)) {
         setPresetsMenuOpen(false)
@@ -377,6 +397,93 @@ export function MenuBar({
                 <Grid3x3 className="h-4 w-4 shrink-0" aria-hidden />
                 Grid
               </button>
+            </div>
+          )}
+          {onToggleInfra && (
+            <div
+              ref={infraMenuRef}
+              className="relative flex items-stretch border-l border-zinc-800"
+            >
+              <button
+                onClick={onToggleInfra}
+                title="Infrastructure view — draw pipe/cable runs as a connected network (zoom in)"
+                className={`flex items-center gap-1.5 text-sm transition-colors ${
+                  infraViewOn && pipeSystems && pipeSystems.length > 0
+                    ? 'pl-4 pr-2'
+                    : 'px-4'
+                } ${
+                  infraViewOn
+                    ? 'bg-zinc-800 text-cyan-300'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Waypoints className="h-4 w-4 shrink-0" aria-hidden />
+                Infra
+              </button>
+              {infraViewOn &&
+                onToggleInfraSystem &&
+                pipeSystems &&
+                pipeSystems.length > 0 && (
+                  <button
+                    onClick={() => setInfraMenuOpen((o) => !o)}
+                    title="Choose which pipe/cable systems to show"
+                    className={`flex items-center bg-zinc-800 pr-2.5 text-sm transition-colors ${
+                      infraMenuOpen
+                        ? 'text-cyan-300'
+                        : 'text-cyan-300/70 hover:text-cyan-200'
+                    }`}
+                  >
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  </button>
+                )}
+
+              {infraMenuOpen && onToggleInfraSystem && pipeSystems && (
+                <div className="absolute right-0 top-full z-50 min-w-52 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+                  <div className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                    Systems
+                  </div>
+                  {pipeSystems.map((sys) => {
+                    const visible = !hiddenPipeSystems?.has(sys)
+                    return (
+                      <Item
+                        key={sys}
+                        onClick={() => onToggleInfraSystem(sys, !visible)}
+                      >
+                        <span className="flex w-full items-center gap-1.5">
+                          {sys}
+                          {visible && (
+                            <Check
+                              className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                              aria-hidden
+                            />
+                          )}
+                        </span>
+                      </Item>
+                    )
+                  })}
+                  {onToggleInfraCables && (
+                    <>
+                      <Separator />
+                      <Item onClick={onToggleInfraCables}>
+                        <span className="flex w-full items-center gap-1.5">
+                          Cables
+                          <span className="ml-auto flex items-center gap-1.5">
+                            <span className="text-[10px] text-zinc-500">
+                              power / data
+                            </span>
+                            {showInfraCables && (
+                              <Check
+                                className="h-3.5 w-3.5 shrink-0 text-emerald-400"
+                                aria-hidden
+                              />
+                            )}
+                          </span>
+                        </span>
+                      </Item>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {onSetLayer && (

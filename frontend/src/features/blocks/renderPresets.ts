@@ -68,6 +68,16 @@ export interface RenderConfig {
   // When true the zoomed-out overview keeps plants (a future toggle will render
   // them as a highlight); when false plants are dropped so the ground shows.
   highlightPlants: boolean
+  // Infrastructure View: draw pipe/cable runs as a connected network (centre
+  // nodes + arms) over the revealed terrain, instead of isolated blocks. Detailed
+  // (chunk-tile) view only; the overview is unaffected. (Stage 5.)
+  infraView: boolean
+  // Infrastructure-View systems (friendly mod names, see pipeSystems.ts) toggled
+  // OFF; empty = show every pipe/cable system. Only consulted when infraView.
+  hiddenPipeSystems: ReadonlySet<string>
+  // Include power/data cables in the network. Off by default — cabling is the
+  // noisiest infrastructure, so the view shows item/fluid pipes first.
+  showCables: boolean
   showFallbackMagenta: boolean
   textureFilter: TextureFilter
 }
@@ -374,6 +384,10 @@ export function presetToConfig(
     useMarkers: preset.showCables,
     // Default off: plants are dropped from the overview so the ground shows.
     highlightPlants: overrides.highlightPlants ?? false,
+    // Off by default; toggled per-session from the menu bar (see App).
+    infraView: false,
+    hiddenPipeSystems: new Set(),
+    showCables: false,
     showFallbackMagenta: preset.showFallbackMagenta,
     textureFilter: overrides.textureFilter ?? preset.textureFilter,
   }

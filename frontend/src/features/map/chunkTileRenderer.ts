@@ -23,6 +23,7 @@ import type {
 import { columnTally } from './columnTally'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
 import { isTagHidden, shouldShowOverlay } from '../blocks/renderPresets'
+import { pipeSystemName } from '../blocks/pipeSystems'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import { getTexture } from '../textures/textureLoader'
 import { averageTextureColor } from '../textures/textureAverage'
@@ -64,6 +65,46 @@ export interface NeighborHeights {
   e?: Int16Array | null
 }
 
+// Cross-chunk pipe/cable presence of the four adjacent chunks' facing edge rows,
+// so the Infrastructure View's network connectors join across chunk borders.
+// Indexed like NeighborHeights (n/s by x, w/e by z); 1 = edge cell is a pipe/cable.
+export interface NeighborPipes {
+  n?: Uint8Array | null
+  s?: Uint8Array | null
+  w?: Uint8Array | null
+  e?: Uint8Array | null
+}
+
+/** True when a block carries the pipe or cable tag (Infrastructure View). */
+function isPipeOrCable(def: Pick<ResolvedDefinition, 'blockTags'>): boolean {
+  const tags = def.blockTags
+  if (!tags) return false
+  for (const tag of tags) if (tag === 'pipe' || tag === 'cable') return true
+  return false
+}
+
+/** True when a block carries the cable tag (power/data cables, vs item pipes). */
+function isCableTagged(def: Pick<ResolvedDefinition, 'blockTags'>): boolean {
+  const tags = def.blockTags
+  if (!tags) return false
+  for (const tag of tags) if (tag === 'cable') return true
+  return false
+}
+
+/**
+ * Whether a pipe/cable block should appear in the Infrastructure View network:
+ * its system isn't toggled off, and — for cables — showCables is on (cables are
+ * hidden by default, since power/data cabling is the noisiest).
+ */
+function isPipeVisible(
+  def: Pick<ResolvedDefinition, 'blockTags'>,
+  name: string | undefined,
+  config: Pick<RenderConfig, 'hiddenPipeSystems' | 'showCables'>
+): boolean {
+  if (isCableTagged(def) && !config.showCables) return false
+  return !config.hiddenPipeSystems.has(pipeSystemName(name))
+}
+
 /**
  * Compute the 16 terrain heights of the edge row of *data* that faces a chunk
  * on the given *side* (side = where the RENDERED chunk sits relative to this
@@ -98,6 +139,54 @@ export function computeEdgeHeights(
         if (isTagHidden(def, config)) continue // hidden layer (pipes/cables/…)
         out[j] = section.y * 16 + y
         break scan
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Pipe/cable presence along the edge row of *data* facing the given side — the
+ * Infrastructure-View analogue of computeEdgeHeights. Emits 1 where the facing
+ * edge column's surface block (first renderable going down, mirroring the base
+ * scan's pipe capture) is pipe/cable-tagged, so network connectors join across
+ * chunk borders instead of breaking at every 16-block seam.
+ */
+export function computeEdgePipes(
+  data: ChunkData,
+  side: 'n' | 's' | 'w' | 'e',
+  registry: BlockRenderRegistry,
+  config: RenderConfig,
+  blockNames: Record<number, string> | undefined
+): Uint8Array {
+  const sections = [...data.sections].sort((a, b) => b.y - a.y)
+  const out = new Uint8Array(16)
+
+  for (let j = 0; j < 16; j++) {
+    const x = side === 'n' || side === 's' ? j : side === 'w' ? 15 : 0
+    const z = side === 'w' || side === 'e' ? j : side === 'n' ? 15 : 0
+
+    scan: for (const section of sections) {
+      for (let y = 15; y >= 0; y--) {
+        const idx = (y << 8) | (z << 4) | x
+        const id = section.blocks[idx]
+        if (id === 0) continue
+        const def = registry.lookup(id, section.data[idx])
+        if (def.category === 'ignore') continue
+        // Pipe/cable first (solid OR overlay), mirroring the base scan's capture.
+        if (isPipeOrCable(def)) {
+          // A hidden system's / hidden-cable pipe doesn't join the network —
+          // keep scanning past it, exactly like the base scan.
+          if (isPipeVisible(def, blockNames?.[id], config)) {
+            out[j] = 1
+            break scan
+          }
+          continue
+        }
+        if (def.category === 'overlay') continue // non-pipe overlay: not terrain
+        if (config.foliageMode === 'hidden' && def.tint === 'foliage') continue
+        if (isTagHidden(def, config)) continue // hidden non-pipe solid — scan on
+        break scan // terrain: not a pipe
       }
     }
   }
@@ -203,7 +292,8 @@ export function renderChunkImage(
   recordDebug: boolean, // only true on first render to avoid double-counting
   debugMode: boolean, // controls textureDebugStore recording
   blockNames: Record<number, string> | undefined,
-  neighbors?: NeighborHeights
+  neighbors?: NeighborHeights,
+  neighborPipes?: NeighborPipes
 ): { canvas: HTMLCanvasElement; stats: ChunkRenderStats } {
   let drawImage = 0,
     fillRect = 0,
@@ -237,6 +327,11 @@ export function renderChunkImage(
   const baseY = new Int16Array(256).fill(-1)
   const baseId = new Uint16Array(256)
   const baseMeta = new Uint8Array(256)
+  // Infrastructure View: the surface pipe/cable per column (0 = none). Captured
+  // while scanning so the terrain beneath still renders as the base; the network
+  // is drawn on top in a final pass.
+  const pipeId = new Uint16Array(256)
+  const pipeMeta = new Uint8Array(256)
   const floorY = new Int16Array(256).fill(-1)
   const floorId = new Uint16Array(256) // seabed block under water
   const floorMeta = new Uint8Array(256)
@@ -267,6 +362,21 @@ export function renderChunkImage(
           if (id === 0) continue
           const def = registry.lookup(id, section.data[idx])
           if (def.category === 'ignore') continue
+
+          // Infrastructure View: capture the topmost pipe/cable — solid OR overlay
+          // (e.g. AE2's cable bus) — into the network and skip it here, so the
+          // terrain beneath renders and it isn't also drawn as a block/marker.
+          // Cables are excluded unless showCables; a system toggled off is skipped.
+          if (config.infraView && !foundBase && isPipeOrCable(def)) {
+            if (
+              pipeId[i] === 0 &&
+              isPipeVisible(def, blockNames?.[id], config)
+            ) {
+              pipeId[i] = id
+              pipeMeta[i] = section.data[idx]
+            }
+            continue
+          }
           const absY = section.y * 16 + y
 
           if (!foundBase) {
@@ -791,10 +901,160 @@ export function renderChunkImage(
     }
   }
 
+  // ── Infrastructure View: draw the pipe/cable network on top of the terrain ──
+  if (config.infraView) {
+    drawPipeNetwork(
+      ctx,
+      pipeId,
+      pipeMeta,
+      neighborPipes,
+      colorMap,
+      textureKeys,
+      metaTextureKeys
+    )
+  }
+
   return {
     canvas: offscreen,
     stats: { drawImage, fillRect, missingTexKey, failedTexLoad },
   }
+}
+
+// ── Infrastructure View network ──────────────────────────────────────────────
+// Draw pipe/cable runs as a connected network: a centre node per pipe column plus
+// an arm toward each orthogonally-adjacent pipe (within-chunk via the presence
+// grid, across chunk borders via NeighborPipes). Top-down, so a vertical run
+// collapses to a lone node. Three layered widths per cell — a dark casing, the
+// pipe's own colour, then a bright core sheen — give a conduit look that reads
+// against any terrain, with no seams between cells (each width drawn in its own
+// pass over all cells).
+const PIPE_BODY = 6 // px, pipe line / node width (CELL = 16)
+const PIPE_CASING = 8 // px, dark outline (1 px each side of the body)
+const PIPE_CORE = 2 // px, bright centre sheen
+
+interface PipeConn {
+  n: boolean
+  s: boolean
+  w: boolean
+  e: boolean
+}
+
+function drawPipeShape(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  z: number,
+  wd: number,
+  conn: PipeConn
+): void {
+  const px = x * CELL
+  const pz = z * CELL
+  const half = CELL / 2
+  const off = (CELL - wd) / 2
+  ctx.fillRect(px + off, pz + off, wd, wd) // centre node
+  if (conn.n) ctx.fillRect(px + off, pz, wd, half) // arm to the cell edge
+  if (conn.s) ctx.fillRect(px + off, pz + half, wd, half)
+  if (conn.w) ctx.fillRect(px, pz + off, half, wd)
+  if (conn.e) ctx.fillRect(px + half, pz + off, half, wd)
+}
+
+/** Blend a colour halfway to white — the network's centre sheen. */
+function lightenColor(
+  c: readonly [number, number, number]
+): [number, number, number] {
+  return [
+    Math.round(c[0] + (255 - c[0]) * 0.5),
+    Math.round(c[1] + (255 - c[1]) * 0.5),
+    Math.round(c[2] + (255 - c[2]) * 0.5),
+  ]
+}
+
+interface PipeCell {
+  x: number
+  z: number
+  conn: PipeConn
+  color: readonly [number, number, number]
+}
+
+function drawPipeNetwork(
+  ctx: CanvasRenderingContext2D,
+  pipeId: Uint16Array,
+  pipeMeta: Uint8Array,
+  neighbors: NeighborPipes | undefined,
+  colorMap: BlockColorMap | undefined,
+  textureKeys: Record<number, string> | undefined,
+  metaTextureKeys: Record<string, string> | undefined
+): void {
+  // Draw over the finished terrain in a clean default state.
+  ctx.globalAlpha = 1
+  ctx.filter = 'none'
+  ctx.globalCompositeOperation = 'source-over'
+
+  const has = (x: number, z: number): boolean => {
+    if (x < 0) return neighbors?.w?.[z] === 1
+    if (x > 15) return neighbors?.e?.[z] === 1
+    if (z < 0) return neighbors?.n?.[x] === 1
+    if (z > 15) return neighbors?.s?.[x] === 1
+    return pipeId[z * 16 + x] !== 0
+  }
+
+  // Collect pipe cells once, with their connections + resolved colour.
+  const cells: PipeCell[] = []
+  for (let z = 0; z < 16; z++) {
+    for (let x = 0; x < 16; x++) {
+      const i = z * 16 + x
+      if (pipeId[i] === 0) continue
+      cells.push({
+        x,
+        z,
+        conn: {
+          n: has(x, z - 1),
+          s: has(x, z + 1),
+          w: has(x - 1, z),
+          e: has(x + 1, z),
+        },
+        color: resolvePipeColor(
+          pipeId[i],
+          pipeMeta[i],
+          colorMap,
+          textureKeys,
+          metaTextureKeys
+        ),
+      })
+    }
+  }
+
+  // Layer by width so cells never seam: casing → body → core.
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  for (const c of cells) drawPipeShape(ctx, c.x, c.z, PIPE_CASING, c.conn)
+  for (const c of cells) {
+    ctx.fillStyle = `rgb(${c.color[0]},${c.color[1]},${c.color[2]})`
+    drawPipeShape(ctx, c.x, c.z, PIPE_BODY, c.conn)
+  }
+  for (const c of cells) {
+    const [r, g, b] = lightenColor(c.color)
+    ctx.fillStyle = `rgb(${r},${g},${b})`
+    drawPipeShape(ctx, c.x, c.z, PIPE_CORE, c.conn)
+  }
+}
+
+/** Resolve a pipe/cable's map colour: its texture average (best match to how the
+ *  block looks), then scanned/meta/hardcoded colours, then the hash fallback. */
+function resolvePipeColor(
+  id: number,
+  meta: number,
+  colorMap: BlockColorMap | undefined,
+  textureKeys: Record<number, string> | undefined,
+  metaTextureKeys: Record<string, string> | undefined
+): readonly [number, number, number] {
+  const texKey = metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null
+  const texAvg = texKey ? averageTextureColor(texKey) : null
+  return (
+    texAvg ??
+    metaBlockColorRGB(id, meta) ??
+    colorMap?.[id] ??
+    hardcodedBlockColor(id) ??
+    blockColorRGB(id, meta)
+  )
 }
 
 // 5-stop height→RGB gradient used by the debug-heightmap elevation mode.
