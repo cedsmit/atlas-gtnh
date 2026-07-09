@@ -1,13 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Loader2, MapPin, Search, X } from 'lucide-react'
 
+import type { BlockColumn } from '../map/mapEngine'
 import { type SearchHit, useSearchBlocks } from './api/searchBlocks'
+import { useLocateBlocks } from './api/locateBlocks'
 
 interface Props {
   blockNames: Record<number, string>
   dimensionPath: string
   /** Fly the map camera to a world block position. */
   onJump: (x: number, z: number) => void
+  /** Paint (or clear, with null) the map highlight over the matched blocks. */
+  onHighlight: (columns: BlockColumn[] | null) => void
   onClose: () => void
 }
 
@@ -20,17 +24,46 @@ const MAX_NAME_MATCHES = 100
 
 /**
  * Stage 5 search: type a block name, pick a match, and list the chunks where it
- * occurs (surface and underground); clicking a result flies the camera there.
+ * occurs (surface and underground). The matched blocks are highlighted on the map
+ * (amber markers); clicking a result flies the camera there.
  */
 export function SearchPanel({
   blockNames,
   dimensionPath,
   onJump,
+  onHighlight,
   onClose,
 }: Props) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<BlockMatch | null>(null)
   const search = useSearchBlocks(dimensionPath)
+  const {
+    mutate: locateMutate,
+    reset: locateReset,
+    data: locateData,
+    isPending: locating,
+  } = useLocateBlocks(dimensionPath)
+
+  // Once the instant index search returns the matching chunks, resolve the exact
+  // block positions within them (a background chunk read) so the map can mark the
+  // actual blocks. Reset when the selection or results go away.
+  useEffect(() => {
+    if (selected && search.data && search.data.hits.length) {
+      locateMutate({
+        ids: [selected.id],
+        chunks: search.data.hits.map((h) => [h.cx, h.cz] as [number, number]),
+      })
+    } else {
+      locateReset()
+    }
+  }, [selected, search.data, locateMutate, locateReset])
+
+  // Drive the map highlight from the located blocks; clear it when nothing is
+  // selected, and whenever the panel closes/unmounts.
+  useEffect(() => {
+    onHighlight(selected ? (locateData ?? null) : null)
+  }, [selected, locateData, onHighlight])
+  useEffect(() => () => onHighlight(null), [onHighlight])
 
   // Block names matching the query substring (case-insensitive), capped.
   const matches = useMemo<BlockMatch[]>(() => {
@@ -126,6 +159,7 @@ export function SearchPanel({
           </div>
           <SearchResults
             state={search}
+            locating={locating}
             onRetry={() => search.mutate([selected.id])}
             onJump={onJump}
           />
@@ -137,10 +171,12 @@ export function SearchPanel({
 
 function SearchResults({
   state,
+  locating,
   onRetry,
   onJump,
 }: {
   state: ReturnType<typeof useSearchBlocks>
+  locating: boolean
   onRetry: () => void
   onJump: (x: number, z: number) => void
 }) {
@@ -179,10 +215,19 @@ function SearchResults({
   }
   return (
     <>
-      <p className="px-3 py-1.5 text-[11px] text-zinc-500">
-        {data.total_matches.toLocaleString()} blocks in {data.hit_chunks} chunk
-        {data.hit_chunks === 1 ? '' : 's'}
-        {data.capped && ' (capped — refine the name for more)'}
+      <p className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-zinc-500">
+        <span>
+          {data.total_matches.toLocaleString()} blocks in {data.hit_chunks}{' '}
+          chunk
+          {data.hit_chunks === 1 ? '' : 's'}
+          {data.capped && ' (capped — refine the name for more)'}
+        </span>
+        {locating && (
+          <span className="ml-auto flex items-center gap-1 text-amber-400/80">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            marking…
+          </span>
+        )}
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {data.hits.map((h: SearchHit) => (
@@ -193,7 +238,7 @@ function SearchResults({
             title={`Jump to ${h.x}, ${h.y}, ${h.z}`}
           >
             <MapPin
-              className="h-3.5 w-3.5 shrink-0 text-emerald-500"
+              className="h-3.5 w-3.5 shrink-0 text-amber-400"
               aria-hidden
             />
             <span className="flex-1">

@@ -89,6 +89,7 @@ export class MapEngine {
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
   private _heatmap: THREE.Mesh | null = null
+  private _highlight: THREE.Group | null = null
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
    *  live (e.g. after a delete), without a full reload. Set in the constructor. */
   invalidateChunks!: (chunks: [number, number][]) => void
@@ -1408,6 +1409,8 @@ export class MapEngine {
       detachInput()
       clearChunkCache() // also removes outlines and clears chunkPixels
       for (const [key, m] of regionMeshes) revertRegionTile(key, m) // dispose tile materials
+      this.setHeatmap(null) // drop overlay meshes/textures before the renderer goes
+      this.setSearchHighlight(null)
       mapScene.dispose()
     }
   }
@@ -1506,6 +1509,26 @@ export class MapEngine {
     this._st.forceFrame = true
   }
 
+  /**
+   * Highlight the exact blocks a search matched (Stage 5): a bright amber marker
+   * on each matched block column, grouped per chunk so the overlay stays cheap no
+   * matter how far the matches spread. Pass null to clear. World-space, so each
+   * marker stays pinned to its block as the view pans and zooms.
+   */
+  setSearchHighlight(columns: BlockColumn[] | null): void {
+    const scene = this._mapScene.scene
+    if (this._highlight) {
+      scene.remove(this._highlight)
+      disposeHighlightGroup(this._highlight)
+      this._highlight = null
+    }
+    if (columns && columns.length) {
+      this._highlight = buildHighlightGroup(columns)
+      scene.add(this._highlight)
+    }
+    this._st.forceFrame = true
+  }
+
   /** Brighten the reference grid (paired with the coordinate-label overlay). */
   setGrid(on: boolean): void {
     this._mapScene.setGridProminent(on)
@@ -1525,25 +1548,32 @@ function chunkRect(
   }
 }
 
-// ── Heatmap overlay (Stage 5 stats prototype) ───────────────────────────────
-export interface HeatmapCell {
+// ── Heatmap overlay (Stage 5) ────────────────────────────────────────────────
+// Paints one pixel per chunk onto a world-space plane (value → cool-warm ramp).
+// The search highlight is a separate, block-resolution layer — see further down.
+
+interface CellXZ {
   cx: number
   cz: number
-  v: number
-}
-export interface HeatmapData {
-  cells: HeatmapCell[]
-  vmin: number
-  vmax: number
 }
 
-/** Build a world-space plane painting one pixel per chunk, coloured by value. */
-function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
+/**
+ * Paint a 1px-per-chunk plane over the cells' bounding box: *color* returns the
+ * RGBA for each cell, un-hit cells stay transparent. Nearest-filtered so chunks
+ * read as crisp squares; drawn on top (depthTest off) at the given render order.
+ */
+function paintCellMesh<T extends CellXZ>(
+  cells: T[],
+  color: (c: T) => [number, number, number, number],
+  opacity: number,
+  z: number,
+  renderOrder: number
+): THREE.Mesh {
   let minCx = Infinity,
     minCz = Infinity,
     maxCx = -Infinity,
     maxCz = -Infinity
-  for (const c of data.cells) {
+  for (const c of cells) {
     if (c.cx < minCx) minCx = c.cx
     if (c.cx > maxCx) maxCx = c.cx
     if (c.cz < minCz) minCz = c.cz
@@ -1556,16 +1586,13 @@ function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
   canvas.height = h
   const ctx = canvas.getContext('2d')!
   const img = ctx.createImageData(w, h)
-  // Log scale so the whole cluster reads warm rather than one dense core chunk
-  // maxing out the ramp and leaving the rest blue.
-  const logMax = Math.log1p(Math.max(1, data.vmax - data.vmin))
-  for (const c of data.cells) {
-    const [r, g, b] = heatColor(Math.log1p(c.v - data.vmin) / logMax)
+  for (const c of cells) {
+    const [r, g, b, a] = color(c)
     const o = ((c.cz - minCz) * w + (c.cx - minCx)) * 4
     img.data[o] = r
     img.data[o + 1] = g
     img.data[o + 2] = b
-    img.data[o + 3] = 255
+    img.data[o + 3] = a
   }
   ctx.putImageData(img, 0, 0)
 
@@ -1578,17 +1605,124 @@ function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
   const mat = new THREE.MeshBasicMaterial({
     map: tex,
     transparent: true,
-    opacity: 0.6,
+    opacity,
     depthTest: false,
   })
   const mesh = new THREE.Mesh(geo, mat)
   mesh.position.set(
     (minCx * 16 + (maxCx + 1) * 16) / 2,
     -((minCz * 16 + (maxCz + 1) * 16) / 2),
-    10
+    z
   )
-  mesh.renderOrder = 999
+  mesh.renderOrder = renderOrder
   return mesh
+}
+
+export interface HeatmapCell {
+  cx: number
+  cz: number
+  v: number
+}
+export interface HeatmapData {
+  cells: HeatmapCell[]
+  vmin: number
+  vmax: number
+}
+
+/** Build the heatmap plane: value → cool-warm ramp, log-scaled across the range. */
+function buildHeatmapMesh(data: HeatmapData): THREE.Mesh {
+  // Log scale so the whole cluster reads warm rather than one dense core chunk
+  // maxing out the ramp and leaving the rest blue.
+  const logMax = Math.log1p(Math.max(1, data.vmax - data.vmin))
+  return paintCellMesh(
+    data.cells,
+    (c) => {
+      const [r, g, b] = heatColor(Math.log1p(c.v - data.vmin) / logMax)
+      return [r, g, b, 255]
+    },
+    0.6,
+    10,
+    999
+  )
+}
+
+// ── Search highlight (Stage 5) ───────────────────────────────────────────────
+// Marks the exact blocks a search matched. One 16×16 mask texture per hit chunk
+// (a bright amber pixel on each matched column), grouped so a wide spread of
+// matches never balloons into one giant canvas. Aligned to blocks exactly like a
+// chunk tile: canvas row = local z, plane centred on the chunk (plain
+// CanvasTexture, matching makeChunkTexture).
+
+/** A matched block's world column (x, z); the map is top-down, so one per column. */
+export interface BlockColumn {
+  x: number
+  z: number
+}
+
+const HIGHLIGHT_RGBA: [number, number, number, number] = [255, 178, 36, 235] // amber
+
+/** Build the highlight as a group of per-chunk 16×16 marker planes. */
+function buildHighlightGroup(columns: BlockColumn[]): THREE.Group {
+  // Bucket matched columns by chunk, recording each block's local pixel index.
+  const byChunk = new Map<string, { cx: number; cz: number; local: number[] }>()
+  for (const { x, z } of columns) {
+    const cx = Math.floor(x / 16)
+    const cz = Math.floor(z / 16)
+    const key = `${cx},${cz}`
+    let e = byChunk.get(key)
+    if (!e) {
+      e = { cx, cz, local: [] }
+      byChunk.set(key, e)
+    }
+    const lx = ((x % 16) + 16) % 16
+    const lz = ((z % 16) + 16) % 16
+    e.local.push((lz << 4) | lx) // row-major pixel index into a 16×16 canvas
+  }
+
+  const [r, g, b, a] = HIGHLIGHT_RGBA
+  const group = new THREE.Group()
+  for (const { cx, cz, local } of byChunk.values()) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 16
+    canvas.height = 16
+    const ctx = canvas.getContext('2d')!
+    const img = ctx.createImageData(16, 16)
+    for (const li of local) {
+      const o = li * 4
+      img.data[o] = r
+      img.data[o + 1] = g
+      img.data[o + 2] = b
+      img.data[o + 3] = a
+    }
+    ctx.putImageData(img, 0, 0)
+
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.magFilter = THREE.NearestFilter
+    tex.minFilter = THREE.NearestFilter
+    tex.colorSpace = THREE.SRGBColorSpace
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+    })
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), mat)
+    mesh.position.set(cx * 16 + 8, -(cz * 16 + 8), 11)
+    mesh.renderOrder = 1000 // above chunk tiles and the heatmap
+    group.add(mesh)
+  }
+  return group
+}
+
+/** Dispose every per-chunk marker plane's texture, material, and geometry. */
+function disposeHighlightGroup(group: THREE.Group): void {
+  for (const child of group.children) {
+    const mesh = child as THREE.Mesh
+    const mat = mesh.material as THREE.MeshBasicMaterial
+    mat.map?.dispose()
+    mat.dispose()
+    mesh.geometry.dispose()
+  }
 }
 
 /** Cool→warm ramp: blue (low) → green → yellow → red (high). */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
@@ -20,7 +20,7 @@ import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
-import type { MapEngine } from './features/map/mapEngine'
+import type { BlockColumn, MapEngine } from './features/map/mapEngine'
 import { SearchPanel } from './features/search/SearchPanel'
 import { useChunkStats } from './features/search/api/chunkStats'
 import { WorldPicker } from './features/world/WorldPicker'
@@ -28,6 +28,7 @@ import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
 import { useRenderOverrides } from './features/blocks/api/renderOverrides'
 import { columnTally } from './features/map/columnTally'
+import { VIEWER_CONFIG } from './features/map/viewerConfig'
 import {
   type ElevationMode,
   type ContourMode,
@@ -335,6 +336,12 @@ export default function App() {
     engineRef.current?.setGrid(next)
   }
 
+  // Paint the map highlight over the exact blocks the current search matched
+  // (Stage 5). Stable so the SearchPanel effect driving it doesn't re-fire.
+  const handleSearchHighlight = useCallback((columns: BlockColumn[] | null) => {
+    engineRef.current?.setSearchHighlight(columns)
+  }, [])
+
   // ── InspectPanel: pass textureKeys for accurate source classification ──
   // We also compute the effective texture key per block-id here so InspectPanel
   // can show 'texture' only for blocks that truly have a PNG key (not just a
@@ -491,8 +498,13 @@ export default function App() {
               blockNames={blockNames}
               dimensionPath={dimensionPath}
               onJump={(x, z) =>
-                engineRef.current?.animateCameraTo({ cx: x, cz: z, scale: 6 })
+                engineRef.current?.animateCameraTo({
+                  cx: x,
+                  cz: z,
+                  scale: VIEWER_CONFIG.maxScale,
+                })
               }
+              onHighlight={handleSearchHighlight}
               onClose={() => setSearchOpen(false)}
             />
           )}
