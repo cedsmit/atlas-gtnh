@@ -5,20 +5,62 @@
     "gregtech:gt.blockstones": { "category": "solid" },
     "gregtech:gt.blockgranites": { "category": "solid" },
     "gregtech:gt.blockconcretes": { "category": "solid" },
-    "gregtech:gt.blockmachines": { "category": "solid" },
-    "gregtech:gt.blockcasings": { "category": "solid" },
-    "gregtech:gt.blockcasings2": { "category": "solid" },
-    "gregtech:gt.blockcasings3": { "category": "solid" },
-    "gregtech:gt.blockcasings4": { "category": "solid" },
-    "gregtech:gt.blockcasings5": { "category": "solid" },
-    "gregtech:gt.blockcasings6": { "category": "solid" },
-    "gregtech:gt.blockcasings8": { "category": "solid" },
-    "gregtech:gt.blockcasings9": { "category": "solid" },
-    "gregtech:gt.blockcasings10": { "category": "solid" },
-    "gregtech:gt.blockcasings11": { "category": "solid" },
-    "gregtech:gt.blockcasings12": { "category": "solid" },
-    "gregtech:gt.blockcasings13": { "category": "solid" },
-    "gregtech:gt.blockcasingsNH": { "category": "solid" },
+    "gregtech:gt.blockmachines": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings4": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings5": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings6": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings8": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings9": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings10": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings11": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings12": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasings13": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gregtech:gt.blockcasingsNH": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "gregtech:gt.blockores": { "category": "solid" },
     "gregtech:gt.blockframes": { "category": "solid" },
     "gregtech:gt.blockmetal1": { "category": "solid" },
@@ -46,7 +88,10 @@
       "category": "solid",
       "blockTags": ["pipe"]
     },
-    "gregtech:gt.blockcasings.cyclotron_coils": { "category": "solid" },
+    "gregtech:gt.blockcasings.cyclotron_coils": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "gregtech:gt.laserplate": { "category": "solid" },
     "gregtech:tile.gt.dronerender": { "category": "ignore" },
     "gregtech:gt.wormholerenderer": { "category": "ignore" },

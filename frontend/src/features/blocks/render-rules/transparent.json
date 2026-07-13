@@ -118,11 +118,13 @@
     },
     "GoodGenerator:fieldRestrictingGlass": {
       "category": "transparent",
-      "alphaMode": "blend"
+      "alphaMode": "blend",
+      "blockTags": ["machine"]
     },
     "gtnhlanth:tile.casing.shielded_accelerator_glass": {
       "category": "transparent",
-      "alphaMode": "blend"
+      "alphaMode": "blend",
+      "blockTags": ["machine"]
     },
     "OpenBlocks:canvasglass": {
       "category": "transparent",

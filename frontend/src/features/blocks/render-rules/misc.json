@@ -25,7 +25,10 @@
     "etfuturum:light": { "category": "ignore" },
     "etfuturum:cornflower": { "category": "overlay" },
     "DraconicEvolution:invisibleMultiblock": { "category": "ignore" },
-    "GalacticraftMars:tile.telepadFake": { "category": "ignore" },
+    "GalacticraftMars:tile.telepadFake": {
+      "category": "ignore",
+      "blockTags": ["machine"]
+    },
     "GalacticraftAmunRa:tile.blockFake": { "category": "ignore" },
     "HardcoreEnderExpansion:corrupted_energy_*": { "category": "ignore" },
     "Thaumcraft:blockFluxGas": { "category": "ignore" },
@@ -116,8 +119,11 @@
     },
     "TConstruct:smeltery": { "category": "solid" },
     "TConstruct:SmelteryBlock": { "category": "solid" },
-    "TConstruct:SmelteryNether": { "category": "solid" },
-    "TConstruct:Smeltery": { "category": "solid" },
+    "TConstruct:SmelteryNether": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TConstruct:Smeltery": { "category": "solid", "blockTags": ["machine"] },
     "TConstruct:LavaTank": { "category": "solid" },
     "TConstruct:SearedBrick": { "category": "solid" },
     "TConstruct:CastingChannel": { "category": "solid" },
@@ -187,13 +193,22 @@
     "OpenBlocks:trophy": { "category": "solid" },
     "OpenBlocks:target": { "category": "solid" },
     "OpenBlocks:elevator": { "category": "solid" },
-    "OpenBlocks:fan": { "category": "solid" },
-    "OpenBlocks:sprinkler": { "category": "solid" },
-    "OpenBlocks:vacuumhopper": { "category": "solid" },
-    "OpenBlocks:blockbreaker": { "category": "solid" },
+    "OpenBlocks:fan": { "category": "solid", "blockTags": ["machine"] },
+    "OpenBlocks:sprinkler": { "category": "solid", "blockTags": ["machine"] },
+    "OpenBlocks:vacuumhopper": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:blockbreaker": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "OpenBlocks:blockplacer": { "category": "solid" },
-    "OpenBlocks:autoanvil": { "category": "solid" },
-    "OpenBlocks:autoenchantmenttable": { "category": "solid" },
+    "OpenBlocks:autoanvil": { "category": "solid", "blockTags": ["machine"] },
+    "OpenBlocks:autoenchantmenttable": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "OpenBlocks:builder_guide": { "category": "solid" },
     "OpenBlocks:village_highlighter": { "category": "solid" },
 
@@ -239,11 +254,11 @@
     "Forestry:apiary": { "category": "solid" },
     "Forestry:beehive": { "category": "solid" },
     "Forestry:escritoire": { "category": "solid" },
-    "Forestry:engine": { "category": "solid" },
+    "Forestry:engine": { "category": "solid", "blockTags": ["machine"] },
     "Forestry:naturalistChest": { "category": "solid" },
     "Forestry:mail": { "category": "solid" },
     "Forestry:mailbox": { "category": "solid" },
-    "Forestry:ffarm": { "category": "solid" },
+    "Forestry:ffarm": { "category": "solid", "blockTags": ["machine"] },
 
     "OpenPeripheral:terminal": { "category": "solid" },
 

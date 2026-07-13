@@ -9,11 +9,23 @@
     "Railcraft:slab": { "category": "solid" },
     "Railcraft:wall.alpha": { "category": "solid" },
     "Railcraft:wall.beta": { "category": "solid" },
-    "Railcraft:machine.alpha": { "category": "solid" },
-    "Railcraft:machine.beta": { "category": "solid" },
-    "Railcraft:machine.gamma": { "category": "solid" },
-    "Railcraft:machine.delta": { "category": "solid" },
-    "Railcraft:machine.epsilon": { "category": "solid" },
+    "Railcraft:machine.alpha": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Railcraft:machine.beta": { "category": "solid", "blockTags": ["machine"] },
+    "Railcraft:machine.gamma": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Railcraft:machine.delta": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Railcraft:machine.epsilon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "Railcraft:boiler.firebox.solid": { "category": "solid" },
     "Railcraft:boiler.firebox.fluid": { "category": "solid" },
     "Railcraft:boiler.tank.pressure.high": { "category": "solid" },

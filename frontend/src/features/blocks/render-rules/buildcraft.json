@@ -6,13 +6,25 @@
     "BuildCraft|Core:pathMarkerBlock": { "category": "ignore" },
     "BuildCraft|Factory:markerBlock": { "category": "ignore" },
 
-    "BuildCraft|Core:engineBlock": { "category": "solid" },
+    "BuildCraft|Core:engineBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "BuildCraft|Core:plateBlock": { "category": "solid" },
 
-    "BuildCraft|Factory:autoWorkbenchBlock": { "category": "solid" },
-    "BuildCraft|Factory:miningWellBlock": { "category": "solid" },
+    "BuildCraft|Factory:autoWorkbenchBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Factory:miningWellBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "BuildCraft|Factory:quarryBlock": { "category": "solid" },
-    "BuildCraft|Factory:pumpBlock": { "category": "solid" },
+    "BuildCraft|Factory:pumpBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "BuildCraft|Factory:tankBlock": { "category": "solid" },
     "BuildCraft|Factory:floodGateBlock": { "category": "solid" },
     "BuildCraft|Factory:hopperBlock": { "category": "solid" },
@@ -34,8 +46,14 @@
     "BuildCraft|Energy:blockOil": { "category": "fluid" },
     "BuildCraft|Energy:blockFuel": { "category": "fluid" },
 
-    "BuildCraft|Builders:architectBlock": { "category": "solid" },
-    "BuildCraft|Builders:builderBlock": { "category": "solid" },
+    "BuildCraft|Builders:architectBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Builders:builderBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "BuildCraft|Builders:libraryBlock": { "category": "solid" }
   }
 }

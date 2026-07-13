@@ -1,0 +1,1978 @@
+{
+  "format": 1,
+  "source": "machines.json",
+  "blocks": {
+    "AFSU:AFSU": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:AlchemicalWizardrybloodRune": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:AlchemicalWizardrytile.blockSpellEffect": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:AlchemicalWizardrytile.blockSpellEnhancement": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:AlchemicalWizardrytile.blockSpellModifier": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:AlchemicalWizardrytile.blockSpellParadigm": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:Altar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:armourForge": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:blockAlchemicCalcinator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:blockCrucible": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:blockSchemSaver": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:blockTeleposer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:efficiencyRune": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:imperfectRitualStone": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:masterStone": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:ritualStone": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:runeOfSacrifice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:runeOfSelfSacrifice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AWWayofTime:speedRune": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "AdvancedSolarPanel:BlockAdvSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockBoiler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockDimensionLure": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockEssentiaLocus": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockEssentiaLocusAggregator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockFinicalMaw": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockGolemInhibitor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockGolemTaskmaster": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockGolemWorkbench": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockHungryMaw": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockInventarium": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockMobLure": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockThaumostaticPylon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockThaumostaticSpire": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Automagy:blockUnseenScribe": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Avaritia:Neutron_Collector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Avaritia:Neutronium_Compressor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BloodArsenal:compacter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BloodArsenal:life_infuser": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BloodArsenal:lp_materializer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BloodArsenal:portable_altar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:alchemyCatalyst": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:alfheimPortal": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:altar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:avatar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:bellows": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:brewery": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:conjurationCatalyst": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:corporeaCrystalCube": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:corporeaFunnel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:corporeaIndex": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:corporeaInterceptor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:corporeaRetainer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:distributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:enchanter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:forestDrum": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:hourglass": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:incensePlate": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:manaDetector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:manaVoid": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:openCrate": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:pistonRelay": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:pool": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:prism": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:pump": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:pylon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringComparator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringContainer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringDispenser": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringFertilizer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringInterceptor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:redStringRelay": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:rfGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:runeAltar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:sparkChanger": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:spreader": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:terraPlate": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:tinyPlanetBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Botania:turntable": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Builders:fillerBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Builders:machineBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Factory:refineryBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Robotics:requester": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Silicon:laserBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Silicon:laserTableBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "BuildCraft|Silicon:packagerBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:dissEnchanter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:energyCrystal": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:energyInfuser": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:energyPylon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:energyStorageCore": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:flowGate": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:generator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:grinder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:reactorCore": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:reactorEnergyInjector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:reactorStabilizer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "DraconicEvolution:weatherController": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTMachines": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTSolars": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTSolars2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTSolars3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTSolars4": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EMTSolars5": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EMT:EssentiaGenerators": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockAttractor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockCapBank": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockCrafter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockEnderGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockEnderIo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockFrankenzombieGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockHyperCube": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockInhibitorObelisk": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockInventoryPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockPainter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockSliceAndSplice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockSpawnGuard": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockTelePad": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockTravelAnchor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockVat": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockWeatherObelisk": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockZombieGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:enderQuarry": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:enderQuarryUpgrade": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:enderThermicPump": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:extractor_base": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:extractor_base_remote": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:generator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:generator.64": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ExtraUtilities:generator.8": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ForbiddenMagic:WrathCage": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Forestry:alveary": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Forestry:apiculture": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Forestry:factory": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Forestry:factory2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftAmunRa:tile.machines1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftAmunRa:tile.machines2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftAmunRa:tile.machines3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftAmunRa:tile.machines4": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftAmunRa:tile.msBoosters1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.cargo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.distributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.fuelLoader": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.landingPad": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.landingPadFull": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.machine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.machine2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.machineTiered": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.oxygenCollector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.oxygenCompressor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.oxygenDetector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.refinery": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.rocketWorkbench": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.sealer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.solar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.spinThruster": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.telemetry": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftCore:tile.viewScreen": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.beamReceiver": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.beamReflector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.marsMachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.marsMachineT2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.minerBase": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.minerBaseFull": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalacticraftMars:tile.telepadShort": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalaxySpace:assemblymachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalaxySpace:fuelgenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalaxySpace:geothermalgenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalaxySpace:solarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GalaxySpace:solarwindpanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:FRF_Casings": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:FRF_Coil_1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:FRF_Coil_2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:FRF_Coil_3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:FRF_Coil_4": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:MAR_Casing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:antimatterAnnihilationMatrix": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:antimatterContainmentCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:compactFusionCoil": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:componentAssemblylineCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:essentiaCell": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:essentiaFilterCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:essentiaOutputHatch": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:essentiaOutputHatch_ME": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:gravityStabilizationCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:impreciseUnitCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:magicCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:magneticFluxCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:preciseUnitCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:pressureResistantWalls": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:protomatterActivationCoil": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:radiationProtectionSteelFrame": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:supercriticalFluidTurbineCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:titaniumPlatedCylinder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:yottaFluidTankCasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "GoodGenerator:yottaFluidTankCells": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:accumulation_table": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:decomposition_table": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:energy_extraction_table": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:enhanced_brewing_stand_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:essence_altar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "HardcoreEnderExpansion:experience_table": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "IC2:blockChargepad": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "IC2:blockReactorAccessHatch": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "IC2:blockReactorFluidPort": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "IC2:blockReactorRedstonePort": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "IC2:blockreactorvessel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "LogisticsPipes:logisticsSolidBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "MCFrames:mcframes.motor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "MagicBees:magicApiary": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Natura:NetherFurnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:blockPlacer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:itemDropper": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:paintmixer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:xpbottler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:xpdrain": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenBlocks:xpshower": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:accessPoint": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:adapter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:assembler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:capacitor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:carpetedCapacitor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:case1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:case2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:case3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:caseCreative": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:charger": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:disassembler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:diskDrive": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:geolyzer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:hologram1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:hologram2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:keyboard": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:microcontroller": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:motionSensor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:netSplitter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:powerConverter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:powerDistributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:printer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:rack": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:raid": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:redstone": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:relay": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:robot": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:screen1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:screen2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:screen3": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:switch": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:transposer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "OpenComputers:waypoint": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RIO:intelligentWorkbench": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RIO:tile.machine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RIO:tile.remote_interface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Railcraft:machine.eta": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Railcraft:machine.zeta": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:advancedItemCollector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:creativePlayerInterface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:dyeingMachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:enderEnergyDistributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:energyDistributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:imbuingStation": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:itemCollector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "RandomThings:playerinterface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:ic2PowerUnit": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:ocInterface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:rfPowerUnit": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:stargateBase": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:stargateController": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "SGCraft:stargateRing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockActivator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockAdvDetector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockCargoManager": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockCartAssembler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockDetector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockDistributor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:BlockLiquidManager": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesCarts:upgrade": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "StevesFactoryManager:BlockMachineManagerName": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TConstruct:SearedBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TConstruct:SearedBlockNether": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TMechworks:Dynamo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TMechworks:MeshFilter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TMechworks:RedstoneMachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Thaumcraft:blockAlchemyFurnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Thaumcraft:blockMetalDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Thaumcraft:blockStoneDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "Thaumcraft:blockWoodenDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicExploration:replicator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:bloodInfuser": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:essentiaDynamo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:inspiratron": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:modMatrix": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:nodeMonitor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:recombinator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:soulBeacon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:soulSieve": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:soulforge": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:synthNode": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:transductionAmplifier": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:vat": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:vatSolid": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:visDynamo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicHorizons:vortexStabilizer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicMachina:nodeTransmodifier": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:animationTablet": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:dislocator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:enchanter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:interface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:repairer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ThaumicTinkerer:spawner": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TwilightForest:tile.CinderFurnaceIdle": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "TwilightForest:tile.CinderFurnaceLit": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "WitchingGadgets:WG_MetalDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "WitchingGadgets:WG_StoneDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "WitchingGadgets:WG_WoodenDevice": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_auto_filler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_buffer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_discretizer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_interface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_packet_decoder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:fluid_pattern_encoder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:ingredient_buffer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:large_ingredient_buffer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:level_maintainer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:oc_pattern_editor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2fc:super_stock_replenisher": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2stuff:Encoder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2stuff:Grower": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2stuff:Inscriber": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "ae2stuff:Wireless": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockAdvancedCraftingStorage": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockAdvancedCraftingUnit": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockCreativeEnergyCell": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockCreativeEnergyController": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockDenseEnergyCell": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockEnergyCell": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockMolecularAssembler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockPatternOptimizationMatrix": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockQuantumLinkChamber": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockQuantumRing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockQuartzGrowthAccelerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "appliedenergistics2:tile.BlockSingularityCraftingStorage": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "avaritiaddons:ExtremeAutoCrafter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "botanichorizons:automatedAlchemyPool": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "botanichorizons:automatedAlfPortal": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "botanichorizons:automatedConjurationPool": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "botanichorizons:automatedCraftingPool": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "chisel:autoChisel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "compactkineticgenerators:BlockCkg": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.camera": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.chatBox": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.cipher": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.cipher_advanced": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.digitalControllerBox": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.digitalReceiverBox": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.radar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.speaker": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.speechBox": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.tapeReader": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "computronics:computronics.ticketMachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "etfuturum:blast_furnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "etfuturum:brewing_stand": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "etfuturum:lit_blast_furnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "etfuturum:lit_smoker": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "etfuturum:smoker": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockArcaneDropper": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockAuraPylon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockEssentiaCompressor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockInfusionClaw": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockNodeManipulator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gadomancy:BlockStoneMachine": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Extractor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Imprinter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:IndustrialApiary": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Liquifier": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:MutagenProducer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Mutatron": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:MutatronAdv": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Replicator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Sampler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gendustry:Transposer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.antenna_t1": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.antenna_t2": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.coolant_delivery": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.electrode": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.focus_holder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.focus_manipulator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.niobium_cavity": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.shielded_accelerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.target_holder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "gtnhlanth:casing.target_receptacle": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:churn": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:churnon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:oven": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:ovenon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:pot": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:presser": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:quern": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "harvestcraft:quernon": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kekztech:kekztech_gdcceramicelectrolyteunit_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kekztech:kekztech_lapotronicenergyunit_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kekztech:kekztech_largehextile_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kekztech:kekztech_tfftstoragefield_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kekztech:kekztech_yszceramicelectrolyteunit_block": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kubatech:defc.casing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "kubatech:kubablocks": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "minecraft:brewing_stand": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "minecraft:furnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "minecraft:lit_furnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "miscutils:blockFishTrap": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "miscutils:blockPestKiller": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "miscutils:blockPooCollector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "neenergistics:tile.pattern_interface": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:baseTierFourBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:baseTierOneBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:baseTierThreeBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:baseTierTwoBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:baseTierWood": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:disposeItemTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderInvTierFive": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderInvTierFour": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderInvTierOne": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderInvTierThree": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderInvTierTwo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderPowerTierFive": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderPowerTierFour": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderPowerTierOne": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderPowerTierThree": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:expanderPowerTierTwo": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:grenadeTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:incendiaryTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:laserTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:machineGunTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:potatoCannonTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:railGunTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:relativisticTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:rocketTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openmodularturrets:teleporterTurret": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openprinter:openprinter.printer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "openprinter:openprinter.shredder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:biometricScanner": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:doorcontroller": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:energyTurretBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:entitydetector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:magreader": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:opensecurity.BlockKVM": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:opensecurity.DataBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:opensecurity.SwitchableHub": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:rfidreader": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "opensecurity:rfidwriter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "supersolarpanel:AdminSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "supersolarpanel:PhotonicSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "supersolarpanel:SingularSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "supersolarpanel:SpectralSolarPanel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:Eye of Harmony Renderer": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:ForgeOfGodsRenderBlock": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.blockcasingsBA0": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.blockcasingsTT": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.godforgecasing": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.spacetime_compression_field_generator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.stabilisation_field_generator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:gt.time_acceleration_field_generator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:tile.reactorSim": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "tectech:tile.spatiallyTranscendentGravitationalLens": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicbases:advAlchFurnace": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicbases:entityDeconstructor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicbases:nodeLinker": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicbases:nodeManipulator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicbases:overchanter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.advanced.infusion.provider": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.arcane.assembler": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.distillation.encoder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.essentia.cell.workbench": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.essentia.provider": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.essentia.vibration.chamber": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.gear.box": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.golem.gear.box": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.infusion.provider": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicenergistics:thaumicenergistics.block.knowledge.inscriber": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "thaumicinsurgence:infusionIntercepter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:altar": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:bloodcrucible": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:cauldron": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:daylightcollector": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:distilleryburning": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:distilleryidle": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:filteredfumefunnel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:fumefunnel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:kettle": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:silvervat": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:spinningwheel": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:witchesovenburning": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "witchery:witchesovenidle": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    }
+  }
+}

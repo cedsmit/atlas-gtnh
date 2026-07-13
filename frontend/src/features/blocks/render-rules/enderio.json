@@ -12,8 +12,14 @@
     },
 
     "EnderIO:blockAlloyEncoder": { "category": "solid" },
-    "EnderIO:blockAlloySmelter": { "category": "solid" },
-    "EnderIO:blockCombustionGenerator": { "category": "solid" },
+    "EnderIO:blockAlloySmelter": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockCombustionGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockConduitBundle": {
       "category": "overlay",
       "blockTags": ["cable"]
@@ -28,24 +34,45 @@
       "category": "transparent",
       "alphaMode": "blend"
     },
-    "EnderIO:blockEnchanter": { "category": "solid" },
-    "EnderIO:blockFarmStation": { "category": "solid" },
+    "EnderIO:blockEnchanter": { "category": "solid", "blockTags": ["machine"] },
+    "EnderIO:blockFarmStation": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockFluidTank": { "category": "solid" },
-    "EnderIO:blockKillerJoe": { "category": "solid" },
+    "EnderIO:blockKillerJoe": { "category": "solid", "blockTags": ["machine"] },
     "EnderIO:blockMachineBase": { "category": "solid" },
     "EnderIO:blockOmniBuffer": { "category": "solid" },
     "EnderIO:blockPaintedGlowstone": { "category": "solid" },
-    "EnderIO:blockPowerMonitor": { "category": "solid" },
-    "EnderIO:blockPoweredSpawner": { "category": "solid" },
+    "EnderIO:blockPowerMonitor": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
+    "EnderIO:blockPoweredSpawner": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockReservoir": { "category": "solid" },
-    "EnderIO:blockSagMill": { "category": "solid" },
-    "EnderIO:blockSoulBinder": { "category": "solid" },
+    "EnderIO:blockSagMill": { "category": "solid", "blockTags": ["machine"] },
+    "EnderIO:blockSoulBinder": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockSoulBrokenSpawner": { "category": "solid" },
     "EnderIO:blockSoulCatcher": { "category": "solid" },
-    "EnderIO:blockStirlingGenerator": { "category": "solid" },
+    "EnderIO:blockStirlingGenerator": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockTank": { "category": "solid" },
-    "EnderIO:blockTransceiver": { "category": "solid" },
+    "EnderIO:blockTransceiver": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    },
     "EnderIO:blockVacuumChest": { "category": "solid" },
-    "EnderIO:blockWirelessCharger": { "category": "solid" }
+    "EnderIO:blockWirelessCharger": {
+      "category": "solid",
+      "blockTags": ["machine"]
+    }
   }
 }
