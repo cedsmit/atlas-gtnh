@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -10,18 +12,18 @@ EMPTY = {"format": 1, "source": "authored", "blocks": {}}
 client = TestClient(app)
 
 
-def _patch_path(monkeypatch, tmp_path):
+def _patch_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     p = tmp_path / "user-overrides.json"
     monkeypatch.setattr(user_overrides, "_PATH", p)
     return p
 
 
-def test_load_empty_when_missing(monkeypatch, tmp_path):
+def test_load_empty_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_path(monkeypatch, tmp_path)
     assert user_overrides.load_overrides() == EMPTY
 
 
-def test_upsert_writes_and_loads(monkeypatch, tmp_path):
+def test_upsert_writes_and_loads(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     p = _patch_path(monkeypatch, tmp_path)
     user_overrides.upsert_override(
         "Botania:manaGlass", {"category": "transparent", "tint": "foliage"}
@@ -36,7 +38,7 @@ def test_upsert_writes_and_loads(monkeypatch, tmp_path):
     )
 
 
-def test_upsert_drops_unknown_keys(monkeypatch, tmp_path):
+def test_upsert_drops_unknown_keys(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_path(monkeypatch, tmp_path)
     data = user_overrides.upsert_override(
         "mod:block", {"category": "solid", "evil": "x", "tint": "grass"}
@@ -44,14 +46,14 @@ def test_upsert_drops_unknown_keys(monkeypatch, tmp_path):
     assert data["blocks"]["mod:block"] == {"category": "solid", "tint": "grass"}
 
 
-def test_upsert_replaces(monkeypatch, tmp_path):
+def test_upsert_replaces(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_path(monkeypatch, tmp_path)
     user_overrides.upsert_override("mod:b", {"category": "solid"})
     user_overrides.upsert_override("mod:b", {"category": "overlay"})
     assert user_overrides.load_overrides()["blocks"]["mod:b"] == {"category": "overlay"}
 
 
-def test_remove(monkeypatch, tmp_path):
+def test_remove(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_path(monkeypatch, tmp_path)
     user_overrides.upsert_override("mod:b", {"category": "solid"})
     user_overrides.remove_override("mod:b")
@@ -59,13 +61,15 @@ def test_remove(monkeypatch, tmp_path):
     user_overrides.remove_override("mod:nope")  # no-op, no error
 
 
-def test_corrupt_file_returns_empty(monkeypatch, tmp_path):
+def test_corrupt_file_returns_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     p = _patch_path(monkeypatch, tmp_path)
     p.write_text("{ not valid json", encoding="utf-8")
     assert user_overrides.load_overrides() == EMPTY
 
 
-def test_file_deleted_when_last_override_removed(monkeypatch, tmp_path):
+def test_file_deleted_when_last_override_removed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     p = _patch_path(monkeypatch, tmp_path)
     user_overrides.upsert_override("mod:a", {"category": "solid"})
     user_overrides.upsert_override("mod:b", {"category": "overlay"})
@@ -77,7 +81,7 @@ def test_file_deleted_when_last_override_removed(monkeypatch, tmp_path):
     assert user_overrides.load_overrides() == EMPTY  # load still graceful
 
 
-def test_endpoints_round_trip(monkeypatch, tmp_path):
+def test_endpoints_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _patch_path(monkeypatch, tmp_path)
 
     assert client.get("/worlds/render-overrides").json()["blocks"] == {}

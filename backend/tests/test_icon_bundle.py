@@ -1,6 +1,9 @@
 import gzip
 import json
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from app.services import pack_version
 from app.services.blockcolor import resolution
@@ -13,13 +16,13 @@ ICON_DUMP = {
 }
 
 
-def _write_gz(path: Path, obj: dict) -> None:
+def _write_gz(path: Path, obj: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8") as f:
         json.dump(obj, f)
 
 
-def test_resolver_loads_gzipped_dump(tmp_path):
+def test_resolver_loads_gzipped_dump(tmp_path: Path) -> None:
     gz = tmp_path / "icon_dump.json.gz"
     _write_gz(gz, ICON_DUMP)
     r = ForgeDumpResolver()
@@ -29,7 +32,7 @@ def test_resolver_loads_gzipped_dump(tmp_path):
     assert res.resolved and res.texture_key == "grass_top"
 
 
-def test_resolver_still_loads_plain_json(tmp_path):
+def test_resolver_still_loads_plain_json(tmp_path: Path) -> None:
     p = tmp_path / "icon_dump.json"
     p.write_text(json.dumps(ICON_DUMP), encoding="utf-8")
     r = ForgeDumpResolver()
@@ -48,7 +51,7 @@ def _bundle(tmp_path: Path, major: str = "2.8") -> Path:
     return data
 
 
-def test_bundled_icon_dump_selects_major(tmp_path, monkeypatch):
+def test_bundled_icon_dump_selects_major(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     data = _bundle(tmp_path)
     monkeypatch.setattr(resolution, "_DATA_DIR", data)
     monkeypatch.setattr(
@@ -58,7 +61,9 @@ def test_bundled_icon_dump_selects_major(tmp_path, monkeypatch):
     assert cand == data / "2.8" / "icon_dump.json.gz"
 
 
-def test_bundled_icon_dump_prefers_gz_but_falls_back_to_json(tmp_path, monkeypatch):
+def test_bundled_icon_dump_prefers_gz_but_falls_back_to_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     data = tmp_path / "data"
     (data / "2.8").mkdir(parents=True)
     (data / "2.8" / "biome_dump.json").write_text(
@@ -72,7 +77,9 @@ def test_bundled_icon_dump_prefers_gz_but_falls_back_to_json(tmp_path, monkeypat
     assert resolution._bundled_icon_dump("world") == data / "2.8" / "icon_dump.json"
 
 
-def test_bundled_icon_dump_none_without_world(tmp_path, monkeypatch):
+def test_bundled_icon_dump_none_without_world(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(resolution, "_DATA_DIR", tmp_path / "data")
     assert resolution._bundled_icon_dump(None) is None
     assert resolution._bundled_icon_dump("") is None
