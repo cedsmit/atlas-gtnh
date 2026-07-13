@@ -33,7 +33,13 @@ def _make_chunk_nbt(chunk_x: int, chunk_z: int) -> bytes:
     return buf.getvalue()
 
 
-def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
+def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int, top_id: int | None = None) -> bytes:
+    # All stone; when top_id is given, the y=15 layer (indices 3840..4095 in the
+    # YZX-ordered Blocks array) is set to it, so it sits atop stone.
+    blocks = [1] * 4096
+    if top_id is not None:
+        for i in range(15 * 256, 16 * 256):
+            blocks[i] = top_id
     nbt_file = nbtlib.File(
         {
             "Level": nbtlib.Compound(
@@ -49,7 +55,7 @@ def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
                             nbtlib.Compound(
                                 {
                                     "Y": nbtlib.Byte(0),
-                                    "Blocks": nbtlib.ByteArray([1] * 4096),  # all stone
+                                    "Blocks": nbtlib.ByteArray(blocks),
                                     "Data": nbtlib.ByteArray([0] * 2048),
                                 }
                             ),
@@ -64,8 +70,10 @@ def _make_chunk_nbt_with_sections(chunk_x: int, chunk_z: int) -> bytes:
     return buf.getvalue()
 
 
-def _make_region_file_with_sections(chunk_x: int = 0, chunk_z: int = 0) -> bytes:
-    nbt_bytes = zlib.compress(_make_chunk_nbt_with_sections(chunk_x, chunk_z))
+def _make_region_file_with_sections(
+    chunk_x: int = 0, chunk_z: int = 0, top_id: int | None = None
+) -> bytes:
+    nbt_bytes = zlib.compress(_make_chunk_nbt_with_sections(chunk_x, chunk_z, top_id))
     chunk_length = len(nbt_bytes) + 1
     chunk_sectors = (chunk_length + 4 + SECTOR_SIZE - 1) // SECTOR_SIZE
 
@@ -205,6 +213,117 @@ def test_get_chunk_data(tmp_path: Path) -> None:
     assert section["data"][0] == 0
 
 
+def test_get_chunks_batch(tmp_path: Path) -> None:
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    response = client.post(
+        "/worlds/chunks/batch",
+        json={"world_path": str(world), "coords": [[0, 0], [1, 0]]},
+    )
+    assert response.status_code == 200
+    chunks = response.json()["chunks"]
+    # (0,0) has terrain; (1,0) is absent and is therefore omitted.
+    assert len(chunks) == 1
+    assert chunks[0]["chunk_x"] == 0
+    assert chunks[0]["chunk_z"] == 0
+    assert len(chunks[0]["sections"][0]["blocks"]) == 4096
+
+
+def test_get_chunks_batch_empty_coords(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.post("/worlds/chunks/batch", json={"world_path": str(world), "coords": []})
+    assert response.status_code == 200
+    assert response.json()["chunks"] == []
+
+
+def test_get_region_surface(tmp_path: Path) -> None:
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    response = client.post("/worlds/regions/0/0/surface", json={"world_path": str(world)})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["region_x"] == 0
+    assert body["region_z"] == 0
+    assert len(body["chunks"]) == 1
+    surf = body["chunks"][0]
+    assert surf["chunk_x"] == 0
+    assert surf["chunk_z"] == 0
+    assert len(surf["ids"]) == 256
+    assert len(surf["heights"]) == 256
+    # All-stone single section (Y=0): every column's surface is stone (id 1) at y=15.
+    assert surf["ids"][0] == 1
+    assert surf["heights"][0] == 15
+
+
+def test_get_region_surface_missing(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    response = client.post("/worlds/regions/9/9/surface", json={"world_path": str(world)})
+    assert response.status_code == 404
+
+
+def test_get_region_surface_skips_ids(tmp_path: Path) -> None:
+    # Column tops are tallgrass (id 31) over stone. Passing skip_ids=[31] must
+    # reveal the stone beneath (id 1 at y=14) — how the overview hides plants to
+    # match the detailed render.
+    world = _make_world(tmp_path, _make_region_file_with_sections(top_id=31))
+
+    resp = client.post("/worlds/regions/0/0/surface", json={"world_path": str(world)})
+    surf = resp.json()["chunks"][0]
+    assert surf["ids"][0] == 31
+    assert surf["heights"][0] == 15
+
+    resp = client.post(
+        "/worlds/regions/0/0/surface",
+        json={"world_path": str(world), "skip_ids": [31]},
+    )
+    surf = resp.json()["chunks"][0]
+    assert surf["ids"][0] == 1
+    assert surf["heights"][0] == 14
+
+
+def test_get_chunk_data_corrupt_chunk_returns_400(tmp_path: Path) -> None:
+    # A chunk whose payload is not valid zlib must surface as 400, not a 500.
+    world = tmp_path / "corrupt_world"
+    world.mkdir()
+    (world / "level.dat").touch()
+    region_dir = world / "region"
+    region_dir.mkdir()
+    location_table = bytearray(SECTOR_SIZE)
+    location_table[0:4] = struct.pack(">I", (2 << 8) | 1)
+    corrupt_chunk = bytearray(SECTOR_SIZE)
+    corrupt_chunk[0:4] = struct.pack(">I", 10)
+    corrupt_chunk[4] = 2  # zlib compression
+    corrupt_chunk[5:15] = b"\xff" * 10  # invalid zlib data
+    (region_dir / "r.0.0.mca").write_bytes(
+        bytes(location_table) + bytes(SECTOR_SIZE) + bytes(corrupt_chunk)
+    )
+    response = client.get("/worlds/chunks/0/0", params={"world_path": str(world)})
+    assert response.status_code == 400
+
+
+def test_list_regions_skips_malformed_filenames(tmp_path: Path) -> None:
+    # A non-numeric region filename must be skipped, not 500 the whole listing.
+    world = tmp_path / "mixed_world"
+    world.mkdir()
+    (world / "level.dat").touch()
+    region_dir = world / "region"
+    region_dir.mkdir()
+    (region_dir / "r.0.0.mca").write_bytes(_make_region_file())
+    (region_dir / "r.x.y.mca").write_bytes(_make_region_file())
+    response = client.get("/worlds/regions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    names = [r["file_name"] for r in response.json()["regions"]]
+    assert "r.0.0.mca" in names
+    assert "r.x.y.mca" not in names
+
+
+def test_get_chunks_batch_too_many(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    coords = [[i, 0] for i in range(1025)]
+    response = client.post(
+        "/worlds/chunks/batch", json={"world_path": str(world), "coords": coords}
+    )
+    assert response.status_code == 400
+
+
 def test_get_chunk_data_missing_chunk(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.get("/worlds/chunks/1/0", params={"world_path": str(world)})
@@ -237,6 +356,27 @@ def test_list_dimensions_with_nether(tmp_path: Path) -> None:
     names = [d["name"] for d in dims]
     assert "Overworld" in names
     assert "Nether" in names
+
+
+def test_list_dimensions_personal_space(tmp_path: Path) -> None:
+    # The PersonalSpace mod stores its dimension as PERSONAL_DIM_<id>, not DIM<id>.
+    world = _make_world(tmp_path)
+    personal = world / "PERSONAL_DIM_180" / "region"
+    personal.mkdir(parents=True)
+    (personal / "r.0.0.mca").write_bytes(_make_region_file())
+    # An empty personal dim (no .mca) must be skipped, like empty DIM folders.
+    (world / "PERSONAL_DIM_999" / "region").mkdir(parents=True)
+    # A mod data folder (no region/*.mca) must not be listed as a dimension.
+    (world / "gregtech").mkdir()
+    (world / "gregtech" / "foo.dat").touch()
+
+    response = client.get("/worlds/dimensions", params={"world_path": str(world)})
+    assert response.status_code == 200
+    by_id = {d["id"]: d for d in response.json()}
+    assert by_id["PERSONAL_DIM_180"]["name"] == "Personal Dimension 180"
+    assert by_id["PERSONAL_DIM_180"]["region_count"] == 1
+    assert "PERSONAL_DIM_999" not in by_id  # empty → skipped
+    assert "gregtech" not in by_id  # mod data folder, not a dimension
 
 
 def test_list_dimensions_missing_world(tmp_path: Path) -> None:

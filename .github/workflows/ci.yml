@@ -62,6 +62,9 @@ jobs:
             - name: Install dependencies
               run: npm ci
 
+            - name: Prettier Format Check
+              run: npm run format:check
+
             - name: ESLint
               run: npm run lint
 

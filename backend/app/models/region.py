@@ -40,6 +40,65 @@ class ChunkData(BaseModel):
     chunk_x: int
     chunk_z: int
     sections: list[ChunkSection]
+    biomes: list[int] = []  # 256 biome IDs (x + z*16), empty when not stored
+
+
+class ChunkSurface(BaseModel):
+    chunk_x: int
+    chunk_z: int
+    ids: list[int]  # 256, top non-air block id per column (x + z*16); 0 = empty
+    metas: list[int]  # 256
+    heights: list[int]  # 256, absolute Y of the top block; -1 = empty
+    biomes: list[int] = []  # 256, or empty when not stored
+    floor_ids: list[int] = []  # 256, seabed block under water (0 = none)
+    water_depth: list[int] = []  # 256, water depth over the seabed (0 = none)
+
+
+class RegionSurfaceResponse(BaseModel):
+    region_x: int
+    region_z: int
+    chunks: list[ChunkSurface]
+
+
+class RegionSurfaceRequest(BaseModel):
+    world_path: str
+    # Block ids treated as air (plants, invisible/hidden blocks) so the overview
+    # shows the terrain beneath them. Sent in the body rather than the query
+    # string to keep the (potentially long) id list out of the access logs.
+    skip_ids: list[int] = []
+
+
+class ChunkBatchRequest(BaseModel):
+    world_path: str
+    coords: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...]
+
+
+class ChunkBatchResponse(BaseModel):
+    chunks: list[ChunkData]
+
+
+class DeleteChunksRequest(BaseModel):
+    world_path: str  # dimension path (its region/ holds the .mca files)
+    chunks: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...] to delete for regen
+
+
+class DeleteExceptRequest(BaseModel):
+    world_path: str  # dimension path
+    keep: list[tuple[int, int]]  # chunks to KEEP; every other generated chunk is deleted
+
+
+class CopyChunksRequest(BaseModel):
+    src_world: str  # source dimension path
+    dst_world: str  # destination dimension path
+    chunks: list[tuple[int, int]]  # source chunk coords
+    offset: tuple[int, int] = (0, 0)  # (dx, dz) chunk offset applied at the destination
+
+
+class CreateWorldRequest(BaseModel):
+    src_world: str  # source dimension path
+    new_world_path: str  # new world folder to create (must be empty/absent)
+    chunks: list[tuple[int, int]]
+    offset: tuple[int, int] = (0, 0)
 
 
 class DimensionInfo(BaseModel):

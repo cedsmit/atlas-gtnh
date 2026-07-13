@@ -1,0 +1,96 @@
+{
+  "format": 1,
+  "source": "infrastructure.json",
+  "blocks": {
+    "ExtraUtilities:pipes": { "category": "solid", "blockTags": ["pipe"] },
+    "ExtraUtilities:pipes.1": { "category": "solid", "blockTags": ["pipe"] },
+    "GalacticraftCore:tile.oxygenPipe": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+    "GalacticraftMars:tile.hydrogenPipe": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+    "GalacticraftMars:tile.walkwayOxygenPipe": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+    "GoodGenerator:speedingPipe": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+    "AWWayofTime:blockReagentConduit": {
+      "category": "solid",
+      "blockTags": ["pipe"]
+    },
+
+    "OpenComputers:cable": { "category": "solid", "blockTags": ["cable"] },
+    "StevesAddons:cable_ae": { "category": "solid", "blockTags": ["cable"] },
+    "StevesAddons:cable_rf": { "category": "solid", "blockTags": ["cable"] },
+    "GalacticraftCore:tile.aluminumWire": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "GalacticraftMars:tile.walkwayWire": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "computronics:computronics.audioCable": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "gtnhintergalactic:spaceelevatorcable": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "AWWayofTime:blockConduit": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableBUDName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableBreakerName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableCamouflageName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableClusterName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableCreativeName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableInputName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableIntakeName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableOutputName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableRelayName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    },
+    "StevesFactoryManager:BlockCableSignName": {
+      "category": "solid",
+      "blockTags": ["cable"]
+    }
+  }
+}

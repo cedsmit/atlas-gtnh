@@ -11,8 +11,8 @@ A desktop world editor for Minecraft GT:NH.
 | State | Zustand + TanStack Query |
 | Styling | Tailwind CSS |
 | Backend | Python 3.12 + FastAPI |
-| World I/O | Amulet-Core + NBTLib |
-| Database | SQLite via SQLModel |
+| World I/O | Hand-rolled MCA reader/writer (NBTLib + NumPy) |
+| Database | SQLite (raw sqlite3) |
 
 ## Project structure
 
@@ -22,22 +22,22 @@ atlas-gtnh/
 │   ├── app/
 │   │   ├── api/      # Route handlers
 │   │   ├── services/ # Business logic
-│   │   ├── world/    # Amulet-Core integration
-│   │   ├── database/ # SQLite / SQLModel
+│   │   ├── world/    # MCA region I/O (nbtlib + numpy)
 │   │   └── models/   # Pydantic models
 │   └── tests/
 ├── frontend/         # Tauri + React + Vite
 │   ├── src/
-│   │   ├── components/
-│   │   ├── features/
-│   │   ├── pages/
-│   │   ├── api/      # FastAPI client
-│   │   └── hooks/
-│   └── src-tauri/    # Rust shell
-├── worlds/           # Local world files (not in git)
-├── docs/
-└── docker/
+│   │   ├── features/ # Feature modules (map, world, blocks, textures, …); each has its own api/
+│   │   ├── shared/   # Cross-feature UI + API base
+│   │   └── src-tauri # (sibling) Rust shell
+├── tools/            # forge-icon-dumper (Forge mod that dumps block→texture mappings)
+└── docs/
+    ├── CurrentScope.md  # living roadmap + current status
+    ├── design/          # architecture, world-format, texture-resolution (some sections aspirational)
+    └── reports/         # point-in-time analyses / audits
 ```
+
+> World saves are opened from any path via the native file dialog — there is no in-repo `worlds/` folder. Local `uploads/` is git-ignored.
 
 ## Prerequisites
 
@@ -117,7 +117,7 @@ Tauri shell
     └── Three.js / React Three Fiber
 
 FastAPI backend (port 8000)
-└── Amulet-Core / NBTLib
+└── Hand-rolled MCA I/O (NBTLib + NumPy)
     └── GTNH world files
 
 SQLite (metadata only — chunk/block data stays in the world files)

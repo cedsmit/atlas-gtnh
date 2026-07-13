@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "source": "thaumcraft.json",
+  "blocks": {
+    "Thaumcraft:blockAiry": { "category": "ignore" },
+    "Thaumcraft:blockCrystal": { "category": "overlay", "alphaMode": "cutout" },
+    "Thaumcraft:blockMagicalLeaves": {
+      "category": "solid",
+      "tint": "foliage",
+      "alphaMode": "cutout"
+    },
+    "Thaumcraft:blockJar": { "category": "overlay" },
+    "Thaumcraft:blockCandle": { "category": "overlay", "blockTags": ["torch"] },
+    "Thaumcraft:blockCustomPlant": { "category": "overlay" },
+    "Thaumcraft:blockTube": { "category": "solid", "blockTags": ["pipe"] },
+    "Thaumcraft:blockMetalDevice:7": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
+    "Thaumcraft:blockMetalDevice:8": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
+    "Thaumcraft:blockMetalDevice:13": {
+      "category": "overlay",
+      "blockTags": ["torch"]
+    },
+    "Thaumcraft:blockArcaneLog": { "category": "solid" },
+    "Thaumcraft:blockMagicalLog": { "category": "solid" },
+    "Thaumcraft:blockTaintFibre": {
+      "category": "overlay",
+      "tint": "foliage",
+      "blockTags": ["tallgrass"]
+    },
+    "Thaumcraft:blockFluxGoo": { "category": "fluid" },
+    "Thaumcraft:blockCosmeticSolid": { "category": "solid" },
+    "Thaumcraft:blockCosmeticOpaque": { "category": "solid" }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "format": 1,
+  "source": "lights.json",
+  "blocks": {
+    "minecraft:redstone_lamp": { "category": "solid", "blockTags": ["torch"] },
+    "minecraft:lit_redstone_lamp": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "FloodLights:electricFloodlight": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "FloodLights:smallElectricFloodlightMetaBlock": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "FloodLights:uvFloodlight": { "category": "solid", "blockTags": ["torch"] },
+    "FloodLights:carbonFloodlight": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "FloodLights:growLight": { "category": "solid", "blockTags": ["torch"] },
+    "RandomThings:lapisLamp": { "category": "solid", "blockTags": ["torch"] },
+    "Ztones:lampb": { "category": "solid", "blockTags": ["torch"] },
+    "Ztones:lampf": { "category": "solid", "blockTags": ["torch"] },
+    "Ztones:lampt": { "category": "solid", "blockTags": ["torch"] },
+    "BiblioCraft:BiblioIronLamp": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "BiblioCraft:BiblioIronLantern": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "BiblioCraft:BiblioLantern": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "BiblioCraft:BiblioLamp": { "category": "solid", "blockTags": ["torch"] },
+    "BloodArsenal:blood_lamp": { "category": "solid", "blockTags": ["torch"] },
+    "GalacticraftCore:tile.arclamp": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "Railcraft:lantern.metal": { "category": "solid", "blockTags": ["torch"] },
+    "Railcraft:lantern.stone": { "category": "solid", "blockTags": ["torch"] },
+    "ProjRed|Illumination:projectred.illumination.lamp": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "etfuturum:lantern": { "category": "solid", "blockTags": ["torch"] },
+    "etfuturum:soul_lantern": { "category": "solid", "blockTags": ["torch"] },
+    "computronics:computronics.colorfulLamp": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "ExtraUtilities:chandelier": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    },
+    "Botania:seaLamp": { "category": "solid", "blockTags": ["torch"] },
+    "lootgames:LootGamesDungeonLight": {
+      "category": "solid",
+      "blockTags": ["torch"]
+    }
+  }
+}

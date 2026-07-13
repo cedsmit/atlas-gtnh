@@ -4,12 +4,12 @@ version = "0.1.0"
 description = "Atlas GTNH — Minecraft GT:NH world editor backend"
 requires-python = ">=3.12"
 dependencies = [
-    "amulet-core",
     "nbtlib>=2.0",
+    "numpy>=1.26",
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
-    "sqlmodel>=0.0.19",
     "pydantic>=2.7",
+    "pillow>=12.2.0",
 ]
 
 [project.optional-dependencies]
@@ -40,6 +40,10 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
+# Allow hand-aligned constant/lookup tables (column-aligned `=`, `:` and commas).
+# The formatter still collapses alignment unless a block is wrapped in
+# `# fmt: off` / `# fmt: on`; these ignores stop the linter fighting those blocks.
+ignore = ["E221", "E222", "E241", "E272"]
 
 [tool.mypy]
 python_version = "3.12"
