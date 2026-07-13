@@ -24,8 +24,9 @@ log = logging.getLogger(__name__)
 _DB_PATH = Path.home() / ".atlas_gtnh" / "search_index.db"
 
 # Bumped when the index schema/content changes so existing DBs rebuild. v2 added
-# the chunk_biomes table (biome search), which a v1 (block-only) index lacks.
-_INDEX_VERSION = "v2"
+# the chunk_biomes table (biome search); v3 fixed biome extraction for the modded
+# 16-bit Biomes16v2 format (v2 indexed 0 biomes on those worlds).
+_INDEX_VERSION = "v3"
 
 _init_lock = threading.Lock()
 _initialized = False
@@ -202,7 +203,7 @@ def query_biomes(
     Biomes are 2D, so hits carry no meaningful Y — it's reported as a nominal
     surface level (64). ``count`` is the number of matching columns in the chunk.
     """
-    ids = sorted({int(b) for b in biome_ids if 0 <= int(b) < 256})
+    ids = sorted({int(b) for b in biome_ids if 0 <= int(b) < 65536})
     if not ids:
         return SearchBlocksResponse(
             hits=[], total_matches=0, hit_chunks=0, capped=False, block_ids=[]
