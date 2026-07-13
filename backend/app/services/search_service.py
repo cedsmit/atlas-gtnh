@@ -1,5 +1,10 @@
-from app.models.search import SearchBlocksResponse
-from app.services.search_index import ensure_index, query_index
+from app.models.search import BiomePresence, SearchBlocksResponse
+from app.services.search_index import (
+    biomes_present,
+    ensure_index,
+    query_biomes,
+    query_index,
+)
 
 
 def find_blocks(world_path: str, block_ids: list[int], limit: int = 500) -> SearchBlocksResponse:
@@ -12,3 +17,22 @@ def find_blocks(world_path: str, block_ids: list[int], limit: int = 500) -> Sear
     """
     ensure_index(world_path)
     return query_index(world_path, block_ids, limit)
+
+
+def find_biomes(world_path: str, biome_ids: list[int], limit: int = 500) -> SearchBlocksResponse:
+    """Find the chunks containing any of *biome_ids* in a dimension.
+
+    Shares the persistent index (biomes are indexed in the same build pass as
+    blocks), so it's instant after the one-time build. Run off the event loop.
+    """
+    ensure_index(world_path)
+    return query_biomes(world_path, biome_ids, limit)
+
+
+def list_biomes(world_path: str) -> list[BiomePresence]:
+    """The biomes actually present in a dimension (from the index), widest first.
+
+    Builds the index on first call, then instant. Run off the event loop.
+    """
+    ensure_index(world_path)
+    return biomes_present(world_path)

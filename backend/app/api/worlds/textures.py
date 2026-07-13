@@ -52,6 +52,17 @@ async def get_block_colors(world_path: str = Query(...)) -> dict[int, list[int]]
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@router.get("/biome-names")
+async def get_biome_names_endpoint(world_path: str = Query(...)) -> dict[int, str]:
+    """biome_id → display name from the AtlasDumper biome dump (for biome search).
+
+    Empty when no biome_dump.json is present.
+    """
+    from app.services.biome_color_service import get_biome_names
+
+    return await asyncio.to_thread(get_biome_names, world_path)
+
+
 @router.get("/biome-colors")
 async def get_biome_colors_endpoint(
     world_path: str = Query(...),

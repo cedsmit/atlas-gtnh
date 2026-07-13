@@ -561,3 +561,40 @@ def scan_region_all_blocks(
             sx, sy, sz = sample[bid]
             out.append((xpos, zpos, bid, cnt, sx, sy, sz))
     return out
+
+
+def scan_region_all_biomes(
+    path: Path,
+) -> list[tuple[int, int, int, int, int, int]]:
+    """Index rows for the biomes in a region — one per (chunk, biome id).
+
+    Returns (chunk_x, chunk_z, biome_id, count, sx, sz): the per-chunk count of
+    columns carrying each biome id plus the world coords of the first such column.
+    Biomes are 2D (one id per XZ column, indexed x + z*16), so there is no Y. Only
+    the cheap ``Biomes`` array is read (sections are skipped). Feeds the biome
+    search index. Biome id 255 (the "uncalculated" marker) is skipped.
+    """
+    data = _read_region_bytes(path)
+    if len(data) < 2 * SECTOR_SIZE:
+        return []
+    out: list[tuple[int, int, int, int, int, int]] = []
+    for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
+        try:
+            xpos, zpos, biomes_bytes, _sections = _fast_parse_chunk(_decompress_chunk(data, offset))
+        except Exception:
+            continue
+        biomes = _decode_biomes(biomes_bytes, xpos, zpos)
+        if not biomes:
+            continue
+        counts: dict[int, int] = {}
+        sample: dict[int, tuple[int, int]] = {}
+        for idx, bid in enumerate(biomes):
+            if bid == 255:  # 'uncalculated' marker, not a real biome
+                continue
+            counts[bid] = counts.get(bid, 0) + 1
+            if bid not in sample:
+                sample[bid] = (xpos * 16 + (idx & 0xF), zpos * 16 + (idx >> 4))
+        for bid, cnt in counts.items():
+            sx, sz = sample[bid]
+            out.append((xpos, zpos, bid, cnt, sx, sz))
+    return out

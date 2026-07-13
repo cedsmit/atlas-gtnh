@@ -20,6 +20,14 @@ class SearchBlocksResponse(BaseModel):
     block_ids: list[int]
 
 
+class BiomePresence(BaseModel):
+    """A biome that occurs in a dimension, with how much of it there is."""
+
+    biome_id: int
+    columns: int  # total XZ columns of this biome (its area, in blocks²)
+    chunks: int  # number of chunks it appears in
+
+
 class ChunkStatCell(BaseModel):
     cx: int
     cz: int
