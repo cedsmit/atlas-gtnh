@@ -22,6 +22,7 @@ import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
 import type { BlockColumn, MapEngine } from './features/map/mapEngine'
 import { SearchPanel } from './features/search/SearchPanel'
+import { LootGamesPanel } from './features/lootgames/LootGamesPanel'
 import { useChunkStats } from './features/search/api/chunkStats'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
@@ -64,6 +65,7 @@ export default function App() {
   const [inspectOpen, setInspectOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [lootGamesOpen, setLootGamesOpen] = useState(false)
   const [heatmapOn, setHeatmapOn] = useState(false)
   const [gridOn, setGridOn] = useState(false)
   const [infraViewOn, setInfraViewOn] = useState(false)
@@ -280,6 +282,7 @@ export default function App() {
     setInspectOpen(false)
     setDebugOpen(false)
     setSearchOpen(false)
+    setLootGamesOpen(false)
   }
 
   function handleCloseWorld() {
@@ -290,6 +293,7 @@ export default function App() {
     setInspectOpen(false)
     setDebugOpen(false)
     setSearchOpen(false)
+    setLootGamesOpen(false)
   }
 
   function handleSelectDimension(dim: DimensionInfo) {
@@ -301,18 +305,28 @@ export default function App() {
     setInspectOpen((o) => !o)
     setDebugOpen(false)
     setSearchOpen(false)
+    setLootGamesOpen(false)
   }
 
   function handleToggleDebug() {
     setDebugOpen((o) => !o)
     setInspectOpen(false)
     setSearchOpen(false)
+    setLootGamesOpen(false)
   }
 
   function handleToggleSearch() {
     setSearchOpen((o) => !o)
     setInspectOpen(false)
     setDebugOpen(false)
+    setLootGamesOpen(false)
+  }
+
+  function handleToggleLootGames() {
+    setLootGamesOpen((o) => !o)
+    setInspectOpen(false)
+    setDebugOpen(false)
+    setSearchOpen(false)
   }
 
   // Per-chunk heatmap overlay (Stage 5 stats prototype) — an independent map layer.
@@ -417,6 +431,10 @@ export default function App() {
         searchOpen={searchOpen}
         onToggleSearch={
           worldPath && dimensionPath ? handleToggleSearch : undefined
+        }
+        lootGamesOpen={lootGamesOpen}
+        onToggleLootGames={
+          worldPath && dimensionPath ? handleToggleLootGames : undefined
         }
         heatmapOn={heatmapOn}
         heatmapLoading={chunkStats.isPending}
@@ -562,6 +580,23 @@ export default function App() {
               }
               onHighlight={handleSearchHighlight}
               onClose={() => setSearchOpen(false)}
+            />
+          )}
+
+          {/* LootGames dungeon locator */}
+          {lootGamesOpen && dimensionPath && blockNames && (
+            <LootGamesPanel
+              blockNames={blockNames}
+              dimensionPath={dimensionPath}
+              onJump={(x, z) =>
+                engineRef.current?.animateCameraTo({
+                  cx: x,
+                  cz: z,
+                  scale: VIEWER_CONFIG.maxScale,
+                })
+              }
+              onHighlight={handleSearchHighlight}
+              onClose={() => setLootGamesOpen(false)}
             />
           )}
         </div>
