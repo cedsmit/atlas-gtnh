@@ -2,7 +2,11 @@ import { useEffect, useMemo } from 'react'
 import { Loader2, MapPin, Puzzle, X } from 'lucide-react'
 
 import type { BlockColumn } from '../map/mapEngine'
-import type { HomePos } from '../map/homeWaypoint'
+import {
+  type HomePos,
+  homeDistance,
+  sortByDistanceFromHome,
+} from '../map/homeWaypoint'
 import { type SearchHit, useSearchBlocks } from '../search/api/searchBlocks'
 import { useLocateBlocks } from '../search/api/locateBlocks'
 import { resolveMasterBlockId } from './masterBlock'
@@ -118,13 +122,6 @@ export function LootGamesPanel({
   )
 }
 
-/** Horizontal (XZ) block distance from home to a hit — elevation is ignored. */
-function blockDistance(hit: SearchHit, home: HomePos): number {
-  const dx = hit.x - home.x
-  const dz = hit.z - home.z
-  return Math.round(Math.sqrt(dx * dx + dz * dz))
-}
-
 function DungeonResults({
   state,
   locating,
@@ -172,11 +169,7 @@ function DungeonResults({
     )
   }
   // Nearest-first when a home is set; otherwise the index's densest-first order.
-  const hits = home
-    ? [...data.hits].sort(
-        (a, b) => blockDistance(a, home) - blockDistance(b, home)
-      )
-    : data.hits
+  const hits = sortByDistanceFromHome(data.hits, home)
 
   return (
     <>
@@ -217,7 +210,7 @@ function DungeonResults({
             </span>
             {home ? (
               <span className="shrink-0 text-emerald-400/80">
-                {blockDistance(h, home).toLocaleString()} blk
+                {homeDistance(h.x, h.z, home).toLocaleString()} blk
               </span>
             ) : (
               h.count > 1 && <span className="text-zinc-500">×{h.count}</span>

@@ -2,12 +2,19 @@ import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Loader2, MapPin, Search, X } from 'lucide-react'
 
 import type { BlockColumn } from '../map/mapEngine'
+import {
+  type HomePos,
+  homeDistance,
+  sortByDistanceFromHome,
+} from '../map/homeWaypoint'
 import { type SearchHit, useSearchBlocks } from './api/searchBlocks'
 import { useLocateBlocks } from './api/locateBlocks'
 
 interface Props {
   blockNames: Record<number, string>
   dimensionPath: string
+  /** Home waypoint to measure/sort distance from; null = no sorting. */
+  home: HomePos | null
   /** Fly the map camera to a world block position. */
   onJump: (x: number, z: number) => void
   /** Paint (or clear, with null) the map highlight over the matched blocks. */
@@ -30,6 +37,7 @@ const MAX_NAME_MATCHES = 100
 export function SearchPanel({
   blockNames,
   dimensionPath,
+  home,
   onJump,
   onHighlight,
   onClose,
@@ -160,6 +168,7 @@ export function SearchPanel({
           <SearchResults
             state={search}
             locating={locating}
+            home={home}
             onRetry={() => search.mutate([selected.id])}
             onJump={onJump}
           />
@@ -172,11 +181,13 @@ export function SearchPanel({
 function SearchResults({
   state,
   locating,
+  home,
   onRetry,
   onJump,
 }: {
   state: ReturnType<typeof useSearchBlocks>
   locating: boolean
+  home: HomePos | null
   onRetry: () => void
   onJump: (x: number, z: number) => void
 }) {
@@ -213,6 +224,11 @@ function SearchResults({
       </p>
     )
   }
+  // Nearest-first when a home is set; otherwise the index's densest-first order.
+  // Note: the server caps hits by count first, so this reorders the returned
+  // (densest) chunks — it isn't a guaranteed global nearest for very common blocks.
+  const hits = sortByDistanceFromHome(data.hits, home)
+
   return (
     <>
       <p className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-zinc-500">
@@ -220,6 +236,7 @@ function SearchResults({
           {data.total_matches.toLocaleString()} blocks in {data.hit_chunks}{' '}
           chunk
           {data.hit_chunks === 1 ? '' : 's'}
+          {home && ' · nearest first'}
           {data.capped && ' (capped — refine the name for more)'}
         </span>
         {locating && (
@@ -230,7 +247,7 @@ function SearchResults({
         )}
       </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {data.hits.map((h: SearchHit) => (
+        {hits.map((h: SearchHit) => (
           <button
             key={`${h.cx},${h.cz}`}
             onClick={() => onJump(h.x, h.z)}
@@ -245,6 +262,11 @@ function SearchResults({
               {h.x}, {h.z}
             </span>
             <span className="text-zinc-500">×{h.count}</span>
+            {home && (
+              <span className="shrink-0 text-emerald-400/80">
+                {homeDistance(h.x, h.z, home).toLocaleString()} blk
+              </span>
+            )}
           </button>
         ))}
       </div>

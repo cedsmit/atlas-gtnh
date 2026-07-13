@@ -55,6 +55,29 @@ export function saveHome(dimensionPath: string, pos: HomePos): void {
   persist(store)
 }
 
+/** Straight-line horizontal (XZ) block distance from home, rounded. Y is ignored
+ *  on purpose — players glide/fly, so elevation doesn't reflect travel effort. */
+export function homeDistance(x: number, z: number, home: HomePos): number {
+  const dx = x - home.x
+  const dz = z - home.z
+  return Math.round(Math.sqrt(dx * dx + dz * dz))
+}
+
+/**
+ * Sort any positioned hits nearest-first from home (returns a new array), or hand
+ * back the original order when no home is set. Shared by the search panels so the
+ * "sort by distance from home" behaviour lives in one place.
+ */
+export function sortByDistanceFromHome<T extends { x: number; z: number }>(
+  items: T[],
+  home: HomePos | null
+): T[] {
+  if (!home) return items
+  return [...items].sort(
+    (a, b) => homeDistance(a.x, a.z, home) - homeDistance(b.x, b.z, home)
+  )
+}
+
 /** Remove the home waypoint for a dimension. */
 export function clearHome(dimensionPath: string): void {
   const store = load()

@@ -649,6 +649,7 @@ export default function App() {
             <SearchPanel
               blockNames={blockNames}
               dimensionPath={dimensionPath}
+              home={homePos}
               onJump={(x, z) =>
                 engineRef.current?.animateCameraTo({
                   cx: x,
