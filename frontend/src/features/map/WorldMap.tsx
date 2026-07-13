@@ -19,8 +19,9 @@ import {
 } from '../blocks/renderPresets'
 import { ChunkTools } from '../chunk-ops/ChunkTools'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
-import { MapEngine } from './mapEngine'
+import { MapEngine, type MapContextInfo } from './mapEngine'
 import { loadLastView, saveLastView } from './lastView'
+import { loadHome } from './homeWaypoint'
 
 const DEFAULT_CONFIG: RenderConfig = presetToConfig(BUILT_IN_PRESETS[0])
 
@@ -39,6 +40,9 @@ interface Props {
   // Lifted so App can read the camera when saving a view and move it when
   // applying one. WorldMap populates it with the live engine (or null when torn down).
   engineRef?: MutableRefObject<MapEngine | null>
+  // When set, right-clicking the map calls this (App opens a context menu) instead
+  // of the block inspector. Left unset, right-click keeps the classic inspector.
+  onMapContextRef?: MutableRefObject<((info: MapContextInfo) => void) | null>
 }
 
 export function WorldMap({
@@ -54,6 +58,7 @@ export function WorldMap({
   config: configProp,
   debugMode = false,
   engineRef: engineRefProp,
+  onMapContextRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -123,8 +128,11 @@ export function WorldMap({
       regionsRef,
       syncRegionsRef,
       fitCameraRef,
+      onContextRef: onMapContextRef,
       // Resume where the user left off in this dimension (null = fit instead).
       initialView: loadLastView(dimensionPath),
+      // Restore the home-waypoint marker for this dimension, if one is set.
+      initialHome: loadHome(dimensionPath),
     })
     engineRef.current = engine
     // Persist the camera so closing the app or the world resumes here on reopen.
@@ -143,7 +151,7 @@ export function WorldMap({
     }
     // engineRef is a stable ref (App passes the same object); listed to satisfy
     // exhaustive-deps now that it's `prop ?? local` rather than a bare useRef.
-  }, [dimensionPath, engineRef])
+  }, [dimensionPath, engineRef, onMapContextRef])
 
   useEffect(() => {
     syncRegionsRef.current?.()

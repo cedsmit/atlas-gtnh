@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Home, Loader2, Search, Trash2 } from 'lucide-react'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
 import { useBiomeColors } from './features/blocks/api/biomeColors'
@@ -20,7 +20,18 @@ import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
-import type { BlockColumn, MapEngine } from './features/map/mapEngine'
+import type {
+  BlockColumn,
+  MapContextInfo,
+  MapEngine,
+} from './features/map/mapEngine'
+import { MapContextMenu } from './features/map/MapContextMenu'
+import {
+  clearHome,
+  type HomePos,
+  loadHome,
+  saveHome,
+} from './features/map/homeWaypoint'
 import { SearchPanel } from './features/search/SearchPanel'
 import { LootGamesPanel } from './features/lootgames/LootGamesPanel'
 import { useChunkStats } from './features/search/api/chunkStats'
@@ -106,6 +117,36 @@ export default function App() {
   const [userPresets, setUserPresets] = useState(loadUserPresets)
   const engineRef = useRef<MapEngine | null>(null)
   const chunkStats = useChunkStats(dimensionPath ?? '')
+
+  // Home waypoint (your base) for the current dimension: drives the map marker and
+  // is the reference point search panels sort dungeons by distance from. The map
+  // marker itself is restored inside the engine (WorldMap → initialHome); this
+  // mirror in React state feeds the panels and the context-menu labels.
+  const [homePos, setHomePos] = useState<HomePos | null>(null)
+  useEffect(() => {
+    setHomePos(dimensionPath ? loadHome(dimensionPath) : null)
+  }, [dimensionPath])
+
+  // Right-click context menu on the map. The engine reports the click via this
+  // ref; App owns the menu so it can compose actions (set/clear home, inspect…).
+  const [mapContext, setMapContext] = useState<MapContextInfo | null>(null)
+  const mapContextRef = useRef<((info: MapContextInfo) => void) | null>(null)
+  mapContextRef.current = setMapContext
+
+  function setHomeHere() {
+    if (!dimensionPath || !mapContext) return
+    const pos = { x: mapContext.worldX, z: mapContext.worldZ }
+    saveHome(dimensionPath, pos)
+    setHomePos(pos)
+    engineRef.current?.setHomeMarker(pos)
+  }
+
+  function clearHomeMarker() {
+    if (!dimensionPath) return
+    clearHome(dimensionPath)
+    setHomePos(null)
+    engineRef.current?.setHomeMarker(null)
+  }
 
   function applyUserPreset(p: UserPreset) {
     setSelectedPresetId(p.presetId)
@@ -536,9 +577,46 @@ export default function App() {
               config={config}
               debugMode={debugOpen}
               engineRef={engineRef}
+              onMapContextRef={mapContextRef}
             />
             {gridOn && <GridLabels engineRef={engineRef} />}
             <DumpMismatchBanner worldPath={worldPath} />
+            {mapContext && (
+              <MapContextMenu
+                x={mapContext.screenX}
+                y={mapContext.screenY}
+                items={[
+                  {
+                    label: homePos ? 'Move home here' : 'Set home here',
+                    icon: <Home className="h-3.5 w-3.5 shrink-0" aria-hidden />,
+                    onClick: setHomeHere,
+                  },
+                  ...(homePos
+                    ? [
+                        {
+                          label: 'Clear home',
+                          icon: (
+                            <Trash2
+                              className="h-3.5 w-3.5 shrink-0"
+                              aria-hidden
+                            />
+                          ),
+                          onClick: clearHomeMarker,
+                          danger: true,
+                        },
+                      ]
+                    : []),
+                  {
+                    label: 'Inspect block',
+                    icon: (
+                      <Search className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    ),
+                    onClick: () => engineRef.current?.inspectAt(),
+                  },
+                ]}
+                onClose={() => setMapContext(null)}
+              />
+            )}
           </div>
 
           {/* Inspect panel */}
@@ -571,6 +649,7 @@ export default function App() {
             <SearchPanel
               blockNames={blockNames}
               dimensionPath={dimensionPath}
+              home={homePos}
               onJump={(x, z) =>
                 engineRef.current?.animateCameraTo({
                   cx: x,
@@ -588,6 +667,7 @@ export default function App() {
             <LootGamesPanel
               blockNames={blockNames}
               dimensionPath={dimensionPath}
+              home={homePos}
               onJump={(x, z) =>
                 engineRef.current?.animateCameraTo({
                   cx: x,

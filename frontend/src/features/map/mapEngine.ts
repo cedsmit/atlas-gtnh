@@ -35,6 +35,7 @@ import { showBlockInspector } from './blockInspector'
 import { attachMapInput } from './mapInput'
 import { MapScene } from './mapScene'
 import type { SavedView } from './lastView'
+import type { HomePos } from './homeWaypoint'
 
 const {
   minScale: MIN_SCALE,
@@ -52,6 +53,14 @@ const {
   renderBudgetMs: RENDER_BUDGET_MS,
 } = VIEWER_CONFIG
 
+/** A right-click on the map: viewport pixel position + the world block under it. */
+export interface MapContextInfo {
+  screenX: number
+  screenY: number
+  worldX: number
+  worldZ: number
+}
+
 interface MapEngineDeps {
   container: HTMLDivElement
   hud: HTMLDivElement
@@ -68,8 +77,14 @@ interface MapEngineDeps {
   regionsRef: MutableRefObject<RegionSummary[]>
   syncRegionsRef: MutableRefObject<(() => void) | null>
   fitCameraRef: MutableRefObject<(() => void) | null>
+  // Right-click handler: when set, the map opens this (a context menu) instead of
+  // the block inspector, handing over the click position + world block. When
+  // absent (standalone WorldMap), right-click falls back to the inspector.
+  onContextRef?: MutableRefObject<((info: MapContextInfo) => void) | null>
   // Last camera for this dimension: restored instead of fitting on first load.
   initialView?: SavedView | null
+  // Home waypoint for this dimension: rendered as a marker on first load.
+  initialHome?: HomePos | null
 }
 
 export class MapEngine {
@@ -92,6 +107,9 @@ export class MapEngine {
   private _getDims!: () => { w: number; h: number }
   private _heatmap: THREE.Mesh | null = null
   private _highlight: THREE.Group | null = null
+  private _homeMarker: THREE.Mesh | null = null
+  /** Run the block inspector for the last right-clicked point. Set in constructor. */
+  inspectAt!: () => void
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
    *  live (e.g. after a delete), without a full reload. Set in the constructor. */
   invalidateChunks!: (chunks: [number, number][]) => void
@@ -116,7 +134,9 @@ export class MapEngine {
       regionsRef,
       syncRegionsRef,
       fitCameraRef,
+      onContextRef,
       initialView,
+      initialHome,
     } = deps
 
     inspector.addEventListener('mousedown', (e) => e.stopPropagation())
@@ -1344,9 +1364,11 @@ export class MapEngine {
     // ── Input ──
     const el = mapScene.domElement
 
-    async function onContextMenu(e: MouseEvent) {
-      await showBlockInspector({
-        event: e,
+    // The block inspector, for the given right-click event. Reused both as the
+    // standalone right-click action and as the "Inspect block" context-menu item.
+    const showInspector = (ev: MouseEvent) =>
+      showBlockInspector({
+        event: ev,
         el,
         inspector,
         w: W,
@@ -1362,6 +1384,29 @@ export class MapEngine {
         textureKeys: textureKeysRef.current,
         metaTextureKeys: metaTextureKeysRef.current,
       })
+
+    // The last right-clicked event, so a context-menu "Inspect block" item can run
+    // the inspector at the point the menu was opened from.
+    let lastContextEvent: MouseEvent | null = null
+
+    function onContextMenu(e: MouseEvent) {
+      e.preventDefault()
+      lastContextEvent = e
+      const openMenu = onContextRef?.current
+      if (!openMenu) {
+        void showInspector(e) // standalone: keep the classic instant inspector
+        return
+      }
+      const rect = el.getBoundingClientRect()
+      const mx = e.clientX - rect.left
+      const my = e.clientY - rect.top
+      const worldX = Math.floor(st.cam.cx + (mx - W / 2) / st.cam.scale)
+      const worldZ = Math.floor(st.cam.cz + (my - H / 2) / st.cam.scale)
+      openMenu({ screenX: e.clientX, screenY: e.clientY, worldX, worldZ })
+    }
+
+    this.inspectAt = () => {
+      if (lastContextEvent) void showInspector(lastContextEvent)
     }
 
     const resizeObs = new ResizeObserver(() => {
@@ -1391,6 +1436,7 @@ export class MapEngine {
     this._st = st
     this._mapScene = mapScene
     this._getDims = () => ({ w: W, h: H })
+    if (initialHome) this.setHomeMarker(initialHome) // restore the saved home marker
     this.invalidateChunks = (chunks) => {
       const regions = new Set<string>()
       for (const [cx, cz] of chunks) {
@@ -1436,6 +1482,7 @@ export class MapEngine {
       for (const [key, m] of regionMeshes) revertRegionTile(key, m) // dispose tile materials
       this.setHeatmap(null) // drop overlay meshes/textures before the renderer goes
       this.setSearchHighlight(null)
+      this.setHomeMarker(null)
       mapScene.dispose()
     }
   }
@@ -1550,6 +1597,28 @@ export class MapEngine {
     if (columns && columns.length) {
       this._highlight = buildHighlightGroup(columns)
       scene.add(this._highlight)
+    }
+    this._st.forceFrame = true
+  }
+
+  /**
+   * Pin (or clear, with null) the home-waypoint marker at a world block. Like the
+   * other overlays it lives in world space, so it stays fixed to its block as the
+   * view pans and zooms, drawn on top of everything else.
+   */
+  setHomeMarker(pos: HomePos | null): void {
+    const scene = this._mapScene.scene
+    if (this._homeMarker) {
+      scene.remove(this._homeMarker)
+      const mat = this._homeMarker.material as THREE.MeshBasicMaterial
+      mat.map?.dispose()
+      mat.dispose()
+      this._homeMarker.geometry.dispose()
+      this._homeMarker = null
+    }
+    if (pos) {
+      this._homeMarker = buildHomeMarker(pos)
+      scene.add(this._homeMarker)
     }
     this._st.forceFrame = true
   }
@@ -1737,6 +1806,66 @@ function buildHighlightGroup(columns: BlockColumn[]): THREE.Group {
     group.add(mesh)
   }
   return group
+}
+
+/** Side of the home marker in world blocks — big enough to spot when zoomed out. */
+const HOME_MARKER_WORLD = 12
+
+/**
+ * Build the home-waypoint marker: an emerald map-pin drawn onto a canvas plane,
+ * centred on its block and tinted distinctly from the amber search highlight. The
+ * pin's tip points at the block; the plane is offset up by half its height so the
+ * tip (not the centre) lands on the target column.
+ */
+function buildHomeMarker(pos: HomePos): THREE.Mesh {
+  const S = 64 // canvas resolution
+  const canvas = document.createElement('canvas')
+  canvas.width = S
+  canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  const cx = S / 2
+  const headR = S * 0.26
+  const headY = S * 0.32
+  const tipY = S * 0.94
+
+  // Teardrop pin: a circular head tapering to a point at the bottom.
+  ctx.beginPath()
+  ctx.moveTo(cx, tipY)
+  ctx.quadraticCurveTo(cx - headR, headY + headR * 0.9, cx - headR, headY)
+  ctx.arc(cx, headY, headR, Math.PI, 0, false)
+  ctx.quadraticCurveTo(cx + headR, headY + headR * 0.9, cx, tipY)
+  ctx.closePath()
+  ctx.fillStyle = '#10b981' // emerald-500
+  ctx.fill()
+  ctx.lineWidth = S * 0.05
+  ctx.strokeStyle = '#ffffff'
+  ctx.stroke()
+
+  // Inner hole.
+  ctx.beginPath()
+  ctx.arc(cx, headY, headR * 0.42, 0, Math.PI * 2)
+  ctx.fillStyle = '#ffffff'
+  ctx.fill()
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.magFilter = THREE.LinearFilter
+  tex.minFilter = THREE.LinearFilter
+  tex.colorSpace = THREE.SRGBColorSpace
+
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    depthTest: false,
+  })
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(HOME_MARKER_WORLD, HOME_MARKER_WORLD),
+    mat
+  )
+  // World→GL is Z-flipped (y = -z). The tip sits at the block centre; the canvas
+  // tip is near its bottom edge, so raise the plane by ~half its height in GL-y.
+  mesh.position.set(pos.x + 0.5, -(pos.z + 0.5) + HOME_MARKER_WORLD * 0.44, 12)
+  mesh.renderOrder = 1001 // above the search highlight (1000)
+  return mesh
 }
 
 /** Dispose every per-chunk marker plane's texture, material, and geometry. */
