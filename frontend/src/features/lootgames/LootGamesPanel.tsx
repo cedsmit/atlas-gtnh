@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Loader2, MapPin, Puzzle, X } from 'lucide-react'
 
 import type { BlockColumn } from '../map/mapEngine'
+import type { HomePos } from '../map/homeWaypoint'
 import { type SearchHit, useSearchBlocks } from '../search/api/searchBlocks'
 import { useLocateBlocks } from '../search/api/locateBlocks'
 import { resolveMasterBlockId } from './masterBlock'
@@ -9,6 +10,8 @@ import { resolveMasterBlockId } from './masterBlock'
 interface Props {
   blockNames: Record<number, string>
   dimensionPath: string
+  /** Home waypoint to measure/sort distance from; null = no sorting. */
+  home: HomePos | null
   /** Fly the map camera to a world block position. */
   onJump: (x: number, z: number) => void
   /** Paint (or clear, with null) the map highlight over the located dungeons. */
@@ -32,6 +35,7 @@ interface Props {
 export function LootGamesPanel({
   blockNames,
   dimensionPath,
+  home,
   onJump,
   onHighlight,
   onClose,
@@ -105,6 +109,7 @@ export function LootGamesPanel({
         <DungeonResults
           state={search}
           locating={locating}
+          home={home}
           onRetry={() => search.mutate([masterId])}
           onJump={onJump}
         />
@@ -113,14 +118,23 @@ export function LootGamesPanel({
   )
 }
 
+/** Horizontal (XZ) block distance from home to a hit — elevation is ignored. */
+function blockDistance(hit: SearchHit, home: HomePos): number {
+  const dx = hit.x - home.x
+  const dz = hit.z - home.z
+  return Math.round(Math.sqrt(dx * dx + dz * dz))
+}
+
 function DungeonResults({
   state,
   locating,
+  home,
   onRetry,
   onJump,
 }: {
   state: ReturnType<typeof useSearchBlocks>
   locating: boolean
+  home: HomePos | null
   onRetry: () => void
   onJump: (x: number, z: number) => void
 }) {
@@ -157,12 +171,20 @@ function DungeonResults({
       </p>
     )
   }
+  // Nearest-first when a home is set; otherwise the index's densest-first order.
+  const hits = home
+    ? [...data.hits].sort(
+        (a, b) => blockDistance(a, home) - blockDistance(b, home)
+      )
+    : data.hits
+
   return (
     <>
       <p className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-zinc-500">
         <span>
           {data.total_matches.toLocaleString()} dungeon
           {data.total_matches === 1 ? '' : 's'} found
+          {home && ' · nearest first'}
           {data.capped && ' (capped)'}
         </span>
         {locating && (
@@ -172,8 +194,13 @@ function DungeonResults({
           </span>
         )}
       </p>
+      {!home && (
+        <p className="px-3 pb-1 text-[11px] leading-snug text-zinc-600">
+          Set a home (right-click the map) to sort by distance.
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {data.hits.map((h: SearchHit, i: number) => (
+        {hits.map((h: SearchHit, i: number) => (
           <button
             key={`${h.cx},${h.cz}`}
             onClick={() => onJump(h.x, h.z)}
@@ -184,11 +211,17 @@ function DungeonResults({
               className="h-3.5 w-3.5 shrink-0 text-amber-400"
               aria-hidden
             />
-            <span className="w-16 shrink-0 text-zinc-500">#{i + 1}</span>
+            <span className="w-8 shrink-0 text-zinc-600">#{i + 1}</span>
             <span className="flex-1">
               {h.x}, {h.z}
             </span>
-            {h.count > 1 && <span className="text-zinc-500">×{h.count}</span>}
+            {home ? (
+              <span className="shrink-0 text-emerald-400/80">
+                {blockDistance(h, home).toLocaleString()} blk
+              </span>
+            ) : (
+              h.count > 1 && <span className="text-zinc-500">×{h.count}</span>
+            )}
           </button>
         ))}
       </div>
