@@ -12,6 +12,7 @@ import {
   Loader2,
   Mountain,
   Palette,
+  Puzzle,
   Search,
   Star,
   TriangleAlert,
@@ -56,6 +57,8 @@ interface Props {
   onToggleDebug?: () => void
   searchOpen?: boolean
   onToggleSearch?: () => void
+  lootGamesOpen?: boolean
+  onToggleLootGames?: () => void
   heatmapOn?: boolean
   heatmapLoading?: boolean
   onToggleHeatmap?: () => void
@@ -93,6 +96,8 @@ export function MenuBar({
   onToggleDebug,
   searchOpen,
   onToggleSearch,
+  lootGamesOpen,
+  onToggleLootGames,
   heatmapOn,
   heatmapLoading,
   onToggleHeatmap,
@@ -357,6 +362,22 @@ export function MenuBar({
               >
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
                 Search
+              </button>
+            </div>
+          )}
+          {onToggleLootGames && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleLootGames}
+                title="Find LootGames dungeons and jump to them"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  lootGamesOpen
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                <Puzzle className="h-4 w-4 shrink-0" aria-hidden />
+                LootGames
               </button>
             </div>
           )}
