@@ -10,6 +10,7 @@ import {
 import type { SearchHit } from './api/searchBlocks'
 import { useSearchBiomes } from './api/searchBiomes'
 import { useBiomesPresent } from './api/biomesPresent'
+import { type BiomeRegion, clusterBiomeRegions } from './biomeRegions'
 
 interface Props {
   biomeNames: Record<number, string>
@@ -236,6 +237,12 @@ function BiomeResults({
   onRetry: () => void
   onJump: (x: number, z: number) => void
 }) {
+  // Cluster the biome's chunks into connected regions — one row per patch.
+  const regions = useMemo<BiomeRegion[]>(
+    () => (state.data ? clusterBiomeRegions(state.data.hits) : []),
+    [state.data]
+  )
+
   if (state.isPending) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center text-xs text-zinc-500">
@@ -266,14 +273,18 @@ function BiomeResults({
       </p>
     )
   }
-  const hits = sortByDistanceFromHome(data.hits, home)
+  // Nearest-first from home, else biggest patch first.
+  const sorted = home
+    ? sortByDistanceFromHome(regions, home)
+    : [...regions].sort((a, b) => b.chunks - a.chunks)
   return (
     <>
       <p className="px-3 py-1.5 text-[11px] text-zinc-500">
-        {data.hit_chunks.toLocaleString()} chunk
+        {sorted.length.toLocaleString()} region{sorted.length === 1 ? '' : 's'}{' '}
+        · {data.hit_chunks.toLocaleString()} chunk
         {data.hit_chunks === 1 ? '' : 's'}
         {home && ' · nearest first'}
-        {data.capped && ' (capped — refine for more)'}
+        {data.capped && ' (capped — some far patches omitted)'}
       </p>
       {!home && (
         <p className="px-3 pb-1 text-[11px] leading-snug text-zinc-600">
@@ -281,23 +292,26 @@ function BiomeResults({
         </p>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {hits.map((h: SearchHit) => (
+        {sorted.map((r: BiomeRegion) => (
           <button
-            key={`${h.cx},${h.cz}`}
-            onClick={() => onJump(h.x, h.z)}
+            key={`${r.cx},${r.cz}`}
+            onClick={() => onJump(r.x, r.z)}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-            title={`Jump to ${h.x}, ${h.z}`}
+            title={`Jump to the center of this patch (${r.x}, ${r.z}) — ${r.chunks} chunks`}
           >
             <MapPin
               className="h-3.5 w-3.5 shrink-0 text-amber-400"
               aria-hidden
             />
             <span className="flex-1">
-              {h.x}, {h.z}
+              {r.x}, {r.z}
+            </span>
+            <span className="shrink-0 text-zinc-500">
+              {r.chunks.toLocaleString()} ch
             </span>
             {home && (
               <span className="shrink-0 text-emerald-400/80">
-                {homeDistance(h.x, h.z, home).toLocaleString()} blk
+                {homeDistance(r.x, r.z, home).toLocaleString()} blk
               </span>
             )}
           </button>
