@@ -102,12 +102,16 @@ export class MapEngine {
       start: number
       duration: number
     } | null
+    biomePulse: boolean
+    biomeFillMat: THREE.MeshBasicMaterial | null
+    biomeBorderMat: THREE.LineBasicMaterial | null
   }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
   private _heatmap: THREE.Mesh | null = null
   private _highlight: THREE.Group | null = null
   private _homeMarker: THREE.Mesh | null = null
+  private _biomeHighlight: THREE.Group | null = null
   /** Run the block inspector for the last right-clicked point. Set in constructor. */
   inspectAt!: () => void
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
@@ -168,6 +172,11 @@ export class MapEngine {
         start: number
         duration: number
       },
+      // Biome-highlight pulse: when pulsing, the loop oscillates the overlay's
+      // fill/border opacity (glow) and keeps rendering; steady = fixed opacity.
+      biomePulse: false,
+      biomeFillMat: null as THREE.MeshBasicMaterial | null,
+      biomeBorderMat: null as THREE.LineBasicMaterial | null,
       cache: new Map<string, 'empty' | 'error' | THREE.Mesh>(),
       dataCache: new Map<string, ChunkData>(),
       texVersion: 0,
@@ -1042,6 +1051,15 @@ export class MapEngine {
         st.forceFrame = true
       }
 
+      // Pulse the biome-highlight glow while hovering a region: oscillate the
+      // fill/border opacity and keep rendering. Steady (clicked) = no animation.
+      if (st.biomePulse && st.biomeFillMat && st.biomeBorderMat) {
+        const k = 0.5 + 0.5 * Math.sin(performance.now() / 450) // ~1.4s period
+        st.biomeFillMat.opacity = BIOME_FILL_OPACITY * (0.4 + 0.9 * k)
+        st.biomeBorderMat.opacity = BIOME_BORDER_OPACITY * (0.3 + 0.7 * k)
+        st.forceFrame = true
+      }
+
       const { cx, cz, scale } = st.cam
       const halfW = W / (2 * scale),
         halfH = H / (2 * scale)
@@ -1483,6 +1501,7 @@ export class MapEngine {
       this.setHeatmap(null) // drop overlay meshes/textures before the renderer goes
       this.setSearchHighlight(null)
       this.setHomeMarker(null)
+      this.setBiomeHighlight(null)
       mapScene.dispose()
     }
   }
@@ -1561,6 +1580,30 @@ export class MapEngine {
   }
 
   /**
+   * Fly the camera to frame a world-space area — centre it and zoom so the whole
+   * box fits the viewport (with a margin). Used to frame a clicked biome region so
+   * its highlight is fully in view instead of zooming past it.
+   */
+  animateCameraToBounds(
+    bounds: { minX: number; minZ: number; maxX: number; maxZ: number },
+    duration = 500
+  ): void {
+    const { w, h } = this._getDims()
+    const worldW = Math.max(16, bounds.maxX - bounds.minX)
+    const worldH = Math.max(16, bounds.maxZ - bounds.minZ)
+    const margin = 1.3 // leave a little breathing room around the region
+    const scale = Math.min(w / (worldW * margin), h / (worldH * margin))
+    this.animateCameraTo(
+      {
+        cx: (bounds.minX + bounds.maxX) / 2,
+        cz: (bounds.minZ + bounds.maxZ) / 2,
+        scale,
+      },
+      duration
+    )
+  }
+
+  /**
    * Show a per-chunk heatmap overlay (Stage 5 stats prototype) in world space, or
    * clear it with null. Values are normalised across vmin..vmax to a colour ramp.
    */
@@ -1599,6 +1642,42 @@ export class MapEngine {
       scene.add(this._highlight)
     }
     this._st.forceFrame = true
+  }
+
+  /**
+   * Highlight a biome region as a set of chunks: a faint translucent blue wash
+   * over the area with a softer blue outline on its border, so you can read where
+   * it starts and stops. `pulse` animates the glow (for hover); steady is a fixed
+   * opacity (for a clicked/locked region). Pass null to clear. World-space; the
+   * fill and border are each one merged draw call, so it scales to thousands of
+   * chunks.
+   */
+  setBiomeHighlight(chunks: ChunkCoord[] | null, pulse = false): void {
+    const st = this._st
+    const scene = this._mapScene.scene
+    if (this._biomeHighlight) {
+      scene.remove(this._biomeHighlight)
+      disposeBiomeHighlight(this._biomeHighlight)
+      this._biomeHighlight = null
+    }
+    st.biomeFillMat = null
+    st.biomeBorderMat = null
+    st.biomePulse = false
+    if (chunks && chunks.length) {
+      const group = buildBiomeHighlight(chunks)
+      this._biomeHighlight = group
+      scene.add(group)
+      const [fill, border] = group.children as [THREE.Mesh, THREE.LineSegments]
+      st.biomeFillMat = fill.material as THREE.MeshBasicMaterial
+      st.biomeBorderMat = border.material as THREE.LineBasicMaterial
+      st.biomePulse = pulse
+      // Steady shows the base opacity; the pulse animates it from the loop.
+      if (!pulse) {
+        st.biomeFillMat.opacity = BIOME_FILL_OPACITY
+        st.biomeBorderMat.opacity = BIOME_BORDER_OPACITY
+      }
+    }
+    st.forceFrame = true
   }
 
   /**
@@ -1876,6 +1955,89 @@ function disposeHighlightGroup(group: THREE.Group): void {
     mat.map?.dispose()
     mat.dispose()
     mesh.geometry.dispose()
+  }
+}
+
+// ── Biome highlight ──────────────────────────────────────────────────────────
+// A translucent blue fill over a biome's chunks with a stronger blue outline on
+// its border, so the extent (and where it starts/stops) reads at a glance. Fill
+// and border are each a single merged draw call, so thousands of chunks are cheap.
+
+/** A chunk coordinate (16-block cell) — the granularity of the biome index. */
+export interface ChunkCoord {
+  cx: number
+  cz: number
+}
+
+// Fill and outline share one blue; the fill is a translucent wash, the outline a
+// stronger edge so the region's extent reads clearly.
+const BIOME_COLOR = 0x6db3ff
+const BIOME_FILL_OPACITY = 0.4
+const BIOME_BORDER_OPACITY = 0.95
+
+function buildBiomeHighlight(chunks: ChunkCoord[]): THREE.Group {
+  const present = new Set(chunks.map((c) => `${c.cx},${c.cz}`))
+  const fill: number[] = [] // two triangles per chunk
+  const edges: number[] = [] // one segment per exposed chunk side
+
+  for (const { cx, cz } of chunks) {
+    // World→GL is Z-flipped (y = -z); a chunk spans [cx*16, cx*16+16].
+    const x0 = cx * 16
+    const x1 = x0 + 16
+    const y0 = -(cz * 16)
+    const y1 = -(cz * 16 + 16)
+    fill.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0)
+    // A side is a border wherever the neighbouring chunk isn't in the biome.
+    if (!present.has(`${cx - 1},${cz}`)) edges.push(x0, y0, 0, x0, y1, 0)
+    if (!present.has(`${cx + 1},${cz}`)) edges.push(x1, y0, 0, x1, y1, 0)
+    if (!present.has(`${cx},${cz - 1}`)) edges.push(x0, y0, 0, x1, y0, 0)
+    if (!present.has(`${cx},${cz + 1}`)) edges.push(x0, y1, 0, x1, y1, 0)
+  }
+
+  const group = new THREE.Group()
+
+  const fillGeo = new THREE.BufferGeometry()
+  fillGeo.setAttribute('position', new THREE.Float32BufferAttribute(fill, 3))
+  const fillMesh = new THREE.Mesh(
+    fillGeo,
+    new THREE.MeshBasicMaterial({
+      color: BIOME_COLOR,
+      transparent: true,
+      opacity: BIOME_FILL_OPACITY,
+      depthTest: false,
+      // The hand-built quads aren't wound for front-face culling — draw both sides.
+      side: THREE.DoubleSide,
+    })
+  )
+  fillMesh.position.z = 10
+  fillMesh.renderOrder = 999
+  fillMesh.frustumCulled = false
+  group.add(fillMesh)
+
+  const edgeGeo = new THREE.BufferGeometry()
+  edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edges, 3))
+  const edgeLines = new THREE.LineSegments(
+    edgeGeo,
+    new THREE.LineBasicMaterial({
+      color: BIOME_COLOR,
+      transparent: true,
+      opacity: BIOME_BORDER_OPACITY,
+      depthTest: false,
+    })
+  )
+  edgeLines.position.z = 11
+  edgeLines.renderOrder = 1001
+  edgeLines.frustumCulled = false
+  group.add(edgeLines)
+
+  return group
+}
+
+function disposeBiomeHighlight(group: THREE.Group): void {
+  for (const child of group.children) {
+    const obj = child as THREE.Mesh | THREE.LineSegments
+    ;(obj.material as THREE.Material).dispose()
+    obj.geometry.dispose()
   }
 }
 

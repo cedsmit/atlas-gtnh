@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Loader2, MapPin, Trees, X } from 'lucide-react'
 
-import type { BlockColumn } from '../map/mapEngine'
+import type { ChunkCoord } from '../map/mapEngine'
 import {
   type HomePos,
   homeDistance,
   sortByDistanceFromHome,
 } from '../map/homeWaypoint'
-import type { SearchHit } from './api/searchBlocks'
 import { useSearchBiomes } from './api/searchBiomes'
 import { useBiomesPresent } from './api/biomesPresent'
 import { type BiomeRegion, clusterBiomeRegions } from './biomeRegions'
@@ -17,10 +16,15 @@ interface Props {
   dimensionPath: string
   /** Home waypoint to measure/sort distance from; null = no sorting. */
   home: HomePos | null
-  /** Fly the map camera to a world block position. */
-  onJump: (x: number, z: number) => void
-  /** Paint (or clear, with null) the map highlight over the matched chunks. */
-  onHighlight: (columns: BlockColumn[] | null) => void
+  /** Fly the map camera to frame a region's full extent. */
+  onFrame: (bounds: {
+    minX: number
+    minZ: number
+    maxX: number
+    maxZ: number
+  }) => void
+  /** Outline (or clear, with null) a region's chunks; `pulse` animates the glow. */
+  onHighlight: (chunks: ChunkCoord[] | null, pulse?: boolean) => void
   onClose: () => void
 }
 
@@ -30,50 +34,34 @@ interface BiomeRow {
   chunks: number
 }
 
-/** Cap the highlight footprint; hits arrive densest-first so top chunks win. */
-const MAX_HIGHLIGHT_CHUNKS = 400
-
-/** Fill each matched chunk's 16×16 columns — biomes are per-column and cluster by
- *  chunk, so a solid chunk footprint is the natural highlight (no chunk read). */
-function chunkFillColumns(hits: SearchHit[]): BlockColumn[] {
-  const columns: BlockColumn[] = []
-  for (const h of hits.slice(0, MAX_HIGHLIGHT_CHUNKS)) {
-    const bx = h.cx * 16
-    const bz = h.cz * 16
-    for (let c = 0; c < 256; c++) {
-      columns.push({ x: bx + (c & 15), z: bz + (c >> 4) })
-    }
-  }
-  return columns
-}
-
 /**
  * Biome search: pick from the biomes actually present in this dimension (not every
- * biome the pack registers), then list the chunks where it occurs. The matched
- * chunks are highlighted on the map; clicking a result flies the camera there.
- * Biomes are per-column, so whole matched chunks are highlighted directly (no
- * per-block locate step).
+ * biome the pack registers), then browse its regions (connected patches). Nothing
+ * is highlighted just by picking a biome — hovering a region pulses its glow on
+ * the map, and clicking one locks the glow on and flies there.
  */
 export function BiomeSearchPanel({
   biomeNames,
   dimensionPath,
   home,
-  onJump,
+  onFrame,
   onHighlight,
   onClose,
 }: Props) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<BiomeRow | null>(null)
+  // The clicked region (steady glow) and the hovered one (pulsing glow, wins).
+  const [locked, setLocked] = useState<BiomeRegion | null>(null)
+  const [hovered, setHovered] = useState<BiomeRegion | null>(null)
   const present = useBiomesPresent(dimensionPath)
   const search = useSearchBiomes(dimensionPath)
 
-  // Drive the map highlight from the matched chunks; clear it when nothing is
-  // selected, and whenever the panel closes/unmounts.
+  // Highlight the hovered region (pulsing) or, failing that, the locked one
+  // (steady). Nothing active → no highlight. Cleared on close/unmount.
   useEffect(() => {
-    onHighlight(
-      selected && search.data ? chunkFillColumns(search.data.hits) : null
-    )
-  }, [selected, search.data, onHighlight])
+    const active = hovered ?? locked
+    onHighlight(active ? active.coords : null, hovered !== null)
+  }, [hovered, locked, onHighlight])
   useEffect(() => () => onHighlight(null), [onHighlight])
 
   // The present biomes (already widest-first), named from the dump when known,
@@ -92,12 +80,16 @@ export function BiomeSearchPanel({
 
   function pick(r: BiomeRow) {
     setSelected(r)
+    setLocked(null)
+    setHovered(null)
     search.reset()
     search.mutate([r.id])
   }
 
   function back() {
     setSelected(null)
+    setLocked(null)
+    setHovered(null)
     search.reset()
   }
 
@@ -145,8 +137,13 @@ export function BiomeSearchPanel({
           <BiomeResults
             state={search}
             home={home}
+            locked={locked}
             onRetry={() => search.mutate([selected.id])}
-            onJump={onJump}
+            onHover={setHovered}
+            onPick={(r) => {
+              setLocked(r)
+              onFrame(r.bounds)
+            }}
           />
         </>
       )}
@@ -229,13 +226,17 @@ function BiomeList({
 function BiomeResults({
   state,
   home,
+  locked,
   onRetry,
-  onJump,
+  onHover,
+  onPick,
 }: {
   state: ReturnType<typeof useSearchBiomes>
   home: HomePos | null
+  locked: BiomeRegion | null
   onRetry: () => void
-  onJump: (x: number, z: number) => void
+  onHover: (region: BiomeRegion | null) => void
+  onPick: (region: BiomeRegion) => void
 }) {
   // Cluster the biome's chunks into connected regions — one row per patch.
   const regions = useMemo<BiomeRegion[]>(
@@ -286,36 +287,43 @@ function BiomeResults({
         {home && ' · nearest first'}
         {data.capped && ' (capped — some far patches omitted)'}
       </p>
-      {!home && (
-        <p className="px-3 pb-1 text-[11px] leading-snug text-zinc-600">
-          Set a home (right-click the map) to sort by distance.
-        </p>
-      )}
+      <p className="px-3 pb-1 text-[11px] leading-snug text-zinc-600">
+        {home
+          ? 'Hover to preview, click to keep it on the map.'
+          : 'Hover to preview · click to keep it on · right-click the map to set a home for distances.'}
+      </p>
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {sorted.map((r: BiomeRegion) => (
-          <button
-            key={`${r.cx},${r.cz}`}
-            onClick={() => onJump(r.x, r.z)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-            title={`Jump to the center of this patch (${r.x}, ${r.z}) — ${r.chunks} chunks`}
-          >
-            <MapPin
-              className="h-3.5 w-3.5 shrink-0 text-amber-400"
-              aria-hidden
-            />
-            <span className="flex-1">
-              {r.x}, {r.z}
-            </span>
-            <span className="shrink-0 text-zinc-500">
-              {r.chunks.toLocaleString()} ch
-            </span>
-            {home && (
-              <span className="shrink-0 text-emerald-400/80">
-                {homeDistance(r.x, r.z, home).toLocaleString()} blk
+        {sorted.map((r: BiomeRegion) => {
+          const isLocked = locked?.cx === r.cx && locked?.cz === r.cz
+          return (
+            <button
+              key={`${r.cx},${r.cz}`}
+              onClick={() => onPick(r)}
+              onMouseEnter={() => onHover(r)}
+              onMouseLeave={() => onHover(null)}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs hover:bg-zinc-800 hover:text-zinc-100 ${
+                isLocked ? 'bg-zinc-800/60 text-zinc-100' : 'text-zinc-300'
+              }`}
+              title={`Center ${r.x}, ${r.z} — ${r.chunks} chunks`}
+            >
+              <MapPin
+                className={`h-3.5 w-3.5 shrink-0 ${isLocked ? 'text-sky-400' : 'text-amber-400'}`}
+                aria-hidden
+              />
+              <span className="flex-1">
+                {r.x}, {r.z}
               </span>
-            )}
-          </button>
-        ))}
+              <span className="shrink-0 text-zinc-500">
+                {r.chunks.toLocaleString()} ch
+              </span>
+              {home && (
+                <span className="shrink-0 text-emerald-400/80">
+                  {homeDistance(r.x, r.z, home).toLocaleString()} blk
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
     </>
   )

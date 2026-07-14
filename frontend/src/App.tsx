@@ -22,6 +22,7 @@ import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
 import type {
   BlockColumn,
+  ChunkCoord,
   MapContextInfo,
   MapEngine,
 } from './features/map/mapEngine'
@@ -464,6 +465,24 @@ export default function App() {
     engineRef.current?.setSearchHighlight(columns)
   }, [])
 
+  // Outline a searched biome region (translucent fill + border) over its chunks;
+  // `pulse` animates the glow on hover. Stable so the BiomeSearchPanel effect
+  // driving it doesn't re-fire.
+  const handleBiomeHighlight = useCallback(
+    (chunks: ChunkCoord[] | null, pulse?: boolean) => {
+      engineRef.current?.setBiomeHighlight(chunks, pulse)
+    },
+    []
+  )
+
+  // Fly to frame a biome region's full extent (so its highlight fills the view).
+  const handleFrameBounds = useCallback(
+    (bounds: { minX: number; minZ: number; maxX: number; maxZ: number }) => {
+      engineRef.current?.animateCameraToBounds(bounds)
+    },
+    []
+  )
+
   // ── InspectPanel: pass textureKeys for accurate source classification ──
   // We also compute the effective texture key per block-id here so InspectPanel
   // can show 'texture' only for blocks that truly have a PNG key (not just a
@@ -708,14 +727,8 @@ export default function App() {
               biomeNames={biomeNames ?? {}}
               dimensionPath={dimensionPath}
               home={homePos}
-              onJump={(x, z) =>
-                engineRef.current?.animateCameraTo({
-                  cx: x,
-                  cz: z,
-                  scale: VIEWER_CONFIG.maxScale,
-                })
-              }
-              onHighlight={handleSearchHighlight}
+              onFrame={handleFrameBounds}
+              onHighlight={handleBiomeHighlight}
               onClose={() => setBiomeSearchOpen(false)}
             />
           )}

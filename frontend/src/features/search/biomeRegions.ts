@@ -1,3 +1,4 @@
+import type { ChunkCoord } from '../map/mapEngine'
 import type { SearchHit } from './api/searchBlocks'
 
 /** A contiguous patch of one biome — a cluster of connected chunks. */
@@ -8,6 +9,8 @@ export interface BiomeRegion {
   z: number
   chunks: number // chunks in the region
   columns: number // total area (matching columns) in the region
+  coords: ChunkCoord[] // member chunks (for the map highlight)
+  bounds: { minX: number; minZ: number; maxX: number; maxZ: number } // world extent
 }
 
 // 8-connectivity: chunks touching on an edge OR corner are the same patch.
@@ -60,10 +63,18 @@ export function clusterBiomeRegions(hits: SearchHit[]): BiomeRegion[] {
     let sumCx = 0
     let sumCz = 0
     let columns = 0
+    let minCx = Infinity
+    let minCz = Infinity
+    let maxCx = -Infinity
+    let maxCz = -Infinity
     for (const m of members) {
       sumCx += m.cx
       sumCz += m.cz
       columns += m.count
+      if (m.cx < minCx) minCx = m.cx
+      if (m.cz < minCz) minCz = m.cz
+      if (m.cx > maxCx) maxCx = m.cx
+      if (m.cz > maxCz) maxCz = m.cz
     }
     const avgCx = sumCx / members.length
     const avgCz = sumCz / members.length
@@ -84,6 +95,13 @@ export function clusterBiomeRegions(hits: SearchHit[]): BiomeRegion[] {
       z: center.cz * 16 + 8,
       chunks: members.length,
       columns,
+      coords: members.map((m) => ({ cx: m.cx, cz: m.cz })),
+      bounds: {
+        minX: minCx * 16,
+        minZ: minCz * 16,
+        maxX: maxCx * 16 + 16,
+        maxZ: maxCz * 16 + 16,
+      },
     })
   }
   return regions
