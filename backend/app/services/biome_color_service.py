@@ -86,6 +86,37 @@ def _parse(path: Path) -> BiomeColors:
     return result
 
 
+def get_biome_names(world_path: str) -> dict[int, str]:
+    """``biome_id -> display name`` from the biome dump; ``{}`` when none is found.
+
+    Reuses the same dump-candidate resolution as :func:`get_biome_colors`; the
+    name is already present in every dump entry (alongside grass/foliage), so no
+    extra data is needed. Not cached — cheap, and rarely called (only for the
+    biome-search name picker).
+    """
+    for cand in _candidates(world_path):
+        if not cand.exists():
+            continue
+        try:
+            data = json.loads(cand.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        biomes = data.get("biomes", {})
+        if not isinstance(biomes, dict):
+            continue
+        names: dict[int, str] = {}
+        for bid, entry in biomes.items():
+            try:
+                name = entry.get("name")
+                if name:
+                    names[int(bid)] = str(name)
+            except (ValueError, TypeError, AttributeError):
+                continue
+        if names:
+            return names
+    return {}
+
+
 def get_biome_colors(world_path: str) -> BiomeColors:
     """``biome_id -> {grass, foliage}`` as [r, g, b]; ``{}`` when no dump is found.
 

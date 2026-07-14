@@ -16,12 +16,17 @@ import threading
 from contextlib import closing
 from pathlib import Path
 
-from app.models.search import SearchBlocksResponse, SearchHit
-from app.world.region_reader import scan_region_all_blocks
+from app.models.search import BiomePresence, SearchBlocksResponse, SearchHit
+from app.world.region_reader import scan_region_all_biomes, scan_region_all_blocks
 
 log = logging.getLogger(__name__)
 
 _DB_PATH = Path.home() / ".atlas_gtnh" / "search_index.db"
+
+# Bumped when the index schema/content changes so existing DBs rebuild. v2 added
+# the chunk_biomes table (biome search); v3 fixed biome extraction for the modded
+# 16-bit Biomes16v2 format (v2 indexed 0 biomes on those worlds).
+_INDEX_VERSION = "v3"
 
 _init_lock = threading.Lock()
 _initialized = False
@@ -41,6 +46,16 @@ CREATE TABLE IF NOT EXISTS chunk_blocks (
     sz       INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_dim_block ON chunk_blocks (dim, block_id);
+CREATE TABLE IF NOT EXISTS chunk_biomes (
+    dim      TEXT NOT NULL,
+    cx       INTEGER NOT NULL,
+    cz       INTEGER NOT NULL,
+    biome_id INTEGER NOT NULL,
+    cnt      INTEGER NOT NULL,
+    sx       INTEGER NOT NULL,
+    sz       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dim_biome ON chunk_biomes (dim, biome_id);
 CREATE TABLE IF NOT EXISTS dim_meta (dim TEXT PRIMARY KEY, signature TEXT NOT NULL);
 """
 
@@ -86,7 +101,9 @@ def _dim_signature(dimension_path: str) -> str:
     for f in sorted(region_dir.glob("*.mca")):
         st = f.stat()
         h.update(f"{f.name}:{int(st.st_mtime)}:{st.st_size};".encode())
-    return h.hexdigest()
+    # Prefix the index version so a schema change (e.g. adding chunk_biomes)
+    # invalidates old indexes and triggers a one-time rebuild.
+    return f"{_INDEX_VERSION}:{h.hexdigest()}"
 
 
 def _is_fresh(conn: sqlite3.Connection, dim: str, sig: str) -> bool:
@@ -106,10 +123,18 @@ def build_index(dimension_path: str) -> None:
             if _is_fresh(conn, dimension_path, sig):
                 return
         rows: list[tuple[str, int, int, int, int, int, int, int]] = []
+        biome_rows: list[tuple[str, int, int, int, int, int, int]] = []
         for region_file in sorted(region_dir.glob("*.mca")):
             for r in scan_region_all_blocks(region_file):
                 rows.append((dimension_path, *r))
-        log.info("search index: built %d rows for %s", len(rows), dimension_path)
+            for br in scan_region_all_biomes(region_file):
+                biome_rows.append((dimension_path, *br))
+        log.info(
+            "search index: built %d block + %d biome rows for %s",
+            len(rows),
+            len(biome_rows),
+            dimension_path,
+        )
         with closing(_connect()) as conn, conn:
             conn.execute("DELETE FROM chunk_blocks WHERE dim = ?", (dimension_path,))
             conn.executemany(
@@ -117,6 +142,13 @@ def build_index(dimension_path: str) -> None:
                 "(dim, cx, cz, block_id, cnt, sx, sy, sz) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
+            )
+            conn.execute("DELETE FROM chunk_biomes WHERE dim = ?", (dimension_path,))
+            conn.executemany(
+                "INSERT INTO chunk_biomes "
+                "(dim, cx, cz, biome_id, cnt, sx, sz) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                biome_rows,
             )
             conn.execute(
                 "INSERT OR REPLACE INTO dim_meta (dim, signature) VALUES (?, ?)",
@@ -161,6 +193,56 @@ def query_index(
         capped=capped,
         block_ids=ids,
     )
+
+
+def query_biomes(
+    dimension_path: str, biome_ids: list[int], limit: int = 500
+) -> SearchBlocksResponse:
+    """Look up the chunks containing any of *biome_ids* (index must be built).
+
+    Biomes are 2D, so hits carry no meaningful Y — it's reported as a nominal
+    surface level (64). ``count`` is the number of matching columns in the chunk.
+    """
+    ids = sorted({int(b) for b in biome_ids if 0 <= int(b) < 65536})
+    if not ids:
+        return SearchBlocksResponse(
+            hits=[], total_matches=0, hit_chunks=0, capped=False, block_ids=[]
+        )
+    placeholders = ",".join("?" * len(ids))
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT cx, cz, SUM(cnt), MIN(sx), MIN(sz) "
+            "FROM chunk_biomes "
+            f"WHERE dim = ? AND biome_id IN ({placeholders}) "
+            "GROUP BY cx, cz ORDER BY SUM(cnt) DESC LIMIT ?",
+            (dimension_path, *ids, limit + 1),
+        ).fetchall()
+    capped = len(rows) > limit
+    rows = rows[:limit]
+    hits = [SearchHit(cx=r[0], cz=r[1], count=r[2], x=r[3], y=64, z=r[4]) for r in rows]
+    return SearchBlocksResponse(
+        hits=hits,
+        total_matches=sum(h.count for h in hits),
+        hit_chunks=len(hits),
+        capped=capped,
+        block_ids=ids,
+    )
+
+
+def biomes_present(dimension_path: str) -> list[BiomePresence]:
+    """The distinct biomes that occur in a dimension, most-widespread first.
+
+    Lets the UI list only the biomes actually in this world (not every biome the
+    pack registers), each with its area (columns) and chunk spread.
+    """
+    with closing(_connect()) as conn:
+        rows = conn.execute(
+            "SELECT biome_id, SUM(cnt), COUNT(*) "
+            "FROM chunk_biomes WHERE dim = ? "
+            "GROUP BY biome_id ORDER BY SUM(cnt) DESC",
+            (dimension_path,),
+        ).fetchall()
+    return [BiomePresence(biome_id=r[0], columns=r[1], chunks=r[2]) for r in rows]
 
 
 def chunk_stats(

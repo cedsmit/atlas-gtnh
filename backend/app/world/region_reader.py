@@ -245,7 +245,8 @@ def _fast_parse_chunk(raw_nbt: bytes) -> tuple[int, int, bytes, list[dict[str, A
 
     pos = level_pos
     xpos = zpos = 0
-    biomes = b""
+    biomes = b""  # vanilla 256-byte biome array
+    biomes16 = b""  # modded 512-byte 16-bit biome array (Biomes16v2), if present
     sections: list[dict[str, Any]] = []
     while True:
         t = buf[pos]
@@ -263,6 +264,13 @@ def _fast_parse_chunk(raw_nbt: bytes) -> tuple[int, int, bytes, list[dict[str, A
             n = struct.unpack_from(">i", buf, pos)[0]
             pos += 4
             biomes = bytes(buf[pos : pos + n])
+            pos += n
+        elif t == _TAG_BYTE_ARRAY and name == b"Biomes16v2":
+            # GTNH/modded 16-bit biome storage (ids > 255). Decoded by length in
+            # _decode_biomes; preferred over vanilla Biomes when both are present.
+            n = struct.unpack_from(">i", buf, pos)[0]
+            pos += 4
+            biomes16 = bytes(buf[pos : pos + n])
             pos += n
         elif t == _TAG_LIST and name == b"Sections":
             count = struct.unpack_from(">i", buf, pos + 1)[0]
@@ -289,7 +297,7 @@ def _fast_parse_chunk(raw_nbt: bytes) -> tuple[int, int, bytes, list[dict[str, A
         else:
             pos = _nbt_skip(buf, pos, t)
 
-    return int(xpos), int(zpos), biomes, sections
+    return int(xpos), int(zpos), biomes16 or biomes, sections
 
 
 def _section_arrays(sec: dict[str, Any]) -> tuple[_NDArr, _NDArr] | None:
@@ -327,12 +335,21 @@ def _section_arrays(sec: dict[str, Any]) -> tuple[_NDArr, _NDArr] | None:
 
 
 def _decode_biomes(biomes_bytes: bytes, chunk_x: int, chunk_z: int) -> list[int]:
-    """256 biome ids, or [] when absent. Logs (and drops) a corrupt non-256 array."""
+    """256 biome ids, or [] when absent/corrupt.
+
+    Handles both storage formats, distinguished by length:
+    - 256 bytes: vanilla ``Biomes`` (one byte per column, ids 0-255).
+    - 512 bytes: modded ``Biomes16v2`` — 256 little-endian 16-bit ids (GTNH uses
+      this for biome ids above 255).
+    """
     if len(biomes_bytes) == 256:
         return list(biomes_bytes)
+    if len(biomes_bytes) == 512:
+        ids16: list[int] = np.frombuffer(biomes_bytes, dtype="<u2").tolist()
+        return ids16
     if biomes_bytes:
         log.warning(
-            "chunk (%d,%d): dropping biome array of length %d (expected 256)",
+            "chunk (%d,%d): dropping biome array of length %d (expected 256 or 512)",
             chunk_x,
             chunk_z,
             len(biomes_bytes),
@@ -560,4 +577,42 @@ def scan_region_all_blocks(
         for bid, cnt in counts.items():
             sx, sy, sz = sample[bid]
             out.append((xpos, zpos, bid, cnt, sx, sy, sz))
+    return out
+
+
+def scan_region_all_biomes(
+    path: Path,
+) -> list[tuple[int, int, int, int, int, int]]:
+    """Index rows for the biomes in a region — one per (chunk, biome id).
+
+    Returns (chunk_x, chunk_z, biome_id, count, sx, sz): the per-chunk count of
+    columns carrying each biome id plus the world coords of the first such column.
+    Biomes are 2D (one id per XZ column, indexed x + z*16), so there is no Y. Only
+    the cheap ``Biomes`` array is read (sections are skipped). Feeds the biome
+    search index. Biome id 255 (the "uncalculated" marker) is skipped.
+    """
+    data = _read_region_bytes(path)
+    if len(data) < 2 * SECTOR_SIZE:
+        return []
+    out: list[tuple[int, int, int, int, int, int]] = []
+    for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
+        try:
+            xpos, zpos, biomes_bytes, _sections = _fast_parse_chunk(_decompress_chunk(data, offset))
+        except Exception:
+            continue
+        biomes = _decode_biomes(biomes_bytes, xpos, zpos)
+        if not biomes:
+            continue
+        counts: dict[int, int] = {}
+        sample: dict[int, tuple[int, int]] = {}
+        for idx, bid in enumerate(biomes):
+            # 'uncalculated' markers: 255 (vanilla -1 byte), 65535 (16-bit -1).
+            if bid == 255 or bid == 65535:
+                continue
+            counts[bid] = counts.get(bid, 0) + 1
+            if bid not in sample:
+                sample[bid] = (xpos * 16 + (idx & 0xF), zpos * 16 + (idx >> 4))
+        for bid, cnt in counts.items():
+            sx, sz = sample[bid]
+            out.append((xpos, zpos, bid, cnt, sx, sz))
     return out

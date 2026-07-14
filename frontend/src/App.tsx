@@ -22,6 +22,7 @@ import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
 import type {
   BlockColumn,
+  ChunkCoord,
   MapContextInfo,
   MapEngine,
 } from './features/map/mapEngine'
@@ -33,7 +34,9 @@ import {
   saveHome,
 } from './features/map/homeWaypoint'
 import { SearchPanel } from './features/search/SearchPanel'
+import { BiomeSearchPanel } from './features/search/BiomeSearchPanel'
 import { LootGamesPanel } from './features/lootgames/LootGamesPanel'
+import { useBiomeNames } from './features/blocks/api/biomeNames'
 import { useChunkStats } from './features/search/api/chunkStats'
 import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
@@ -77,6 +80,7 @@ export default function App() {
   const [debugOpen, setDebugOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [lootGamesOpen, setLootGamesOpen] = useState(false)
+  const [biomeSearchOpen, setBiomeSearchOpen] = useState(false)
   const [heatmapOn, setHeatmapOn] = useState(false)
   const [gridOn, setGridOn] = useState(false)
   const [infraViewOn, setInfraViewOn] = useState(false)
@@ -167,6 +171,7 @@ export default function App() {
     isError: worldError,
   } = useBlockColors(worldPath)
   const { data: blockNames } = useBlockNames(worldPath)
+  const { data: biomeNames } = useBiomeNames(worldPath)
   const { data: biomeColors } = useBiomeColors(worldPath)
   const { data: textureKeys } = useTextureKeys(worldPath)
   const { data: metaTextureKeys } = useMetaTextureKeys(worldPath)
@@ -324,6 +329,7 @@ export default function App() {
     setDebugOpen(false)
     setSearchOpen(false)
     setLootGamesOpen(false)
+    setBiomeSearchOpen(false)
   }
 
   function handleCloseWorld() {
@@ -335,6 +341,7 @@ export default function App() {
     setDebugOpen(false)
     setSearchOpen(false)
     setLootGamesOpen(false)
+    setBiomeSearchOpen(false)
   }
 
   function handleSelectDimension(dim: DimensionInfo) {
@@ -347,6 +354,7 @@ export default function App() {
     setDebugOpen(false)
     setSearchOpen(false)
     setLootGamesOpen(false)
+    setBiomeSearchOpen(false)
   }
 
   function handleToggleDebug() {
@@ -354,6 +362,7 @@ export default function App() {
     setInspectOpen(false)
     setSearchOpen(false)
     setLootGamesOpen(false)
+    setBiomeSearchOpen(false)
   }
 
   function handleToggleSearch() {
@@ -361,6 +370,7 @@ export default function App() {
     setInspectOpen(false)
     setDebugOpen(false)
     setLootGamesOpen(false)
+    setBiomeSearchOpen(false)
   }
 
   function handleToggleLootGames() {
@@ -368,6 +378,15 @@ export default function App() {
     setInspectOpen(false)
     setDebugOpen(false)
     setSearchOpen(false)
+    setBiomeSearchOpen(false)
+  }
+
+  function handleToggleBiomeSearch() {
+    setBiomeSearchOpen((o) => !o)
+    setInspectOpen(false)
+    setDebugOpen(false)
+    setSearchOpen(false)
+    setLootGamesOpen(false)
   }
 
   // Per-chunk heatmap overlay (Stage 5 stats prototype) — an independent map layer.
@@ -446,6 +465,24 @@ export default function App() {
     engineRef.current?.setSearchHighlight(columns)
   }, [])
 
+  // Outline a searched biome region (translucent fill + border) over its chunks;
+  // `pulse` animates the glow on hover. Stable so the BiomeSearchPanel effect
+  // driving it doesn't re-fire.
+  const handleBiomeHighlight = useCallback(
+    (chunks: ChunkCoord[] | null, pulse?: boolean) => {
+      engineRef.current?.setBiomeHighlight(chunks, pulse)
+    },
+    []
+  )
+
+  // Fly to frame a biome region's full extent (so its highlight fills the view).
+  const handleFrameBounds = useCallback(
+    (bounds: { minX: number; minZ: number; maxX: number; maxZ: number }) => {
+      engineRef.current?.animateCameraToBounds(bounds)
+    },
+    []
+  )
+
   // ── InspectPanel: pass textureKeys for accurate source classification ──
   // We also compute the effective texture key per block-id here so InspectPanel
   // can show 'texture' only for blocks that truly have a PNG key (not just a
@@ -476,6 +513,10 @@ export default function App() {
         lootGamesOpen={lootGamesOpen}
         onToggleLootGames={
           worldPath && dimensionPath ? handleToggleLootGames : undefined
+        }
+        biomeSearchOpen={biomeSearchOpen}
+        onToggleBiomeSearch={
+          worldPath && dimensionPath ? handleToggleBiomeSearch : undefined
         }
         heatmapOn={heatmapOn}
         heatmapLoading={chunkStats.isPending}
@@ -677,6 +718,18 @@ export default function App() {
               }
               onHighlight={handleSearchHighlight}
               onClose={() => setLootGamesOpen(false)}
+            />
+          )}
+
+          {/* Biome search panel */}
+          {biomeSearchOpen && dimensionPath && (
+            <BiomeSearchPanel
+              biomeNames={biomeNames ?? {}}
+              dimensionPath={dimensionPath}
+              home={homePos}
+              onFrame={handleFrameBounds}
+              onHighlight={handleBiomeHighlight}
+              onClose={() => setBiomeSearchOpen(false)}
             />
           )}
         </div>

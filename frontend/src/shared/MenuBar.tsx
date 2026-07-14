@@ -15,6 +15,7 @@ import {
   Puzzle,
   Search,
   Star,
+  Trees,
   TriangleAlert,
   Waypoints,
   X,
@@ -59,6 +60,8 @@ interface Props {
   onToggleSearch?: () => void
   lootGamesOpen?: boolean
   onToggleLootGames?: () => void
+  biomeSearchOpen?: boolean
+  onToggleBiomeSearch?: () => void
   heatmapOn?: boolean
   heatmapLoading?: boolean
   onToggleHeatmap?: () => void
@@ -98,6 +101,8 @@ export function MenuBar({
   onToggleSearch,
   lootGamesOpen,
   onToggleLootGames,
+  biomeSearchOpen,
+  onToggleBiomeSearch,
   heatmapOn,
   heatmapLoading,
   onToggleHeatmap,
@@ -121,6 +126,7 @@ export function MenuBar({
   onDeletePreset,
 }: Props) {
   const [fileOpen, setFileOpen] = useState(false)
+  const [searchMenuOpen, setSearchMenuOpen] = useState(false)
   const [debugMenuOpen, setDebugMenuOpen] = useState(false)
   const [layersMenuOpen, setLayersMenuOpen] = useState(false)
   const [infraMenuOpen, setInfraMenuOpen] = useState(false)
@@ -129,6 +135,7 @@ export function MenuBar({
   const [recentWorlds, setRecentWorlds] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const searchMenuRef = useRef<HTMLDivElement>(null)
   const debugMenuRef = useRef<HTMLDivElement>(null)
   const layersMenuRef = useRef<HTMLDivElement>(null)
   const infraMenuRef = useRef<HTMLDivElement>(null)
@@ -143,6 +150,9 @@ export function MenuBar({
       const target = e.target as Node
       if (menuRef.current && !menuRef.current.contains(target)) {
         setFileOpen(false)
+      }
+      if (searchMenuRef.current && !searchMenuRef.current.contains(target)) {
+        setSearchMenuOpen(false)
       }
       if (debugMenuRef.current && !debugMenuRef.current.contains(target)) {
         setDebugMenuOpen(false)
@@ -349,36 +359,89 @@ export function MenuBar({
               </select>
             </div>
           )}
-          {onToggleSearch && (
-            <div className="flex items-stretch border-l border-zinc-800">
+          {(onToggleSearch || onToggleLootGames || onToggleBiomeSearch) && (
+            <div
+              ref={searchMenuRef}
+              className="relative flex items-stretch border-l border-zinc-800"
+            >
               <button
-                onClick={onToggleSearch}
-                title="Search for blocks and jump to them"
+                onClick={() => setSearchMenuOpen((o) => !o)}
+                title="Search the world — blocks, LootGames, biomes"
                 className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
-                  searchOpen
+                  searchMenuOpen ||
+                  searchOpen ||
+                  lootGamesOpen ||
+                  biomeSearchOpen
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 }`}
               >
                 <Search className="h-4 w-4 shrink-0" aria-hidden />
                 Search
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
               </button>
-            </div>
-          )}
-          {onToggleLootGames && (
-            <div className="flex items-stretch border-l border-zinc-800">
-              <button
-                onClick={onToggleLootGames}
-                title="Find LootGames dungeons and jump to them"
-                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
-                  lootGamesOpen
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
-                }`}
-              >
-                <Puzzle className="h-4 w-4 shrink-0" aria-hidden />
-                LootGames
-              </button>
+
+              {searchMenuOpen && (
+                <div className="absolute right-0 top-full z-50 min-w-56 border border-zinc-700 bg-zinc-900 py-1 shadow-2xl">
+                  {onToggleSearch && (
+                    <Item
+                      onClick={() => {
+                        setSearchMenuOpen(false)
+                        onToggleSearch()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Search className="h-4 w-4 shrink-0" aria-hidden />
+                        Blocks
+                        {searchOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                  {onToggleLootGames && (
+                    <Item
+                      onClick={() => {
+                        setSearchMenuOpen(false)
+                        onToggleLootGames()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Puzzle className="h-4 w-4 shrink-0" aria-hidden />
+                        LootGames dungeons
+                        {lootGamesOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                  {onToggleBiomeSearch && (
+                    <Item
+                      onClick={() => {
+                        setSearchMenuOpen(false)
+                        onToggleBiomeSearch()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Trees className="h-4 w-4 shrink-0" aria-hidden />
+                        Biomes
+                        {biomeSearchOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {onToggleHeatmap && (
