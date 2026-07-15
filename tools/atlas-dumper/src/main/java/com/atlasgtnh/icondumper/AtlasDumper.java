@@ -14,14 +14,19 @@ import cpw.mods.fml.common.registry.GameRegistry;
 import net.minecraftforge.client.event.TextureStitchEvent;
 import net.minecraftforge.common.MinecraftForge;
 
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import javax.imageio.ImageIO;
 
 /**
  * Atlas GTNH — Icon Dumper Mod
@@ -47,7 +52,7 @@ import java.util.*;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.4.0";
+    public static final String VERSION = "1.4.4";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -542,10 +547,18 @@ public class AtlasDumper {
             System.err.println("[AtlasDumper] Ore-vein dump skipped: icon handles unresolved.");
             return;
         }
-        // ore.mix.X → [name, textureKey|null, rgb, dims(List<String>)]
+        // ore.mix.X → [name, spriteKey|null, rgb, dims(List<String>)]
         Map<String, Object[]> veins = new LinkedHashMap<>();
+        // iconName → base64 PNG of the ore overlay sprite (grayscale + alpha), deduped.
+        Map<String, String> oreSprites = new LinkedHashMap<>();
         int count = 0, withTexture = 0, errors = 0;
         List<String> errorSamples = new ArrayList<>();
+        // Per-step ore-sprite outcome histogram (insertion-ordered) — surfaced in the
+        // dump summary so the exact failing/succeeding step is visible without the log.
+        Map<String, Integer> spriteStats = new LinkedHashMap<>();
+        // Sprite keys drawn from a coloured overlay (blank grayscale base) — the map
+        // renders these as-is instead of tinting by the material rgb.
+        Set<String> preColored = new LinkedHashSet<>();
         try {
             Class<?> oreMixesClass = Class.forName("gregtech.api.enums.OreMixes");
             Class<?> builderClass = Class.forName("gregtech.common.OreMixBuilder");
@@ -579,6 +592,29 @@ public class AtlasDumper {
             // with an IllegalArgumentException). Resolve + cache the handle per class.
             Map<Class<?>, Method> rgbaByClass = new LinkedHashMap<>();
 
+            // The ore overlay lives at OrePrefixes.ore's texture index within each
+            // material's TextureSet (mIconSet). The index field is private in this
+            // build (getField("mTextureIndex") threw NoSuchFieldException), so read it
+            // via the public getTextureIndex() getter, falling back to the private
+            // `textureIndex` field. -1 disables sprite extraction (veins still get
+            // name + rgb).
+            int oreTextureIndex = -1;
+            try {
+                Class<?> prefixesC = Class.forName("gregtech.api.enums.OrePrefixes");
+                Object orePrefix = prefixesC.getField("ore").get(null);
+                Number idx;
+                try {
+                    idx = (Number) orePrefix.getClass().getMethod("getTextureIndex").invoke(orePrefix);
+                } catch (NoSuchMethodException nsm) {
+                    Field tf = resolveField(orePrefix.getClass(), "textureIndex", "mTextureIndex");
+                    idx = (Number) tf.get(orePrefix);
+                }
+                oreTextureIndex = idx.intValue();
+                System.out.println("[AtlasDumper] ore texture index = " + oreTextureIndex);
+            } catch (Throwable t) {
+                System.err.println("[AtlasDumper] ore texture index unresolved (" + t + ") — sprites skipped.");
+            }
+
             for (Object mix : mixes) {
                 try {
                     Object builder = builderField.get(mix);
@@ -606,8 +642,10 @@ public class AtlasDumper {
                                 rgb = (r << 16) | (g << 8) | b;
                             }
                         }
-                        texture = resolveOreTexture(rep);
+                        texture = extractOreSprite(rep, oreTextureIndex, oreSprites, preColored, spriteStats);
                         if (texture != null) withTexture++;
+                    } else {
+                        bump(spriteStats, "no_representative", "representative == null for " + oreMixName);
                     }
 
                     List<String> dims = new ArrayList<>();
@@ -643,68 +681,188 @@ public class AtlasDumper {
         }
         File outFile = new File(outDir, "ore_vein_dump.json");
         try (FileWriter w = new FileWriter(outFile)) {
-            writeOreVeinJson(w, veins, count, withTexture, errors, errorSamples);
-            System.out.printf("[AtlasDumper] Ore-vein dump done — %d veins (%d with texture), %d errors → %s%n",
-                count, withTexture, errors, outFile.getAbsolutePath());
+            writeOreVeinJson(w, veins, oreSprites, preColored, count, withTexture, errors, errorSamples, spriteStats);
+            System.out.printf("[AtlasDumper] Ore-vein dump done — %d veins (%d with sprite, %d unique sprites), %d errors → %s%n",
+                count, withTexture, oreSprites.size(), errors, outFile.getAbsolutePath());
         } catch (IOException e) {
             System.err.println("[AtlasDumper] Ore-vein write failed: " + e.getMessage());
         }
     }
 
     /**
-     * Best-effort: the representative ore's block IIcon key (side=top). Asks GT for
-     * the material's stone-ore ItemStack, resolves its block + meta, then reuses the
-     * getIcon/getIconName handles. Returns null on any failure — Atlas falls back to
-     * the material colour when there's no texture.
+     * The representative material's grayscale ore-overlay PNG (base64), deduped by icon
+     * name into {@code sprites}; returns that icon name (the vein's texture key). GT's
+     * ore art is grayscale, tinted by the material colour at render — Atlas ships the
+     * gray sprite and tints it by the vein rgb.
+     *
+     * We do NOT read the stitched atlas: a material's overlay lives at a deterministic
+     * resource `assets/gregtech/textures/blocks/materialicons/<SET>/ore.png`, and at
+     * world-load the atlas sprite's CPU-side pixel arrays (framesTextureData) are gone
+     * anyway. Instead we take the ore container's registered icon name (exact path) and
+     * read that PNG straight from the mod jar via the classloader — surviving to
+     * world-load, independent of stitch state. Reached through IOreMaterial.getTextureSet()
+     * so vanilla Materials, Bartworks Werkstoff and GT++ Material all resolve.
+     *
+     * Throwable-safe but NOT silent: every bail point bumps a distinct counter (logged
+     * once) so the dump summary's sprite_steps pinpoints the exact step next run.
      */
-    private String resolveOreTexture(Object oreMaterial) {
+    private String extractOreSprite(Object rep, int oreIndex, Map<String, String> sprites,
+                                    Set<String> preColored, Map<String, Integer> stats) {
+        if (oreIndex < 0) {
+            bump(stats, "skip_bad_index", "oreTextureIndex=" + oreIndex);
+            return null;
+        }
         try {
-            Class<?> prefixes = Class.forName("gregtech.api.enums.OrePrefixes");
-            Object orePrefix = prefixes.getField("ore").get(null); // OrePrefixes.ore
-            Class<?> unif = Class.forName("gregtech.api.util.GT_OreDictUnificator");
-            // GT_OreDictUnificator.get has many overloads; the material param is typed
-            // Materials (not Object), so an exact getMethod(..., Object.class, ...) never
-            // matched → every texture came back null. Find get(prefix, <thisMaterial>, long).
-            Method getM = null;
-            for (Method m : unif.getMethods()) {
-                if (!"get".equals(m.getName())) continue;
-                Class<?>[] p = m.getParameterTypes();
-                if (p.length == 3 && p[2] == long.class
-                        && p[0].isAssignableFrom(orePrefix.getClass())
-                        && p[1].isAssignableFrom(oreMaterial.getClass())) {
-                    getM = m;
-                    break;
+            // material → TextureSet: IOreMaterial.getTextureSet() (all rep types), else
+            // the vanilla Materials-only public field mIconSet.
+            Object textureSet;
+            try {
+                textureSet = rep.getClass().getMethod("getTextureSet").invoke(rep);
+            } catch (NoSuchMethodException nsm) {
+                textureSet = rep.getClass().getField("mIconSet").get(rep);
+            }
+            if (textureSet == null) {
+                bump(stats, "no_texture_set", rep.getClass().getName());
+                return null;
+            }
+
+            // Preferred: the ore container's own registered icon name (exact resource path,
+            // handles the CUSTOM/<name> tier). getIcon() is non-null post-stitch.
+            String iconName = null;
+            try {
+                Object arr = textureSet.getClass().getField("mTextures").get(textureSet); // IIconContainer[]
+                if (arr != null && oreIndex < Array.getLength(arr)) {
+                    Object container = Array.get(arr, oreIndex);
+                    if (container != null) {
+                        Object iicon = container.getClass().getMethod("getIcon").invoke(container);
+                        if (iicon != null) {
+                            Object nm = getIconNameMethod.invoke(iicon);
+                            if (nm != null) iconName = String.valueOf(nm);
+                        }
+                    }
+                }
+            } catch (Throwable ignore) {
+                // fall through to the mSetName template below
+            }
+
+            // Fallback: derive from the TextureSet's set name (mSetName already carries the
+            // full sub-path, e.g. "METALLIC" or "CUSTOM/gold").
+            if (iconName == null) {
+                Object setNm = textureSet.getClass().getField("mSetName").get(textureSet);
+                if (setNm != null) iconName = "gregtech:materialicons/" + setNm + "/ore";
+            }
+            if (iconName == null) {
+                bump(stats, "no_icon_name", textureSet.getClass().getName());
+                return null;
+            }
+
+            if (!sprites.containsKey(iconName)) {
+                // Prefer the base ore.png (grayscale, tinted by rgb at render). When it's
+                // fully transparent — some materials (gold/iron/copper/diamond) carry
+                // their ore art in a pre-coloured overlay instead — use ore_OVERLAY.png
+                // and mark it pre-coloured so the map draws it as-is (no tint).
+                byte[] base = readSpriteBytes(iconName);
+                byte[] chosen = null;
+                boolean precolored = false;
+                if (base != null && base.length > 0 && !pngAllTransparent(base)) {
+                    chosen = base;
+                } else {
+                    byte[] overlay = readSpriteBytes(iconName + "_OVERLAY");
+                    if (overlay != null && overlay.length > 0 && !pngAllTransparent(overlay)) {
+                        chosen = overlay;
+                        precolored = true;
+                    }
+                }
+                if (chosen == null) {
+                    bump(stats, base == null ? "png_not_found" : "png_blank", iconName);
+                    return null; // no usable sprite → vein falls back to a flat rgb dot
+                }
+                sprites.put(iconName, Base64.getEncoder().encodeToString(chosen));
+                if (precolored) {
+                    preColored.add(iconName);
+                    bump(stats, "precolored", iconName);
                 }
             }
-            if (getM == null) return null;
-            Object stack = getM.invoke(null, orePrefix, oreMaterial, 1L); // ItemStack
-            if (stack == null) return null;
-
-            Class<?> itemStackC = Class.forName("net.minecraft.item.ItemStack");
-            Method getItem = resolveMethod(itemStackC, new Class<?>[]{}, "getItem", "func_77973_b");
-            Method getDmg = resolveMethod(itemStackC, new Class<?>[]{}, "getItemDamage", "func_77960_j");
-            Object item = getItem.invoke(stack);
-            if (item == null) return null;
-            int meta = ((Number) getDmg.invoke(stack)).intValue();
-
-            Class<?> blockC = Class.forName("net.minecraft.block.Block");
-            Class<?> itemC = Class.forName("net.minecraft.item.Item");
-            Method fromItem = resolveMethod(blockC, new Class<?>[]{itemC}, "getBlockFromItem", "func_149634_a");
-            Object block = fromItem.invoke(null, item);
-            if (block == null) return null;
-
-            Object icon = getIconMethod.invoke(block, 1, meta); // side 1 = top
-            if (icon == null) return null;
-            return (String) getIconNameMethod.invoke(icon);
+            bump(stats, "ok", iconName);
+            return iconName;
         } catch (Throwable t) {
+            Throwable c = (t.getCause() != null) ? t.getCause() : t;
+            bump(stats, "chain_error", c.getClass().getSimpleName()
+                + (c.getMessage() != null ? ": " + c.getMessage().split("\n")[0] : "")
+                + " (rep=" + rep.getClass().getName() + ")");
             return null;
+        }
+    }
+
+    /**
+     * The mod-jar bytes for an ore sprite icon name ("namespace:path", e.g.
+     * "gregtech:materialicons/METALLIC/ore" or the same with an "_OVERLAY" suffix),
+     * read straight from the classpath. The source file is
+     * {@code assets/<ns>/textures/blocks/<path>.png}. Null if the resource is absent.
+     */
+    private static byte[] readSpriteBytes(String iconName) {
+        String ns, path;
+        int colon = iconName.indexOf(':');
+        if (colon >= 0) { ns = iconName.substring(0, colon); path = iconName.substring(colon + 1); }
+        else { ns = "gregtech"; path = iconName; }
+        return readClasspathResource("assets/" + ns + "/textures/blocks/" + path + ".png");
+    }
+
+    /** True if the PNG decodes to a fully transparent image (no opaque pixel). */
+    private static boolean pngAllTransparent(byte[] bytes) {
+        try {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (img == null || !img.getColorModel().hasAlpha()) return false;
+            int w = img.getWidth(), h = img.getHeight();
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    if ((img.getRGB(x, y) >>> 24) != 0) return false;
+                }
+            }
+            return true;
+        } catch (Throwable t) {
+            return false; // undecodable → treat as non-blank (use it as-is)
+        }
+    }
+
+    /** Read a classpath resource (mod-jar asset) as bytes, trying several classloaders. */
+    private static byte[] readClasspathResource(String path) {
+        ClassLoader[] loaders = {
+            AtlasDumper.class.getClassLoader(),
+            Thread.currentThread().getContextClassLoader(),
+            ClassLoader.getSystemClassLoader(),
+        };
+        for (ClassLoader cl : loaders) {
+            if (cl == null) continue;
+            try (InputStream in = cl.getResourceAsStream(path)) {
+                if (in == null) continue;
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) >= 0) bos.write(buf, 0, n);
+                return bos.toByteArray();
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    /** Increment a named ore-sprite step counter; log the reason on the FIRST hit only. */
+    private static void bump(Map<String, Integer> stats, String key, String detail) {
+        Integer n = stats.get(key);
+        if (n == null) {
+            stats.put(key, 1);
+            System.out.println("[AtlasDumper]   ore-sprite '" + key + "' first hit: " + detail);
+        } else {
+            stats.put(key, n + 1);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void writeOreVeinJson(FileWriter w, Map<String, Object[]> veins,
+                                  Map<String, String> sprites, Set<String> preColored,
                                   int count, int withTexture, int errors,
-                                  List<String> errorSamples) throws IOException {
+                                  List<String> errorSamples,
+                                  Map<String, Integer> spriteStats) throws IOException {
         String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
 
         List<String> modList = new ArrayList<>();
@@ -715,11 +873,17 @@ public class AtlasDumper {
         } catch (Throwable ignored) {}
 
         w.write("{\n");
-        w.write("  \"format\": \"atlas-gtnh-orevein-dump-v1\",\n");
+        w.write("  \"format\": \"atlas-gtnh-orevein-dump-v2\",\n");
         w.write("  \"minecraft_version\": \"1.7.10\",\n");
         w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
         w.write("  \"summary\": { \"vein_count\": " + count + ", \"with_texture\": " + withTexture
-            + ", \"errors\": " + errors + ", \"error_samples\": [");
+            + ", \"errors\": " + errors + ", \"sprite_steps\": {");
+        int ssi = 0;
+        for (Map.Entry<String, Integer> s : spriteStats.entrySet()) {
+            if (ssi++ > 0) w.write(", ");
+            w.write(jsonStr(s.getKey()) + ": " + s.getValue());
+        }
+        w.write("}, \"error_samples\": [");
         for (int i = 0; i < errorSamples.size(); i++) {
             if (i > 0) w.write(", ");
             w.write(jsonStr(errorSamples.get(i)));
@@ -752,7 +916,24 @@ public class AtlasDumper {
                 + "\"rgb\": " + rgb + ", "
                 + "\"dims\": " + dimsJson.toString() + " }");
         }
-        w.write("\n  }\n}\n");
+        w.write("\n  },\n");
+        // Deduped ore-overlay sprites (base64 PNG), keyed by the icon name each vein's
+        // "texture" points at. Grayscale sprites are tinted by the vein rgb at render;
+        // the pre-coloured subset (listed in "sprites_precolored") is drawn as-is.
+        w.write("  \"sprites\": {\n");
+        int si = 0;
+        for (Map.Entry<String, String> s : sprites.entrySet()) {
+            if (si++ > 0) w.write(",\n");
+            w.write("    " + jsonStr(s.getKey()) + ": " + jsonStr(s.getValue()));
+        }
+        w.write("\n  },\n");
+        w.write("  \"sprites_precolored\": [");
+        int pi = 0;
+        for (String k : preColored) {
+            if (pi++ > 0) w.write(", ");
+            w.write(jsonStr(k));
+        }
+        w.write("]\n}\n");
     }
 
     // ── Reflection helpers (MCP name → SRG name fallback) ──────────────────────

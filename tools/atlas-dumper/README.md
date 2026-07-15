@@ -33,8 +33,10 @@ approximate temperature/rainfall table (which is wrong for most modded biomes).
 `OreMixes` / `Materials` registry and its ore-block icons are fully baked), it
 reflects over `gregtech.api.enums.OreMixes` and, for each mix, records the
 Visual-Prospecting palette key (`ore.mix.X`), its localized name, the
-representative material's RGBA tint, its enabled dimensions, and a best-effort
-ore-texture key. These are written to:
+representative material's RGBA tint, its enabled dimensions, and the ore-overlay
+sprite pixels (grayscale + alpha) read straight from the stitched atlas — GT tints
+these by the material colour at render, so Atlas ships the gray sprite + rgb and
+tints it the same way. These are written to:
 
 ```
 .minecraft/config/atlas/ore_vein_dump.json
@@ -99,13 +101,13 @@ works; the mod only needs a Java 8 classfile.)
 ### Package
 
 ```cmd
-jar cf atlas-dumper-1.4.0.jar -C out .
+jar cf atlas-dumper-1.4.4.jar -C out .
 ```
 
 The compiled `out\` must contain `mcmod.info` and `pack.mcmeta` too, not just the
 `.class` — Gradle normally copies them from `src\main\resources`. When building
 by hand, copy both into `out\` first and substitute the `${version}`/`${mcversion}`
-tokens in `mcmod.info` (→ `1.4.0` / `1.7.10`), or the mod loads without metadata.
+tokens in `mcmod.info` (→ `1.4.4` / `1.7.10`), or the mod loads without metadata.
 (`build.bat` does all of this for you.)
 
 ### Notes on vanilla JAR
@@ -133,7 +135,7 @@ Watch the game log for:
 ```
 [AtlasDumper] Done — 4012/4095 blocks (61 no-icon, 22 unnamed), 289 mods, 83 errors → .minecraft/config/atlas/icon_dump.json
 [AtlasDumper] Biome dump done — 91 biomes, 0 errors → .minecraft/config/atlas/biome_dump.json
-[AtlasDumper] Ore-vein dump done — 122 veins (N with texture), 0 errors → .minecraft/config/atlas/ore_vein_dump.json
+[AtlasDumper] Ore-vein dump done — 122 veins (N with sprite, M unique), 0 errors → .minecraft/config/atlas/ore_vein_dump.json
 ```
 
 ## Dump summary fields
