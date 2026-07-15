@@ -20,6 +20,12 @@ import { MenuBar } from './shared/MenuBar'
 import { TextureDebugPanel } from './features/debug/TextureDebugPanel'
 import { WorldMap } from './features/map/WorldMap'
 import { GridLabels } from './features/map/GridLabels'
+import { useOreVeins } from './features/ore-veins/api/oreVeins'
+import {
+  OreVeinLabels,
+  type OreVeinView,
+} from './features/ore-veins/OreVeinLabels'
+import { veinDisplay } from './features/ore-veins/oreVeinRegistry'
 import type {
   BlockColumn,
   ChunkCoord,
@@ -83,6 +89,7 @@ export default function App() {
   const [biomeSearchOpen, setBiomeSearchOpen] = useState(false)
   const [heatmapOn, setHeatmapOn] = useState(false)
   const [gridOn, setGridOn] = useState(false)
+  const [oreVeinsOn, setOreVeinsOn] = useState(false)
   const [infraViewOn, setInfraViewOn] = useState(false)
   // Infrastructure-View systems toggled off (empty = show all). Session-only.
   const [hiddenPipeSystems, setHiddenPipeSystems] = useState<Set<string>>(
@@ -422,12 +429,82 @@ export default function App() {
     )
   }
 
+  // The heatmap's cell data is computed per-dimension and fed straight into the
+  // engine (never held in React state), so it can't be re-pushed onto the fresh
+  // engine WorldMap builds on a dimension change. Clear it instead: the new
+  // engine starts with no heatmap, and resetting heatmapOn keeps the lit button
+  // in sync. (Also tidies up when the world closes: dimensionPath → null.)
+  useEffect(() => {
+    setHeatmapOn(false)
+  }, [dimensionPath])
+
   // Chunk/region reference grid + coordinate labels (Stage 5).
   function handleToggleGrid() {
-    const next = !gridOn
-    setGridOn(next)
-    engineRef.current?.setGrid(next)
+    setGridOn((o) => !o)
   }
+
+  // Reconcile the grid overlay to the engine (mirrors oreVeinsOn below). The
+  // engine is recreated on a dimension change (WorldMap keys it on dimensionPath)
+  // and defaults grid to off, so a bare imperative push in the handler would
+  // leave the lit button and GridLabels disagreeing with the faint default grid
+  // until toggled twice. Keying on dimensionPath re-pushes the state onto each
+  // new engine; WorldMap (a child) rebuilds the engine before this parent effect
+  // runs, so engineRef already points at the new one.
+  useEffect(() => {
+    engineRef.current?.setGrid(gridOn)
+  }, [gridOn, dimensionPath])
+
+  // Ore-vein overlay (from Visual Prospecting). Fetched lazily when toggled on;
+  // the effect below pushes the dots into the engine once data arrives.
+  const oreVeins = useOreVeins(dimensionPath, oreVeinsOn)
+  const oreVeinViews = useMemo<OreVeinView[]>(() => {
+    if (!oreVeins.data) return []
+    return oreVeins.data.veins.map((v) => {
+      const { name, color } = veinDisplay(v.kind, v.name, v.rgb)
+      return {
+        x: v.x,
+        z: v.z,
+        name,
+        color,
+        depleted: v.depleted,
+        spriteKey: v.texture ?? undefined,
+      }
+    })
+  }, [oreVeins.data])
+  // Ore-overlay sprites (base64 PNG → data URL), keyed by the vein `texture`; the
+  // engine tints each by the vein colour. Empty on an old (pre-sprite) dump.
+  const veinSprites = useMemo<Record<string, string>>(() => {
+    const raw = oreVeins.data?.sprites
+    if (!raw) return {}
+    const out: Record<string, string> = {}
+    for (const [key, b64] of Object.entries(raw)) {
+      out[key] = `data:image/png;base64,${b64}`
+    }
+    return out
+  }, [oreVeins.data])
+  // Sprite keys whose art is already coloured (gold/iron/…): the map marker draws
+  // them as-is (white tint = identity) rather than multiplying by the material rgb.
+  const veinPrecolored = useMemo(
+    () => new Set(oreVeins.data?.sprites_precolored ?? []),
+    [oreVeins.data]
+  )
+  useEffect(() => {
+    engineRef.current?.setOreVeins(
+      oreVeinsOn
+        ? oreVeinViews.map((v) => ({
+            ...v,
+            // Pre-coloured sprites keep their own colour; grayscale sprites (and the
+            // no-sprite fallback dot) tint by the material colour. Labels use the
+            // material colour regardless (OreVeinView.color, untouched here).
+            color:
+              v.spriteKey && veinPrecolored.has(v.spriteKey)
+                ? '#ffffff'
+                : v.color,
+          }))
+        : null,
+      veinSprites
+    )
+  }, [oreVeinsOn, oreVeinViews, veinSprites, veinPrecolored])
 
   // Infrastructure View (Stage 5): draw pipe/cable runs as a connected network.
   // It's a render-config flag, so the map re-renders chunks when it flips.
@@ -525,6 +602,13 @@ export default function App() {
         }
         gridOn={gridOn}
         onToggleGrid={worldPath && dimensionPath ? handleToggleGrid : undefined}
+        oreVeinsOn={oreVeinsOn}
+        oreVeinsLoading={oreVeins.isFetching}
+        onToggleOreVeins={
+          worldPath && dimensionPath
+            ? () => setOreVeinsOn((o) => !o)
+            : undefined
+        }
         infraViewOn={infraViewOn}
         onToggleInfra={worldPath ? handleToggleInfra : undefined}
         pipeSystems={pipeSystems}
@@ -621,6 +705,18 @@ export default function App() {
               onMapContextRef={mapContextRef}
             />
             {gridOn && <GridLabels engineRef={engineRef} />}
+            {oreVeinsOn && (
+              <OreVeinLabels engineRef={engineRef} veins={oreVeinViews} />
+            )}
+            {oreVeinsOn &&
+              oreVeins.data &&
+              oreVeins.data.veins.length === 0 && (
+                <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded bg-black/70 px-3 py-1.5 text-xs text-zinc-300">
+                  {oreVeins.data.available
+                    ? 'No ore veins cached here yet — explore/prospect in-game, or run Visual Prospecting’s vein cache.'
+                    : 'No Visual Prospecting data for this world.'}
+                </div>
+              )}
             <DumpMismatchBanner worldPath={worldPath} />
             {mapContext && (
               <MapContextMenu

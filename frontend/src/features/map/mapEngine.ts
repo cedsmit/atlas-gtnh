@@ -112,6 +112,7 @@ export class MapEngine {
   private _highlight: THREE.Group | null = null
   private _homeMarker: THREE.Mesh | null = null
   private _biomeHighlight: THREE.Group | null = null
+  private _oreVeins: THREE.Group | null = null
   /** Run the block inspector for the last right-clicked point. Set in constructor. */
   inspectAt!: () => void
   /** Drop cached state for the given chunks so the map re-fetches/redraws them
@@ -1502,6 +1503,7 @@ export class MapEngine {
       this.setSearchHighlight(null)
       this.setHomeMarker(null)
       this.setBiomeHighlight(null)
+      this.setOreVeins(null)
       mapScene.dispose()
     }
   }
@@ -1678,6 +1680,33 @@ export class MapEngine {
       }
     }
     st.forceFrame = true
+  }
+
+  /**
+   * Show (or clear, with null) the ore-vein overlay: each vein rendered as its GT
+   * ore sprite tinted by the material colour (a dark halo behind for contrast), at
+   * a constant pixel size so they stay visible at any zoom. Batched by sprite, so it
+   * scales to thousands of veins. ``sprites`` maps a marker's ``spriteKey`` to a PNG
+   * data URL; a marker with no (or unknown) sprite falls back to a coloured disc.
+   * Labels are a separate DOM overlay.
+   */
+  setOreVeins(
+    veins: OreVeinMarker[] | null,
+    sprites?: Record<string, string>
+  ): void {
+    const scene = this._mapScene.scene
+    if (this._oreVeins) {
+      scene.remove(this._oreVeins)
+      disposeOreVeins(this._oreVeins)
+      this._oreVeins = null
+    }
+    if (veins && veins.length) {
+      this._oreVeins = buildOreVeins(veins, sprites ?? {}, () => {
+        this._st.forceFrame = true
+      })
+      scene.add(this._oreVeins)
+    }
+    this._st.forceFrame = true
   }
 
   /**
@@ -2038,6 +2067,214 @@ function disposeBiomeHighlight(group: THREE.Group): void {
     const obj = child as THREE.Mesh | THREE.LineSegments
     ;(obj.material as THREE.Material).dispose()
     obj.geometry.dispose()
+  }
+}
+
+// ── Ore-vein overlay ─────────────────────────────────────────────────────────
+// One marker per Visual Prospecting vein: a stone base with GregTech's ore overlay
+// on top (the ore-block look), tinted by the material colour (map × vertexColour, as
+// GT renders it), at a constant pixel size. Veins are batched by sprite — one
+// THREE.Points draw call per unique sprite, plus one shared stone layer — so it
+// scales to thousands. A vein with no sprite falls back to a coloured disc. Depleted
+// veins are dimmed. Labels are a separate DOM overlay.
+
+/**
+ * A vein to plot: world position, CSS colour (the material rgb, resolved by the
+ * caller), depleted, and an optional sprite key (the vein's `texture` — an index
+ * into the sprites map passed to setOreVeins). No sprite → a flat coloured disc.
+ */
+export interface OreVeinMarker {
+  x: number
+  z: number
+  color: string
+  depleted?: boolean
+  spriteKey?: string
+}
+
+const VEIN_DOT_PX = 16 // plain fallback disc (no sprite)
+const VEIN_SPRITE_PX = 44 // the ore sprite marker (constant pixel size)
+
+let _veinSprite: THREE.CanvasTexture | null = null
+
+// Ore-sprite textures, cached by data-URL (content-stable across dimensions), so
+// toggling the overlay or switching dimensions never reloads the same PNG.
+const _veinTexCache = new Map<string, THREE.Texture>()
+
+/** Load (once) an ore-overlay sprite from a data URL; re-renders when it arrives. */
+function veinTexture(dataUrl: string, onReady: () => void): THREE.Texture {
+  const cached = _veinTexCache.get(dataUrl)
+  if (cached) return cached
+  const tex = new THREE.TextureLoader().load(dataUrl, () => onReady())
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.magFilter = THREE.NearestFilter // crisp pixel-art edges when enlarged
+  tex.minFilter = THREE.NearestFilter
+  tex.generateMipmaps = false
+  _veinTexCache.set(dataUrl, tex)
+  return tex
+}
+
+/** Shared soft-edged white disc sprite for the point dots (built once). */
+function veinSprite(): THREE.CanvasTexture {
+  if (_veinSprite) return _veinSprite
+  const S = 64
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
+  g.addColorStop(0, 'rgba(255,255,255,1)')
+  g.addColorStop(0.7, 'rgba(255,255,255,1)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.beginPath()
+  ctx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2)
+  ctx.fill()
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  _veinSprite = tex
+  return tex
+}
+
+let _veinStone: THREE.CanvasTexture | null = null
+
+/** Shared stone-grey square base (built once) — the ore overlay draws on top of it. */
+function veinStoneSprite(): THREE.CanvasTexture {
+  if (_veinStone) return _veinStone
+  const S = 16
+  const canvas = document.createElement('canvas')
+  canvas.width = canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.createImageData(S, S)
+  for (let i = 0; i < S * S; i++) {
+    const n = 116 + Math.floor(Math.random() * 22) // stone speckle ~116–138
+    img.data[i * 4] = n
+    img.data[i * 4 + 1] = n
+    img.data[i * 4 + 2] = n
+    img.data[i * 4 + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.magFilter = THREE.NearestFilter
+  tex.minFilter = THREE.NearestFilter
+  tex.generateMipmaps = false
+  _veinStone = tex
+  return tex
+}
+
+/**
+ * One THREE.Points for a set of veins: a shared `map` sprite sized in constant
+ * pixels. With `vertexColors` the sprite is tinted per-vein by the material rgb
+ * (map × colour); without it `color` tints the whole batch. Depleted veins are dimmed.
+ */
+function buildVeinPoints(
+  veins: OreVeinMarker[],
+  map: THREE.Texture,
+  opts: {
+    size: number
+    renderOrder: number
+    vertexColors: boolean
+    color?: number
+    opacity?: number
+  }
+): THREE.Points {
+  const n = veins.length
+  const positions = new Float32Array(n * 3)
+  const colors = opts.vertexColors ? new Float32Array(n * 3) : null
+  const c = new THREE.Color()
+  for (let i = 0; i < n; i++) {
+    const v = veins[i]
+    positions[i * 3] = v.x + 0.5
+    positions[i * 3 + 1] = -(v.z + 0.5) // world→GL Z-flip
+    positions[i * 3 + 2] = 12
+    if (colors) {
+      c.set(v.color)
+      if (v.depleted) c.multiplyScalar(0.4) // dim mined-out veins
+      colors[i * 3] = c.r
+      colors[i * 3 + 1] = c.g
+      colors[i * 3 + 2] = c.b
+    }
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  if (colors)
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+
+  const pts = new THREE.Points(
+    geo,
+    new THREE.PointsMaterial({
+      size: opts.size,
+      map,
+      color: opts.color ?? 0xffffff,
+      vertexColors: opts.vertexColors,
+      transparent: true,
+      opacity: opts.opacity ?? 1,
+      sizeAttenuation: false, // constant pixel size, independent of zoom
+      depthTest: false,
+    })
+  )
+  pts.renderOrder = opts.renderOrder
+  pts.frustumCulled = false
+  return pts
+}
+
+function buildOreVeins(
+  veins: OreVeinMarker[],
+  sprites: Record<string, string>,
+  requestFrame: () => void
+): THREE.Group {
+  const group = new THREE.Group()
+
+  // Stone base behind every vein — the ore overlay draws on top (ore-block look).
+  group.add(
+    buildVeinPoints(veins, veinStoneSprite(), {
+      size: VEIN_SPRITE_PX,
+      renderOrder: 1002,
+      vertexColors: false,
+    })
+  )
+
+  // Batch veins by sprite (one draw call each), each drawn as its square ore overlay
+  // tinted per-vein by rgb. Veins with no sprite fall back to the plain coloured disc.
+  const bySprite = new Map<string, OreVeinMarker[]>()
+  const noSprite: OreVeinMarker[] = []
+  for (const v of veins) {
+    const url = v.spriteKey ? sprites[v.spriteKey] : undefined
+    if (url) {
+      const arr = bySprite.get(url)
+      if (arr) arr.push(v)
+      else bySprite.set(url, [v])
+    } else {
+      noSprite.push(v)
+    }
+  }
+  for (const [url, batch] of bySprite) {
+    group.add(
+      buildVeinPoints(batch, veinTexture(url, requestFrame), {
+        size: VEIN_SPRITE_PX,
+        renderOrder: 1003,
+        vertexColors: true,
+      })
+    )
+  }
+  if (noSprite.length) {
+    group.add(
+      buildVeinPoints(noSprite, veinSprite(), {
+        size: VEIN_DOT_PX,
+        renderOrder: 1003,
+        vertexColors: true,
+      })
+    )
+  }
+  return group
+}
+
+function disposeOreVeins(group: THREE.Group): void {
+  // Each Points owns its geometry + material; dispose both. Sprite textures (the
+  // shared white disc and the cached ore sprites) are shared singletons — leave them.
+  for (const child of group.children) {
+    const pts = child as THREE.Points
+    pts.geometry.dispose()
+    ;(pts.material as THREE.Material).dispose()
   }
 }
 
