@@ -8,7 +8,7 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.1.0"
+set "VERSION=1.3.0"
 set "MCVER=1.7.10"
 
 REM ==== Manual override - ONLY if auto-detect below fails ====================
@@ -95,7 +95,7 @@ if %N%==0 (
   echo Copy %JARNAME% into your instance's mods folder manually.
   goto :end
 )
-echo Install the jar into which instance's mods folder?
+echo Install into which instance's mods folder? (replaces any older atlas-icon-dumper jars there)
 for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
 echo    [0]  skip
 echo.
@@ -113,6 +113,20 @@ if not exist "!CHOSEN!" (
   echo        Copy %JARNAME% in manually.
   goto :end
 )
+REM --- Remove any previously installed copies of this mod (all versions) -----
+REM   Matches atlas-icon-dumper*.jar so old versions AND a same-version rebuild
+REM   are cleared out first, leaving exactly one jar after the copy below.
+set "REMOVED=0"
+for %%O in ("!CHOSEN!\atlas-icon-dumper*.jar") do (
+  del /f /q "%%~fO" >nul 2>&1
+  if exist "%%~fO" (
+    echo [warn] could not remove %%~nxO ^(is the game running? close it and retry^)
+  ) else (
+    set /a REMOVED+=1
+    echo    removed old  %%~nxO
+  )
+)
+echo [ok]  old copies removed: !REMOVED!
 copy /y "%JARNAME%" "!CHOSEN!" >nul && echo Installed %JARNAME% into !CHOSEN!
 goto :end
 

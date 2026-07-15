@@ -47,7 +47,7 @@ import java.util.*;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.1.0";
+    public static final String VERSION = "1.3.0";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -57,6 +57,11 @@ public class AtlasDumper {
     // world — by then the grass/foliage colormaps that getBiomeGrassColor reads
     // are loaded (they are not guaranteed at texture-stitch time).
     private boolean biomesDumped = false;
+    // Ore veins are dumped on the same world-load gate. GregTech's OreMixes /
+    // Materials registry and its ore-block icons are only fully initialized well
+    // after the (early) texture stitch, so dumping at stitch time throws an Error
+    // from the enum's static init and silently fails — wait for a loaded world.
+    private boolean oreVeinsDumped = false;
 
     // Resolved once on first dump; cached for the life of the process.
     private Method getIconMethod     = null;  // Block.getIcon(int, int) → IIcon
@@ -67,8 +72,8 @@ public class AtlasDumper {
     public void preInit(FMLPreInitializationEvent event) {
         this.gameDir = event.getModConfigurationDirectory().getParentFile();
         MinecraftForge.EVENT_BUS.register(this);          // TextureStitchEvent (block icons)
-        FMLCommonHandler.instance().bus().register(this); // ClientTickEvent (biome colors)
-        System.out.println("[AtlasDumper] Registered — will dump icons after blocks texture stitch, biomes after world load.");
+        FMLCommonHandler.instance().bus().register(this); // ClientTickEvent (biomes + ore veins)
+        System.out.println("[AtlasDumper] Registered — will dump icons after blocks texture stitch, biomes + ore veins after world load.");
     }
 
     @SubscribeEvent
@@ -81,12 +86,21 @@ public class AtlasDumper {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (biomesDumped) return;
-        // Wait for a loaded world so the grass/foliage colormaps are available.
+        if (biomesDumped && oreVeinsDumped) return;
+        // Wait for a loaded world: the grass/foliage colormaps (biomes) and the
+        // fully-baked GregTech OreMixes / Materials / ore-block icons (ore veins)
+        // are only guaranteed once a world is in — not at texture-stitch time.
         if (getClientWorld() == null) return;
-        biomesDumped = true;
-        System.out.println("[AtlasDumper] World loaded — starting biome color dump...");
-        dumpBiomes();
+        if (!biomesDumped) {
+            biomesDumped = true;
+            System.out.println("[AtlasDumper] World loaded — starting biome color dump...");
+            dumpBiomes();
+        }
+        if (!oreVeinsDumped) {
+            oreVeinsDumped = true;
+            System.out.println("[AtlasDumper] World loaded — starting ore-vein dump...");
+            dumpOreVeins(); // GregTech ore-vein registry (name + representative ore texture + colour)
+        }
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
@@ -511,6 +525,215 @@ public class AtlasDumper {
         w.write("\n  }\n}\n");
     }
 
+    /**
+     * Dump the GregTech ore-vein registry so Atlas can label each Visual
+     * Prospecting vein with GTNH's real name + representative-ore texture + colour.
+     * VP keys veins by the ore-mix name ("ore.mix.gold"); we emit the same key
+     * with { name (getLocalizedName), texture (representative ore's IIcon), rgb
+     * (representative material colour, for tinting the grayscale ore overlay) }.
+     *
+     * Pure reflection into gregtech.* — GT is a mod (not SRG-mangled), so its real
+     * names survive at runtime. Reuses the getIcon / getIconName handles resolved
+     * by dumpIcons(). Runs from the block-atlas stitch, when ore icons are live.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void dumpOreVeins() {
+        if (getIconMethod == null || getIconNameMethod == null) {
+            System.err.println("[AtlasDumper] Ore-vein dump skipped: icon handles unresolved.");
+            return;
+        }
+        // ore.mix.X → [name, textureKey|null, rgb, dims(List<String>)]
+        Map<String, Object[]> veins = new LinkedHashMap<>();
+        int count = 0, withTexture = 0, errors = 0;
+        List<String> errorSamples = new ArrayList<>();
+        try {
+            Class<?> oreMixesClass = Class.forName("gregtech.api.enums.OreMixes");
+            Class<?> builderClass = Class.forName("gregtech.common.OreMixBuilder");
+            Object[] mixes = oreMixesClass.getEnumConstants();
+            if (mixes == null) throw new IllegalStateException("OreMixes has no enum constants");
+
+            // Find the OreMixBuilder-typed field on the enum (name-independent).
+            // Match either direction so a field declared as a supertype/interface of
+            // OreMixBuilder still counts (the enum constants and $VALUES don't).
+            Field builderField = null;
+            for (Field f : oreMixesClass.getDeclaredFields()) {
+                if (f.getType().isAssignableFrom(builderClass)
+                        || builderClass.isAssignableFrom(f.getType())) {
+                    builderField = f;
+                    builderField.setAccessible(true);
+                    break;
+                }
+            }
+            if (builderField == null) throw new NoSuchFieldException("no OreMixBuilder field on OreMixes");
+
+            // oreMixName is the VP palette key — the one field we truly need. The rest
+            // are best-effort: resolve to null and degrade gracefully (rather than
+            // aborting the whole dump) if a field/method name doesn't match this build.
+            Field nameF = resolveField(builderClass, "oreMixName", "mOreMixName", "name");
+            Field repF = resolveFieldOrNull(builderClass, "representative", "mRepresentative");
+            Field dimsF = resolveFieldOrNull(builderClass, "dimsEnabled", "allowedDimWorlds", "dims");
+            Method locNameM = resolveMethodOrNull(builderClass, "getLocalizedName", "localizedName");
+            Method getRGBA = null; // resolved from the first representative
+
+            for (Object mix : mixes) {
+                try {
+                    Object builder = builderField.get(mix);
+                    if (builder == null) continue;
+                    String oreMixName = String.valueOf(nameF.get(builder)); // VP palette key
+                    String name = (locNameM != null)
+                        ? String.valueOf(locNameM.invoke(builder)) : oreMixName;
+                    Object rep = (repF != null) ? repF.get(builder) : null;
+
+                    int rgb = 0xFFFFFF;
+                    String texture = null;
+                    if (rep != null) {
+                        if (getRGBA == null) {
+                            try { getRGBA = rep.getClass().getMethod("getRGBA"); } catch (Throwable ignored) {}
+                        }
+                        if (getRGBA != null) {
+                            Object arr = getRGBA.invoke(rep);
+                            if (arr != null && Array.getLength(arr) >= 3) {
+                                int r = ((Number) Array.get(arr, 0)).intValue() & 0xFF;
+                                int g = ((Number) Array.get(arr, 1)).intValue() & 0xFF;
+                                int b = ((Number) Array.get(arr, 2)).intValue() & 0xFF;
+                                rgb = (r << 16) | (g << 8) | b;
+                            }
+                        }
+                        texture = resolveOreTexture(rep);
+                        if (texture != null) withTexture++;
+                    }
+
+                    List<String> dims = new ArrayList<>();
+                    if (dimsF != null) {
+                        Object dimsObj = dimsF.get(builder);
+                        if (dimsObj instanceof Collection) {
+                            for (Object d : (Collection<?>) dimsObj) dims.add(String.valueOf(d));
+                        }
+                    }
+
+                    veins.put(oreMixName, new Object[]{name, texture, rgb, dims});
+                    count++;
+                } catch (Throwable e) {
+                    errors++;
+                    if (errorSamples.size() < 30) {
+                        Throwable c = (e.getCause() != null) ? e.getCause() : e;
+                        errorSamples.add("vein → " + c.getClass().getSimpleName()
+                            + (c.getMessage() != null ? ": " + c.getMessage().split("\n")[0] : ""));
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            // Throwable (not Exception): too-early class init throws Errors, and a
+            // reflection-name mismatch must be logged, never silently swallowed.
+            System.err.println("[AtlasDumper] FATAL: ore-vein dump reflection failed: " + e);
+            return;
+        }
+
+        File outDir = new File(gameDir, "config/atlas");
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            System.err.println("[AtlasDumper] Could not create output directory: " + outDir);
+            return;
+        }
+        File outFile = new File(outDir, "ore_vein_dump.json");
+        try (FileWriter w = new FileWriter(outFile)) {
+            writeOreVeinJson(w, veins, count, withTexture, errors, errorSamples);
+            System.out.printf("[AtlasDumper] Ore-vein dump done — %d veins (%d with texture), %d errors → %s%n",
+                count, withTexture, errors, outFile.getAbsolutePath());
+        } catch (IOException e) {
+            System.err.println("[AtlasDumper] Ore-vein write failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Best-effort: the representative ore's block IIcon key (side=top). Asks GT for
+     * the material's stone-ore ItemStack, resolves its block + meta, then reuses the
+     * getIcon/getIconName handles. Returns null on any failure — Atlas falls back to
+     * the material colour when there's no texture.
+     */
+    private String resolveOreTexture(Object oreMaterial) {
+        try {
+            Class<?> prefixes = Class.forName("gregtech.api.enums.OrePrefixes");
+            Object orePrefix = prefixes.getField("ore").get(null); // OrePrefixes.ore
+            Class<?> unif = Class.forName("gregtech.api.util.GT_OreDictUnificator");
+            Method getM = unif.getMethod("get", prefixes, Object.class, long.class);
+            Object stack = getM.invoke(null, orePrefix, oreMaterial, 1L); // ItemStack
+            if (stack == null) return null;
+
+            Class<?> itemStackC = Class.forName("net.minecraft.item.ItemStack");
+            Method getItem = resolveMethod(itemStackC, new Class<?>[]{}, "getItem", "func_77973_b");
+            Method getDmg = resolveMethod(itemStackC, new Class<?>[]{}, "getItemDamage", "func_77960_j");
+            Object item = getItem.invoke(stack);
+            if (item == null) return null;
+            int meta = ((Number) getDmg.invoke(stack)).intValue();
+
+            Class<?> blockC = Class.forName("net.minecraft.block.Block");
+            Class<?> itemC = Class.forName("net.minecraft.item.Item");
+            Method fromItem = resolveMethod(blockC, new Class<?>[]{itemC}, "getBlockFromItem", "func_149634_a");
+            Object block = fromItem.invoke(null, item);
+            if (block == null) return null;
+
+            Object icon = getIconMethod.invoke(block, 1, meta); // side 1 = top
+            if (icon == null) return null;
+            return (String) getIconNameMethod.invoke(icon);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void writeOreVeinJson(FileWriter w, Map<String, Object[]> veins,
+                                  int count, int withTexture, int errors,
+                                  List<String> errorSamples) throws IOException {
+        String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+        List<String> modList = new ArrayList<>();
+        try {
+            for (ModContainer mc : Loader.instance().getActiveModList()) {
+                modList.add(mc.getModId() + "@" + mc.getVersion());
+            }
+        } catch (Throwable ignored) {}
+
+        w.write("{\n");
+        w.write("  \"format\": \"atlas-gtnh-orevein-dump-v1\",\n");
+        w.write("  \"minecraft_version\": \"1.7.10\",\n");
+        w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
+        w.write("  \"summary\": { \"vein_count\": " + count + ", \"with_texture\": " + withTexture
+            + ", \"errors\": " + errors + ", \"error_samples\": [");
+        for (int i = 0; i < errorSamples.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(errorSamples.get(i)));
+        }
+        w.write("] },\n");
+        w.write("  \"mods\": [");
+        for (int i = 0; i < modList.size(); i++) {
+            if (i > 0) w.write(", ");
+            w.write(jsonStr(modList.get(i)));
+        }
+        w.write("],\n");
+        w.write("  \"veins\": {\n");
+        int vi = 0;
+        for (Map.Entry<String, Object[]> e : veins.entrySet()) {
+            if (vi++ > 0) w.write(",\n");
+            Object[] v = e.getValue();
+            String name = (String) v[0];
+            String texture = (String) v[1];
+            int rgb = (Integer) v[2];
+            List<String> dims = (List<String>) v[3];
+            StringBuilder dimsJson = new StringBuilder("[");
+            for (int d = 0; d < dims.size(); d++) {
+                if (d > 0) dimsJson.append(", ");
+                dimsJson.append(jsonStr(dims.get(d)));
+            }
+            dimsJson.append("]");
+            w.write("    " + jsonStr(e.getKey()) + ": { "
+                + "\"name\": " + jsonStr(name) + ", "
+                + "\"texture\": " + (texture == null ? "null" : jsonStr(texture)) + ", "
+                + "\"rgb\": " + rgb + ", "
+                + "\"dims\": " + dimsJson.toString() + " }");
+        }
+        w.write("\n  }\n}\n");
+    }
+
     // ── Reflection helpers (MCP name → SRG name fallback) ──────────────────────
 
     private static Method resolveMethod(Class<?> c, Class<?>[] params, String... names) throws NoSuchMethodException {
@@ -533,6 +756,14 @@ public class AtlasDumper {
 
     private static Field resolveFieldOrNull(Class<?> c, String... names) {
         try { return resolveField(c, names); } catch (NoSuchFieldException e) { return null; }
+    }
+
+    /** First no-arg method matching one of {@code names} (public), or null if none. */
+    private static Method resolveMethodOrNull(Class<?> c, String... names) {
+        for (String n : names) {
+            try { return c.getMethod(n); } catch (NoSuchMethodException ignored) {}
+        }
+        return null;
     }
 
     private static String jsonStr(String s) {
