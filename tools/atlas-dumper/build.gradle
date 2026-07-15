@@ -10,9 +10,9 @@ buildscript {
 
 apply plugin: 'net.minecraftforge.gradle.forge'
 
-version         = '1.0.0'
+version         = '1.4.0'
 group           = 'com.atlasgtnh.icondumper'
-archivesBaseName = 'atlas-icon-dumper'
+archivesBaseName = 'atlas-dumper'
 
 sourceCompatibility = JavaVersion.VERSION_1_8
 targetCompatibility = JavaVersion.VERSION_1_8

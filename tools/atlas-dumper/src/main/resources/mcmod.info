@@ -1,7 +1,7 @@
 [
   {
     "modid": "atlas_dumper",
-    "name": "Atlas Icon Dumper",
+    "name": "Atlas Dumper",
     "description": "Exports Forge block icon + biome grass/foliage colour + GregTech ore-vein mappings to JSON for Atlas GTNH. Run the GTNH client once (load a world) to generate config/atlas/icon_dump.json, biome_dump.json and ore_vein_dump.json.",
     "version": "${version}",
     "mcversion": "${mcversion}",

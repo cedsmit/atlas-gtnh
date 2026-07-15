@@ -1,4 +1,4 @@
-# Atlas Icon Dumper
+# Atlas Dumper
 
 A small Forge 1.7.10 client-side mod that exports (1) the exact block→texture
 mapping, (2) each biome's real grass/foliage colour that Minecraft uses, and
@@ -47,14 +47,13 @@ All three dumps use the same reflection approach (MCP name → SRG name fallback
 GregTech classes by their real names) so the mod compiles against only the Forge
 universal JAR.
 
-## Installation (pre-built)
+## Installation
 
-The JAR at `tools/forge-icon-dumper/atlas-icon-dumper-1.3.0.jar` is ready to
-use. Copy it to your GTNH `mods/` folder, or just run **`build.bat`** (one
-double-click) — it compiles, packages, and offers to install the jar into a
-detected GTNH instance, replacing any older `atlas-icon-dumper*.jar` there first.
-Delete any older `atlas-icon-dumper-1.x.jar` you copied in by hand; 1.3.0 dumps
-icons, biome colours **and** ore veins.
+Run **`build.bat`** (one double-click): it compiles, packages
+`atlas-dumper-<version>.jar`, and offers to install it into a detected GTNH
+instance — pruning any older `atlas*dumper*.jar` there first (this also clears
+out jars from before the rename), so exactly one copy remains. Then load a world
+once (see [Running](#running)). The jar isn't checked in; build it locally.
 
 ## Building from source
 
@@ -100,13 +99,13 @@ works; the mod only needs a Java 8 classfile.)
 ### Package
 
 ```cmd
-jar cf atlas-icon-dumper-1.3.0.jar -C out .
+jar cf atlas-dumper-1.4.0.jar -C out .
 ```
 
 The compiled `out\` must contain `mcmod.info` and `pack.mcmeta` too, not just the
 `.class` — Gradle normally copies them from `src\main\resources`. When building
 by hand, copy both into `out\` first and substitute the `${version}`/`${mcversion}`
-tokens in `mcmod.info` (→ `1.3.0` / `1.7.10`), or the mod loads without metadata.
+tokens in `mcmod.info` (→ `1.4.0` / `1.7.10`), or the mod loads without metadata.
 (`build.bat` does all of this for you.)
 
 ### Notes on vanilla JAR

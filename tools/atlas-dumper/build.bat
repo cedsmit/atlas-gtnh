@@ -1,14 +1,14 @@
 @echo off
 REM ============================================================================
-REM  Atlas Icon Dumper - one-click build
+REM  Atlas Dumper - one-click build
 REM  Double-click this file. It finds your JDK + the Forge/Minecraft jars,
-REM  compiles the mod, and writes atlas-icon-dumper-<version>.jar next to it.
+REM  compiles the mod, and writes atlas-dumper-<version>.jar next to it.
 REM  No Gradle, no editing paths - unless auto-detect fails (see below).
 REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.3.0"
+set "VERSION=1.4.0"
 set "MCVER=1.7.10"
 
 REM ==== Manual override - ONLY if auto-detect below fails ====================
@@ -18,7 +18,7 @@ REM set "MC=C:\path\to\minecraft-1.7.10-client.jar"
 REM ==========================================================================
 
 echo ============================================================
-echo   Atlas Icon Dumper  -  build v%VERSION%
+echo   Atlas Dumper  -  build v%VERSION%
 echo ============================================================
 echo.
 
@@ -73,7 +73,7 @@ powershell -NoProfile -Command "(Get-Content -Raw 'src\main\resources\mcmod.info
 if errorlevel 1 goto :fail
 
 REM --- 5. Package the jar ---------------------------------------------------
-set "JARNAME=atlas-icon-dumper-%VERSION%.jar"
+set "JARNAME=atlas-dumper-%VERSION%.jar"
 "%JARC%" cf "%JARNAME%" -C "%OUT%" .
 if errorlevel 1 goto :fail
 echo [ok]  packaged %JARNAME%
@@ -95,7 +95,7 @@ if %N%==0 (
   echo Copy %JARNAME% into your instance's mods folder manually.
   goto :end
 )
-echo Install into which instance's mods folder? (replaces any older atlas-icon-dumper jars there)
+echo Install into which instance's mods folder? (replaces any older atlas-dumper jars there)
 for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
 echo    [0]  skip
 echo.
@@ -114,10 +114,10 @@ if not exist "!CHOSEN!" (
   goto :end
 )
 REM --- Remove any previously installed copies of this mod (all versions) -----
-REM   Matches atlas-icon-dumper*.jar so old versions AND a same-version rebuild
+REM   Matches atlas*dumper*.jar so old versions AND a same-version rebuild
 REM   are cleared out first, leaving exactly one jar after the copy below.
 set "REMOVED=0"
-for %%O in ("!CHOSEN!\atlas-icon-dumper*.jar") do (
+for %%O in ("!CHOSEN!\atlas*dumper*.jar") do (
   del /f /q "%%~fO" >nul 2>&1
   if exist "%%~fO" (
     echo [warn] could not remove %%~nxO ^(is the game running? close it and retry^)

@@ -40,14 +40,14 @@ import java.util.*;
  */
 @Mod(
     modid   = AtlasDumper.MOD_ID,
-    name    = "Atlas Icon Dumper",
+    name    = "Atlas Dumper",
     version = AtlasDumper.VERSION,
     acceptedMinecraftVersions = "[1.7.10]"
 )
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.3.0";
+    public static final String VERSION = "1.4.0";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -573,7 +573,11 @@ public class AtlasDumper {
             Field repF = resolveFieldOrNull(builderClass, "representative", "mRepresentative");
             Field dimsF = resolveFieldOrNull(builderClass, "dimsEnabled", "allowedDimWorlds", "dims");
             Method locNameM = resolveMethodOrNull(builderClass, "getLocalizedName", "localizedName");
-            Method getRGBA = null; // resolved from the first representative
+            // getRGBA() is declared on each material's OWN class — vanilla-GT Materials,
+            // gtPlusPlus Material and BartWorks Werkstoff are unrelated types — so a
+            // Method resolved on one cannot invoke on another (that dropped ~34 veins
+            // with an IllegalArgumentException). Resolve + cache the handle per class.
+            Map<Class<?>, Method> rgbaByClass = new LinkedHashMap<>();
 
             for (Object mix : mixes) {
                 try {
@@ -587,11 +591,14 @@ public class AtlasDumper {
                     int rgb = 0xFFFFFF;
                     String texture = null;
                     if (rep != null) {
-                        if (getRGBA == null) {
-                            try { getRGBA = rep.getClass().getMethod("getRGBA"); } catch (Throwable ignored) {}
+                        Class<?> repCls = rep.getClass();
+                        Method rgbaM = rgbaByClass.get(repCls);
+                        if (rgbaM == null && !rgbaByClass.containsKey(repCls)) {
+                            try { rgbaM = repCls.getMethod("getRGBA"); } catch (Throwable ignored) {}
+                            rgbaByClass.put(repCls, rgbaM); // cache the miss (null) too
                         }
-                        if (getRGBA != null) {
-                            Object arr = getRGBA.invoke(rep);
+                        if (rgbaM != null) {
+                            Object arr = rgbaM.invoke(rep);
                             if (arr != null && Array.getLength(arr) >= 3) {
                                 int r = ((Number) Array.get(arr, 0)).intValue() & 0xFF;
                                 int g = ((Number) Array.get(arr, 1)).intValue() & 0xFF;
@@ -655,7 +662,21 @@ public class AtlasDumper {
             Class<?> prefixes = Class.forName("gregtech.api.enums.OrePrefixes");
             Object orePrefix = prefixes.getField("ore").get(null); // OrePrefixes.ore
             Class<?> unif = Class.forName("gregtech.api.util.GT_OreDictUnificator");
-            Method getM = unif.getMethod("get", prefixes, Object.class, long.class);
+            // GT_OreDictUnificator.get has many overloads; the material param is typed
+            // Materials (not Object), so an exact getMethod(..., Object.class, ...) never
+            // matched → every texture came back null. Find get(prefix, <thisMaterial>, long).
+            Method getM = null;
+            for (Method m : unif.getMethods()) {
+                if (!"get".equals(m.getName())) continue;
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 3 && p[2] == long.class
+                        && p[0].isAssignableFrom(orePrefix.getClass())
+                        && p[1].isAssignableFrom(oreMaterial.getClass())) {
+                    getM = m;
+                    break;
+                }
+            }
+            if (getM == null) return null;
             Object stack = getM.invoke(null, orePrefix, oreMaterial, 1L); // ItemStack
             if (stack == null) return null;
 
