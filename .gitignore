@@ -22,6 +22,11 @@ frontend/vite.config.d.ts
 # Rust / Tauri
 frontend/src-tauri/target/
 
+# Tools — atlas-dumper build output (jar is produced by build.bat, never committed)
+tools/atlas-dumper/*.jar
+tools/atlas-dumper/build/
+tools/atlas-dumper/.gradle/
+
 # Database
 *.db
 *.sqlite

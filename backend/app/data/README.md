@@ -34,10 +34,10 @@ here needs a hardcoded version list.
 
 ## Regenerating (maintainer only)
 
-The dumper (`tools/forge-icon-dumper/`) is a **maintainer tool**, not part of the
+The dumper (`tools/atlas-dumper/`) is a **maintainer tool**, not part of the
 end-user flow. To add/refresh a major version:
 
-1. Build the mod: run `tools/forge-icon-dumper/build.bat`.
+1. Build the mod: run `tools/atlas-dumper/build.bat`.
 2. Drop the jar in a reference GTNH instance of that major, launch the client,
    **load a world once** (biome colormaps + the block registry aren't ready before
    then). This writes `config/atlas/icon_dump.json` **and** `biome_dump.json`.

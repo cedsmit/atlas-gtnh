@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Flame,
   FolderOpen,
+  Gem,
   Grid3x3,
   Layers,
   Loader2,
@@ -67,6 +68,9 @@ interface Props {
   onToggleHeatmap?: () => void
   gridOn?: boolean
   onToggleGrid?: () => void
+  oreVeinsOn?: boolean
+  oreVeinsLoading?: boolean
+  onToggleOreVeins?: () => void
   infraViewOn?: boolean
   onToggleInfra?: () => void
   pipeSystems?: string[]
@@ -108,6 +112,9 @@ export function MenuBar({
   onToggleHeatmap,
   gridOn,
   onToggleGrid,
+  oreVeinsOn,
+  oreVeinsLoading,
+  onToggleOreVeins,
   infraViewOn,
   onToggleInfra,
   pipeSystems,
@@ -480,6 +487,31 @@ export function MenuBar({
               >
                 <Grid3x3 className="h-4 w-4 shrink-0" aria-hidden />
                 Grid
+              </button>
+            </div>
+          )}
+          {onToggleOreVeins && (
+            <div className="flex items-stretch border-l border-zinc-800">
+              <button
+                onClick={onToggleOreVeins}
+                title="Ore veins from Visual Prospecting"
+                className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
+                  oreVeinsLoading
+                    ? 'text-zinc-400'
+                    : oreVeinsOn
+                      ? 'bg-zinc-800 text-amber-300'
+                      : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
+                }`}
+              >
+                {oreVeinsLoading ? (
+                  <Loader2
+                    className="h-4 w-4 shrink-0 animate-spin"
+                    aria-hidden
+                  />
+                ) : (
+                  <Gem className="h-4 w-4 shrink-0" aria-hidden />
+                )}
+                Ore veins
               </button>
             </div>
           )}

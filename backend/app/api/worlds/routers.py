@@ -6,6 +6,7 @@ from app.api.worlds import (
     chunk_ops,
     debug,
     dump,
+    ore_veins,
     overrides,
     regions,
     search,
@@ -20,3 +21,4 @@ router.include_router(debug.router)
 router.include_router(chunk_ops.router)
 router.include_router(overrides.router)
 router.include_router(search.router)
+router.include_router(ore_veins.router)

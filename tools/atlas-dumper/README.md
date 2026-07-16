@@ -1,8 +1,9 @@
-# Atlas Icon Dumper
+# Atlas Dumper
 
 A small Forge 1.7.10 client-side mod that exports (1) the exact block→texture
-mapping and (2) each biome's real grass/foliage colour that Minecraft uses,
-enabling Atlas GTNH to resolve textures and biome tints without heuristics.
+mapping, (2) each biome's real grass/foliage colour that Minecraft uses, and
+(3) the GregTech ore-vein registry (names + material colours) — enabling Atlas
+GTNH to resolve textures, biome tints and ore-vein labels without heuristics.
 
 ## What it does
 
@@ -27,14 +28,34 @@ lookups plus any mod override, e.g. Biomes O' Plenty). These are written to:
 
 Atlas serves this so grass/foliage tint from ground truth instead of an
 approximate temperature/rainfall table (which is wrong for most modded biomes).
-Both dumps use the same reflection approach (MCP name → SRG name fallback) so the
-mod compiles against only the Forge universal JAR.
 
-## Installation (pre-built)
+**Ore veins** — on the first client tick after a world is loaded (so GregTech's
+`OreMixes` / `Materials` registry and its ore-block icons are fully baked), it
+reflects over `gregtech.api.enums.OreMixes` and, for each mix, records the
+Visual-Prospecting palette key (`ore.mix.X`), its localized name, the
+representative material's RGBA tint, its enabled dimensions, and the ore-overlay
+sprite pixels (grayscale + alpha) read straight from the stitched atlas — GT tints
+these by the material colour at render, so Atlas ships the gray sprite + rgb and
+tints it the same way. These are written to:
 
-The JAR at `tools/forge-icon-dumper/atlas-icon-dumper-1.1.0.jar` is ready to
-use. Copy it to your GTNH `mods/` folder. (An older `atlas-icon-dumper-1.0.0.jar`
-dumps icons only — delete it; 1.1.0 dumps icons **and** biome colours.)
+```
+.minecraft/config/atlas/ore_vein_dump.json
+```
+
+Atlas overlays the veins Visual Prospecting caches for a world using these real
+names + material colours instead of a hashed placeholder palette.
+
+All three dumps use the same reflection approach (MCP name → SRG name fallback,
+GregTech classes by their real names) so the mod compiles against only the Forge
+universal JAR.
+
+## Installation
+
+Run **`build.bat`** (one double-click): it compiles, packages
+`atlas-dumper-<version>.jar`, and offers to install it into a detected GTNH
+instance — pruning any older `atlas*dumper*.jar` there first (this also clears
+out jars from before the rename), so exactly one copy remains. Then load a world
+once (see [Running](#running)). The jar isn't checked in; build it locally.
 
 ## Building from source
 
@@ -80,13 +101,14 @@ works; the mod only needs a Java 8 classfile.)
 ### Package
 
 ```cmd
-jar cf atlas-icon-dumper-1.1.0.jar -C out .
+jar cf atlas-dumper-1.4.4.jar -C out .
 ```
 
 The compiled `out\` must contain `mcmod.info` and `pack.mcmeta` too, not just the
 `.class` — Gradle normally copies them from `src\main\resources`. When building
 by hand, copy both into `out\` first and substitute the `${version}`/`${mcversion}`
-tokens in `mcmod.info` (→ `1.1.0` / `1.7.10`), or the mod loads without metadata.
+tokens in `mcmod.info` (→ `1.4.4` / `1.7.10`), or the mod loads without metadata.
+(`build.bat` does all of this for you.)
 
 ### Notes on vanilla JAR
 
@@ -102,14 +124,18 @@ Launch the GTNH client normally.
 
 - **Icons** dump after the texture atlas stitches — by the time the **main menu**
   appears, `icon_dump.json` is already written. No world needed.
-- **Biome colours** dump on the first client tick **after you load a world**
-  (single-player or a server) — the grass/foliage colormaps aren't available
-  until then. Load any world in the pack once and `biome_dump.json` appears.
+- **Biome colours** and **ore veins** dump on the first client tick **after you
+  load a world** (single-player or a server). Biome colormaps aren't available,
+  and GregTech's ore/material registry isn't fully baked, until then — so the
+  **main menu is not enough**. Load any world in the pack once and
+  `biome_dump.json` + `ore_vein_dump.json` appear. Any world works: the ore-vein
+  dump reads GregTech's static registry, not your save's data.
 
 Watch the game log for:
 ```
 [AtlasDumper] Done — 4012/4095 blocks (61 no-icon, 22 unnamed), 289 mods, 83 errors → .minecraft/config/atlas/icon_dump.json
 [AtlasDumper] Biome dump done — 91 biomes, 0 errors → .minecraft/config/atlas/biome_dump.json
+[AtlasDumper] Ore-vein dump done — 122 veins (N with sprite, M unique), 0 errors → .minecraft/config/atlas/ore_vein_dump.json
 ```
 
 ## Dump summary fields

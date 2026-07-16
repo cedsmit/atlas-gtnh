@@ -30,7 +30,7 @@ atlas-gtnh/
 │   │   ├── features/ # Feature modules (map, world, blocks, textures, …); each has its own api/
 │   │   ├── shared/   # Cross-feature UI + API base
 │   │   └── src-tauri # (sibling) Rust shell
-├── tools/            # forge-icon-dumper (Forge mod that dumps block→texture mappings)
+├── tools/            # atlas-dumper (Forge mod that dumps block→texture mappings)
 └── docs/
     ├── CurrentScope.md  # living roadmap + current status
     ├── design/          # architecture, world-format, texture-resolution (some sections aspirational)
