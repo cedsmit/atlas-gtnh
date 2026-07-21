@@ -16,6 +16,7 @@ import { fetchRegionSurface } from './api/regions'
 import { renderRegionTile } from './regionTileRenderer'
 import { TileImageCache } from './tileImageCache'
 import { VIEWER_CONFIG } from './viewerConfig'
+import { collectStaleChunks } from './staleChunks'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
@@ -185,6 +186,12 @@ export class MapEngine {
       // Rendered chunks whose edge shading is stale because a neighbor's block
       // data arrived after they were drawn. Re-rendered in the frame loop.
       shadeStale: new Set<string>(),
+      // Rendered chunks drawn before the current texVersion. Derived once per
+      // texVersion bump rather than by re-scanning the whole cache every frame:
+      // texVersion is > 0 from the first loaded texture onward, so a
+      // `texVersion > 0` guard would never actually gate anything.
+      texStale: new Set<string>(),
+      texStaleDirty: false,
       lastBcCount: 0,
       lastConfig: null as RenderConfig | null,
       lastDebugMode: false,
@@ -254,6 +261,7 @@ export class MapEngine {
 
     const unsubTextures = onTextureLoad(() => {
       st.texVersion++
+      st.texStaleDirty = true
       st.forceFrame = true
       // Overview tiles colour blocks from texture averages, so they need a
       // refresh as textures stream in. Debounce on the trailing edge: re-render
@@ -290,6 +298,7 @@ export class MapEngine {
       st.chunkPixels.clear()
       st.cache.clear()
       st.texVersionAtRender.clear()
+      st.texStale.clear()
       st.resolving.clear()
       st.pendingSet.clear()
       st.pending.length = 0
@@ -616,6 +625,7 @@ export class MapEngine {
       st.cache.delete(key)
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
+      st.texStale.delete(key)
       st.chunkPixels.delete(key)
       outlines.remove(key)
       st.liveChunks--
@@ -658,6 +668,7 @@ export class MapEngine {
       st.cache.delete(key)
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
+      st.texStale.delete(key)
       st.chunkPixels.delete(key)
       outlines.remove(key)
       st.liveChunks--
@@ -1072,6 +1083,7 @@ export class MapEngine {
       if (bcCount !== st.lastBcCount) {
         st.lastBcCount = bcCount
         st.texVersion++
+        st.texStaleDirty = true
         st.lodVersion++
         st.forceFrame = true
       }
@@ -1079,6 +1091,7 @@ export class MapEngine {
       if (cfg !== st.lastConfig) {
         st.lastConfig = cfg
         st.texVersion++
+        st.texStaleDirty = true
         st.lodVersion++
         st.forceFrame = true
       }
@@ -1117,6 +1130,7 @@ export class MapEngine {
         // old look until they happen to be redrawn.
         if (regChanged) {
           st.texVersion++
+          st.texStaleDirty = true
           st.lodVersion++
           st.forceFrame = true
         }
@@ -1173,29 +1187,48 @@ export class MapEngine {
         return
       }
 
+      // A texVersion bump makes every drawn tile stale at once, so collect the
+      // affected keys once per bump. Deriving them by scanning the whole cache
+      // each frame — as this used to — cost an instanceof + two map lookups per
+      // live chunk (up to 3500) on every non-idle frame, including plain panning
+      // where nothing was actually stale.
+      if (st.texStaleDirty) {
+        st.texStale = collectStaleChunks(
+          st.cache,
+          (entry) => entry instanceof THREE.Mesh,
+          st.texVersionAtRender,
+          st.texVersion
+        )
+        st.texStaleDirty = false
+      }
+
       // Re-render stale chunks (max 4 per frame) when textures/colors changed
       // or a late-arriving neighbor invalidated their edge shading.
-      if (st.texVersion > 0 || st.shadeStale.size > 0) {
-        // Prune shade-stale keys whose tile has been evicted meanwhile.
-        for (const key of st.shadeStale) {
-          if (!(st.cache.get(key) instanceof THREE.Mesh)) {
-            st.shadeStale.delete(key)
-          }
-        }
+      if (st.texStale.size > 0 || st.shadeStale.size > 0) {
+        // Both sets can name the same chunk; merge only when both are in play so
+        // the common single-cause case iterates the live set directly.
+        const candidates =
+          st.shadeStale.size === 0
+            ? st.texStale
+            : st.texStale.size === 0
+              ? st.shadeStale
+              : new Set([...st.texStale, ...st.shadeStale])
         let rerendered = 0
-        let moreStale = false
         const staleNoData: string[] = []
-        for (const [key, entry] of st.cache) {
-          if (!(entry instanceof THREE.Mesh)) continue
+        for (const key of candidates) {
+          const entry = st.cache.get(key)
+          // Evicted since being marked — drop it from both sets.
+          if (!(entry instanceof THREE.Mesh)) {
+            st.texStale.delete(key)
+            st.shadeStale.delete(key)
+            continue
+          }
           const texCurrent =
             (st.texVersionAtRender.get(key) ?? 0) >= st.texVersion
-          if (texCurrent && !st.shadeStale.has(key)) continue
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
-            if (rerendered >= 4) {
-              moreStale = true
-              continue
-            }
+            // Budget spent — leave the rest marked for the next frame.
+            if (rerendered >= 4) continue
             const [rmxs, rmzs] = key.split(',')
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
@@ -1235,6 +1268,7 @@ export class MapEngine {
             mat.map = makeChunkTexture(uploadCanvas, texFilter)
             mat.needsUpdate = true
             st.texVersionAtRender.set(key, st.texVersion)
+            st.texStale.delete(key)
             st.shadeStale.delete(key)
             rerendered++
           } else if (!texCurrent) {
@@ -1251,8 +1285,10 @@ export class MapEngine {
           const entry = st.cache.get(key)
           if (entry instanceof THREE.Mesh) disposeLiveChunk(key, entry)
         }
-        // Keep frames coming until the re-render backlog is cleared.
-        st.staleWork = moreStale
+        // Keep frames coming until the re-render backlog is cleared. Reading the
+        // sets directly also covers keys dropped above, so an evicted tile can't
+        // leave the loop spinning on work that no longer exists.
+        st.staleWork = st.texStale.size > 0 || st.shadeStale.size > 0
       }
 
       // Render freshly-fetched chunks and region tiles, time-sliced, for a smooth UI.
@@ -1467,6 +1503,7 @@ export class MapEngine {
           st.cache.delete(key)
           st.dataCache.delete(key)
           st.texVersionAtRender.delete(key)
+          st.texStale.delete(key)
           st.chunkPixels.delete(key)
           outlines.remove(key)
         }
