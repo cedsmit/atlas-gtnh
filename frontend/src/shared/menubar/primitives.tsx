@@ -6,13 +6,11 @@ import { type Tone } from './types'
 export const TONE_TEXT: Record<Tone, string> = {
   accent: 'text-atlas-accent',
   amber: 'text-atlas-amber',
-  cyan: 'text-atlas-cyan',
 }
 
 export const TONE_ACTIVE: Record<Tone, string> = {
   accent: 'border-atlas-accent-line bg-atlas-accent-bg text-atlas-accent',
   amber: 'border-atlas-amber-line bg-atlas-amber-bg text-atlas-amber',
-  cyan: 'border-atlas-cyan-line bg-atlas-cyan-bg text-atlas-cyan',
 }
 
 /** Sized by the icon slot it sits in, so it swaps 1:1 with a lucide icon. */

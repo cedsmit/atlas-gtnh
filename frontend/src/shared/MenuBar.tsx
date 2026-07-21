@@ -191,7 +191,7 @@ export function MenuBar({
                 on={!!veins.on}
                 onClick={veins.onToggle}
                 icon={veins.loading ? <Spinner /> : <Gem />}
-                tone="amber"
+                tone="accent"
                 title="Ore veins from Visual Prospecting"
               >
                 Veins
