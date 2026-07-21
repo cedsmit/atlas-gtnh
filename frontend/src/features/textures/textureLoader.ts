@@ -22,6 +22,11 @@ const _cache = new Map<string, Entry>()
 const _subscribers = new Set<() => void>()
 
 let _notifyScheduled = false
+// Bumped by clearTextures(). In-flight batches capture it and bail if it moved,
+// so a response for the previous world can't be decoded into the new world's
+// cache entry — texture keys are `domain:name` and the same key can resolve to
+// different art across modpack versions.
+let _generation = 0
 
 function _scheduleNotify() {
   if (_notifyScheduled) return
@@ -31,6 +36,19 @@ function _scheduleNotify() {
     _notifyScheduled = false
     for (const cb of _subscribers) cb()
   })
+}
+
+/**
+ * Drop every cached texture — call when the world changes.
+ *
+ * The cache is keyed by texture key alone, so without this the previous world's
+ * images both leak (thousands of decoded HTMLImageElements) and can be served
+ * for a key whose art differs in the newly-opened pack.
+ */
+export function clearTextures(): void {
+  _cache.clear()
+  _generation++
+  _scheduleNotify()
 }
 
 /** Subscribe to texture-load events.  Returns an unsubscribe function. */
@@ -102,6 +120,7 @@ export function warmTextures(keys: string[], worldPath: string): void {
 
 /** Fetch one batch of texture keys and decode each returned data-URL. */
 async function _loadBatch(keys: string[], worldPath: string): Promise<void> {
+  const gen = _generation
   // Retry transient request failures a few times before giving up, so a brief
   // network/backend hiccup doesn't permanently mark these keys 'missing' (the
   // cache never re-requests a settled key). A successful response that simply
@@ -121,6 +140,9 @@ async function _loadBatch(keys: string[], worldPath: string): Promise<void> {
     }
   }
   const resolved = data ?? {}
+  // Cleared while this batch was in flight — these keys belong to a world that
+  // is no longer open, and any entry now under them is the next world's.
+  if (gen !== _generation) return
 
   for (const key of keys) {
     const entry = _cache.get(key)
@@ -131,12 +153,15 @@ async function _loadBatch(keys: string[], worldPath: string): Promise<void> {
       continue
     }
     const img = new Image()
+    // Decode is async too, so re-check the generation before committing.
     img.onload = () => {
+      if (gen !== _generation) return
       entry.state = 'loaded'
       entry.image = img
       _scheduleNotify()
     }
     img.onerror = () => {
+      if (gen !== _generation) return
       entry.state = 'missing'
       _scheduleNotify()
     }

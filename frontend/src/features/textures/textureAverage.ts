@@ -14,6 +14,15 @@ import { getTexture } from './textureLoader'
 // missing/not loaded is left uncached so it retries once the image arrives).
 const _cache = new Map<string, readonly [number, number, number] | null>()
 
+/**
+ * Drop every cached average — call alongside clearTextures() on a world change.
+ * These are derived from the cached images, so keeping them would outlive the
+ * textures they were computed from.
+ */
+export function clearTextureAverages(): void {
+  _cache.clear()
+}
+
 function computeAverage(
   img: HTMLImageElement
 ): readonly [number, number, number] | null {
