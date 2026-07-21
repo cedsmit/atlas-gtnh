@@ -1,0 +1,242 @@
+import { Check, ChevronDown, Loader2 } from 'lucide-react'
+import { type ReactNode } from 'react'
+
+import { type Tone } from './types'
+
+export const TONE_TEXT: Record<Tone, string> = {
+  accent: 'text-atlas-accent',
+  amber: 'text-atlas-amber',
+  cyan: 'text-atlas-cyan',
+}
+
+export const TONE_ACTIVE: Record<Tone, string> = {
+  accent: 'border-atlas-accent-line bg-atlas-accent-bg text-atlas-accent',
+  amber: 'border-atlas-amber-line bg-atlas-amber-bg text-atlas-amber',
+  cyan: 'border-atlas-cyan-line bg-atlas-cyan-bg text-atlas-cyan',
+}
+
+/** Sized by the icon slot it sits in, so it swaps 1:1 with a lucide icon. */
+export function Spinner() {
+  return <Loader2 className="animate-spin" aria-hidden />
+}
+
+export function MenuButton({
+  open,
+  onClick,
+  icon,
+  caret,
+  badge,
+  primary,
+  accent,
+  title,
+  children,
+}: {
+  open: boolean
+  onClick: () => void
+  icon: ReactNode
+  caret?: boolean
+  badge?: number
+  primary?: boolean
+  accent?: Tone
+  title?: string
+  children: ReactNode
+}) {
+  const base =
+    'inline-flex items-center gap-2 rounded-[9px] border px-3 py-2 text-[13px] transition-colors'
+  const state = open
+    ? 'border-atlas-accent-line bg-atlas-accent-bg text-zinc-100'
+    : primary
+      ? 'border-atlas-accent bg-atlas-accent font-semibold text-[#0b1512]'
+      : accent
+        ? `border-zinc-700 bg-atlas-hover ${TONE_TEXT[accent]}`
+        : 'border-zinc-700 bg-atlas-hover text-zinc-300 hover:text-zinc-100'
+
+  return (
+    <button onClick={onClick} title={title} className={`${base} ${state}`}>
+      <span className="[&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
+        {icon}
+      </span>
+      {children}
+      {badge !== undefined && (
+        <span
+          className={`rounded-full px-1.5 text-[11px] font-semibold ${
+            badge > 0
+              ? 'bg-atlas-accent text-[#0b1512]'
+              : 'bg-zinc-800 text-zinc-500'
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+      {caret && (
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+      )}
+    </button>
+  )
+}
+
+export function QuickToggle({
+  on,
+  onClick,
+  icon,
+  tone,
+  title,
+  children,
+}: {
+  on: boolean
+  onClick: () => void
+  icon: ReactNode
+  tone: Tone
+  title?: string
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+        on
+          ? TONE_ACTIVE[tone]
+          : 'border-zinc-700 bg-transparent text-zinc-400 hover:bg-atlas-hover hover:text-zinc-100'
+      }`}
+    >
+      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0">
+        {icon}
+      </span>
+      {children}
+    </button>
+  )
+}
+
+export function Dropdown({
+  className,
+  children,
+}: {
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div
+      className={`absolute top-[calc(100%+6px)] z-50 max-h-[70vh] overflow-y-auto rounded-[10px] border border-zinc-700 bg-atlas-menu p-1.5 shadow-2xl ${className ?? ''}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-atlas-row p-[3px]">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+            value === o.value
+              ? 'bg-atlas-accent font-semibold text-[#0b1512]'
+              : 'text-zinc-400 hover:text-zinc-100'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+export function Pill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
+        active
+          ? 'bg-atlas-accent font-semibold text-[#0b1512]'
+          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+export function Item({
+  onClick,
+  disabled,
+  title,
+  icon,
+  check,
+  active,
+  tone,
+  hint,
+  mono,
+  children,
+}: {
+  onClick: () => void
+  disabled?: boolean
+  title?: string
+  icon?: ReactNode
+  check?: boolean
+  active?: boolean
+  tone?: Tone
+  hint?: string
+  mono?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+        mono ? 'font-mono text-xs' : 'text-[13px]'
+      } ${
+        disabled
+          ? 'cursor-default text-zinc-700'
+          : tone
+            ? `${TONE_TEXT[tone]} hover:bg-atlas-hover`
+            : active
+              ? 'bg-atlas-hover text-zinc-100'
+              : 'text-zinc-300 hover:bg-atlas-hover hover:text-zinc-100'
+      }`}
+    >
+      {icon && (
+        <span className="shrink-0 [&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
+          {icon}
+        </span>
+      )}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {hint && <span className="text-[10px] text-zinc-600">{hint}</span>}
+      {check && (
+        <Check className="h-3.5 w-3.5 shrink-0 text-atlas-accent" aria-hidden />
+      )}
+    </button>
+  )
+}
+
+export function SectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <p className="px-2.5 pb-1 pt-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600">
+      {children}
+    </p>
+  )
+}
+
+export function Separator() {
+  return <hr className="my-1.5 border-zinc-800" />
+}

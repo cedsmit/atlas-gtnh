@@ -564,7 +564,7 @@ export default function App() {
   )
 
   return (
-    <div className="flex h-screen flex-col bg-zinc-950 text-white">
+    <div className="flex h-screen flex-col bg-atlas-bg text-zinc-100">
       <MenuBar
         worldPath={worldPath}
         onWorldSelected={handleWorldSelected}
@@ -662,7 +662,9 @@ export default function App() {
       {!worldPath ? (
         /* ── No world selected ── */
         <div className="flex flex-1 flex-col items-center justify-center gap-4">
-          <h1 className="text-2xl font-bold text-zinc-100">Atlas GTNH</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+            Atlas GTNH
+          </h1>
           <WorldPicker onWorldSelected={handleWorldSelected} />
         </div>
       ) : loadingStage !== null ? (
@@ -715,7 +717,7 @@ export default function App() {
             {oreVeinsOn &&
               oreVeins.data &&
               oreVeins.data.veins.length === 0 && (
-                <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded bg-black/70 px-3 py-1.5 text-xs text-zinc-300">
+                <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-zinc-800 bg-atlas-bar/90 px-3 py-2 text-xs text-zinc-300 backdrop-blur">
                   {oreVeins.data.available
                     ? 'No ore veins cached here yet — explore/prospect in-game, or run Visual Prospecting’s vein cache.'
                     : 'No Visual Prospecting data for this world.'}
