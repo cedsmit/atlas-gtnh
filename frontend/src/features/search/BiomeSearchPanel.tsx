@@ -195,7 +195,7 @@ function BiomeList({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           placeholder={`Filter ${state.data.length} biomes…`}
-          className="w-full rounded bg-zinc-900 px-2 py-1.5 font-mono text-xs text-zinc-200 outline-none ring-1 ring-zinc-700 focus:ring-zinc-500"
+          className="w-full rounded-lg border border-zinc-700 bg-atlas-input px-3 py-2 font-mono text-xs text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-atlas-accent-line"
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">

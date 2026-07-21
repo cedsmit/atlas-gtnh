@@ -159,7 +159,7 @@ export function InspectPanel({
           placeholder="filter by name or id…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded bg-zinc-900 px-2 py-1 font-mono text-xs text-zinc-300 outline-none ring-1 ring-zinc-700 focus:ring-zinc-500"
+          className="w-full rounded-lg border border-zinc-700 bg-atlas-input px-3 py-2 font-mono text-xs text-zinc-300 outline-none placeholder:text-zinc-600 focus:border-atlas-accent-line"
         />
       </div>
 
