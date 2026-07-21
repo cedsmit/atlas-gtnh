@@ -4,11 +4,10 @@ import {
   Dropdown,
   Item,
   MenuButton,
-  Pill,
   SectionLabel,
   Separator,
 } from './primitives'
-import { type ElevOverride, type MenuProps } from './types'
+import { type MenuProps } from './types'
 import {
   BUILT_IN_PRESETS,
   LAYER_TAGS,
@@ -17,21 +16,9 @@ import {
   presetShowsTag,
 } from '../../features/blocks/renderPresets'
 
-const ELEV_OPTIONS: { value: ElevOverride; label: string }[] = [
-  { value: 'preset', label: 'Preset' },
-  { value: 'off', label: 'Off' },
-  { value: 'subtle', label: 'Subtle' },
-  { value: 'strong', label: 'Strong' },
-  { value: 'relief', label: 'Relief' },
-  { value: 'heightmap', label: 'Heightmap' },
-  { value: 'contours', label: 'Contours' },
-]
-
 export interface ViewConfig {
   selectedPresetId: string
   onSetPreset: (id: string) => void
-  elevOverride?: ElevOverride
-  onSetElevOverride?: (v: ElevOverride) => void
   layerOverrides?: LayerOverrides
   onSetLayer?: (tag: LayerTag, show: boolean) => void
   onResetLayers?: () => void
@@ -39,14 +26,12 @@ export interface ViewConfig {
 
 interface Props extends Omit<MenuProps, 'onClose'>, ViewConfig {}
 
-/** "How the map renders" — preset, elevation and which block layers show. */
+/** "How the map renders" — preset and which block layers show. */
 export function ViewMenu({
   open: isOpen,
   onToggle,
   selectedPresetId,
   onSetPreset,
-  elevOverride,
-  onSetElevOverride,
   layerOverrides,
   onSetLayer,
   onResetLayers,
@@ -65,7 +50,7 @@ export function ViewMenu({
         icon={<SlidersHorizontal />}
         caret
         accent={hasLayerOverrides ? 'amber' : undefined}
-        title="Render preset, elevation and visible block layers"
+        title="Render preset and visible block layers"
       >
         View
       </MenuButton>
@@ -84,24 +69,6 @@ export function ViewMenu({
               {p.name}
             </Item>
           ))}
-
-          {onSetElevOverride && (
-            <>
-              <Separator />
-              <SectionLabel>Elevation</SectionLabel>
-              <div className="flex flex-wrap gap-1 px-1.5 pb-1.5">
-                {ELEV_OPTIONS.map((o) => (
-                  <Pill
-                    key={o.value}
-                    active={(elevOverride ?? 'preset') === o.value}
-                    onClick={() => onSetElevOverride(o.value)}
-                  >
-                    {o.label}
-                  </Pill>
-                ))}
-              </div>
-            </>
-          )}
 
           {onSetLayer && (
             <>

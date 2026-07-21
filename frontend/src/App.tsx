@@ -53,18 +53,12 @@ import { columnTally } from './features/map/columnTally'
 import { VIEWER_CONFIG } from './features/map/viewerConfig'
 import { pipeSystemName } from './features/blocks/pipeSystems'
 import {
-  type ElevationMode,
-  type ContourMode,
   type LayerOverrides,
   BUILT_IN_PRESETS,
   applyLayerOverrides,
   presetToConfig,
 } from './features/blocks/renderPresets'
-import {
-  type ElevOverride,
-  loadRenderPrefs,
-  saveRenderPrefs,
-} from './features/blocks/renderPrefs'
+import { loadRenderPrefs, saveRenderPrefs } from './features/blocks/renderPrefs'
 import {
   type UserPreset,
   deleteUserPreset,
@@ -120,6 +114,9 @@ export default function App() {
   // reveal debug-only blocks. Used to ride on the `debug` render preset; now an
   // independent Debug-menu toggle so it composes with any preset. Session-only.
   const [diagnosticRender, setDiagnosticRender] = useState(false)
+  // False-colour terrain by height. Was an elevation 'preset' option, but it is
+  // a diagnostic rather than a look, so it sits with the other Debug tools.
+  const [heightMap, setHeightMap] = useState(false)
   // Infrastructure-View systems toggled off (empty = show all). Session-only.
   const [hiddenPipeSystems, setHiddenPipeSystems] = useState<Set<string>>(
     () => new Set()
@@ -131,9 +128,6 @@ export default function App() {
   const [selectedPresetId, setSelectedPresetId] = useState(
     () => loadRenderPrefs().presetId
   )
-  const [elevOverride, setElevOverride] = useState<ElevOverride>(
-    () => loadRenderPrefs().elevOverride
-  )
   // User layer toggles that override the active preset's category visibility (3.1).
   const [layerOverrides, setLayerOverrides] = useState<LayerOverrides>(
     () => loadRenderPrefs().layerOverrides
@@ -142,10 +136,9 @@ export default function App() {
   useEffect(() => {
     saveRenderPrefs({
       presetId: selectedPresetId,
-      elevOverride,
       layerOverrides,
     })
-  }, [selectedPresetId, elevOverride, layerOverrides])
+  }, [selectedPresetId, layerOverrides])
 
   // Named user presets (Stage 3.3) — saved snapshots of a render view. The map
   // engine lives inside WorldMap; this lifted ref lets us read the camera when
@@ -186,7 +179,6 @@ export default function App() {
 
   function applyUserPreset(p: UserPreset) {
     setSelectedPresetId(p.presetId)
-    setElevOverride(p.elevOverride)
     setLayerOverrides(p.layerOverrides)
     // Restore the saved location — but only in the dimension it was saved in,
     // since map coords are per-dimension. Views saved before 3.3.1 have no camera.
@@ -225,31 +217,11 @@ export default function App() {
     BUILT_IN_PRESETS[0]
   const config = useMemo(() => {
     const base = presetToConfig(preset)
-    let elevationMode = base.elevationMode
-    let elevationStrength = base.elevationStrength
-    let contourMode = base.contourMode
-    if (elevOverride !== 'preset') {
-      const overrides: Record<string, [ElevationMode, number, ContourMode]> = {
-        off: ['off', base.elevationStrength, 'off'],
-        subtle: ['subtle', base.elevationStrength, 'off'],
-        strong: ['strong', base.elevationStrength, 'off'],
-        relief: ['strong', 1.5, 'normal'],
-        heightmap: ['debug-heightmap', base.elevationStrength, 'off'],
-        contours: ['off', base.elevationStrength, 'strong'],
-      }
-      const ov = overrides[elevOverride]
-      if (ov) {
-        elevationMode = ov[0]
-        elevationStrength = ov[1]
-        contourMode = ov[2]
-      }
-    }
     return {
       ...base,
       hiddenTags: applyLayerOverrides(base.hiddenTags, layerOverrides),
-      elevationMode,
-      elevationStrength,
-      contourMode,
+      // Presets own elevation; the diagnostic is the one thing that overrides it.
+      elevationMode: heightMap ? 'debug-heightmap' : base.elevationMode,
       infraView: infraViewOn,
       hiddenPipeSystems,
       showCables: showInfraCables,
@@ -261,8 +233,8 @@ export default function App() {
     }
   }, [
     preset,
-    elevOverride,
     layerOverrides,
+    heightMap,
     infraViewOn,
     hiddenPipeSystems,
     showInfraCables,
@@ -591,8 +563,6 @@ export default function App() {
             ? {
                 selectedPresetId,
                 onSetPreset: setSelectedPresetId,
-                elevOverride,
-                onSetElevOverride: setElevOverride,
                 layerOverrides,
                 onSetLayer: (tag, show) =>
                   setLayerOverrides((prev) => ({ ...prev, [tag]: show })),
@@ -661,7 +631,6 @@ export default function App() {
                     saveUserPreset({
                       name,
                       presetId: selectedPresetId,
-                      elevOverride,
                       layerOverrides,
                       camera: vp
                         ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
@@ -684,6 +653,8 @@ export default function App() {
                 onToggleDebug: () => togglePanel('debug'),
                 diagnosticRender,
                 onToggleDiagnosticRender: () => setDiagnosticRender((o) => !o),
+                heightMap,
+                onToggleHeightMap: () => setHeightMap((o) => !o),
               }
             : undefined
         }

@@ -1,5 +1,11 @@
 import { open as openExternal } from '@tauri-apps/plugin-shell'
-import { Bug, ExternalLink, Search, TriangleAlert } from 'lucide-react'
+import {
+  Bug,
+  ExternalLink,
+  Mountain,
+  Search,
+  TriangleAlert,
+} from 'lucide-react'
 
 import { Dropdown, Item, Separator } from './primitives'
 import { type MenuProps } from './types'
@@ -12,6 +18,8 @@ export interface DebugConfig {
   onToggleDebug?: () => void
   diagnosticRender?: boolean
   onToggleDiagnosticRender?: () => void
+  heightMap?: boolean
+  onToggleHeightMap?: () => void
 }
 
 interface Props extends MenuProps, DebugConfig {
@@ -29,6 +37,8 @@ export function DebugMenu({
   onToggleDebug,
   diagnosticRender,
   onToggleDiagnosticRender,
+  heightMap,
+  onToggleHeightMap,
 }: Props) {
   const pick = (fn: () => void) => () => {
     onClose()
@@ -42,7 +52,7 @@ export function DebugMenu({
         aria-label="Debug tools"
         title="Debug tools"
         className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-          isOpen || debugOpen || inspectOpen || diagnosticRender
+          isOpen || debugOpen || inspectOpen || diagnosticRender || heightMap
             ? 'bg-atlas-hover text-zinc-100'
             : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
         }`}
@@ -79,6 +89,17 @@ export function DebugMenu({
               title="Flag blocks whose texture never resolved in magenta, and reveal debug-only blocks"
             >
               Diagnostic rendering
+            </Item>
+          )}
+          {onToggleHeightMap && (
+            <Item
+              onClick={onToggleHeightMap}
+              icon={<Mountain />}
+              check={heightMap}
+              tone={heightMap ? 'amber' : undefined}
+              title="False-colour the terrain by height instead of shading it"
+            >
+              Height map
             </Item>
           )}
           <Separator />

@@ -124,29 +124,6 @@ export function Dropdown({
   )
 }
 
-export function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-        active
-          ? 'bg-atlas-accent font-semibold text-[#0b1512]'
-          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function Item({
   onClick,
   disabled,

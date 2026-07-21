@@ -19,19 +19,16 @@ describe('render prefs persistence (Stage 3.3)', () => {
   it('returns defaults when nothing is stored', () => {
     const p = loadRenderPrefs()
     expect(p.presetId).toBe('journeymap')
-    expect(p.elevOverride).toBe('preset')
     expect(p.layerOverrides).toEqual({})
   })
 
   it('round-trips a saved view', () => {
     saveRenderPrefs({
       presetId: 'vanilla',
-      elevOverride: 'relief',
       layerOverrides: { machine: false, pipe: true },
     })
     const p = loadRenderPrefs()
     expect(p.presetId).toBe('vanilla')
-    expect(p.elevOverride).toBe('relief')
     expect(p.layerOverrides).toEqual({ machine: false, pipe: true })
   })
 
@@ -39,18 +36,20 @@ describe('render prefs persistence (Stage 3.3)', () => {
     localStorage.setItem('atlas:renderPrefs', '{"presetId":"topo"}')
     const partial = loadRenderPrefs()
     expect(partial.presetId).toBe('topo')
-    expect(partial.elevOverride).toBe('preset') // default filled in
+    expect(partial.layerOverrides).toEqual({}) // default filled in
 
     localStorage.setItem('atlas:renderPrefs', 'not json')
     expect(loadRenderPrefs().presetId).toBe('journeymap') // corrupt → defaults
   })
 
-  it('ignores a textureFilter left behind by older builds', () => {
-    // The filter is preset-owned now; a stale stored key must not resurface.
+  it('ignores keys left behind by older builds', () => {
+    // Both are preset-owned now; stale stored keys must not resurface.
     localStorage.setItem(
       'atlas:renderPrefs',
-      '{"presetId":"journeymap","textureFilter":"journeymap"}'
+      '{"presetId":"journeymap","textureFilter":"journeymap","elevOverride":"relief"}'
     )
-    expect('textureFilter' in loadRenderPrefs()).toBe(false)
+    const p = loadRenderPrefs()
+    expect('textureFilter' in p).toBe(false)
+    expect('elevOverride' in p).toBe(false)
   })
 })
