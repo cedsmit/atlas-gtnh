@@ -63,6 +63,8 @@ interface Props {
   onToggleLootGames?: () => void
   biomeSearchOpen?: boolean
   onToggleBiomeSearch?: () => void
+  oreVeinSearchOpen?: boolean
+  onToggleOreVeinSearch?: () => void
   heatmapOn?: boolean
   heatmapLoading?: boolean
   onToggleHeatmap?: () => void
@@ -107,6 +109,8 @@ export function MenuBar({
   onToggleLootGames,
   biomeSearchOpen,
   onToggleBiomeSearch,
+  oreVeinSearchOpen,
+  onToggleOreVeinSearch,
   heatmapOn,
   heatmapLoading,
   onToggleHeatmap,
@@ -366,19 +370,23 @@ export function MenuBar({
               </select>
             </div>
           )}
-          {(onToggleSearch || onToggleLootGames || onToggleBiomeSearch) && (
+          {(onToggleSearch ||
+            onToggleLootGames ||
+            onToggleBiomeSearch ||
+            onToggleOreVeinSearch) && (
             <div
               ref={searchMenuRef}
               className="relative flex items-stretch border-l border-zinc-800"
             >
               <button
                 onClick={() => setSearchMenuOpen((o) => !o)}
-                title="Search the world — blocks, LootGames, biomes"
+                title="Search the world — blocks, LootGames, biomes, ore veins"
                 className={`flex items-center gap-1.5 px-4 text-sm transition-colors ${
                   searchMenuOpen ||
                   searchOpen ||
                   lootGamesOpen ||
-                  biomeSearchOpen
+                  biomeSearchOpen ||
+                  oreVeinSearchOpen
                     ? 'bg-zinc-800 text-zinc-100'
                     : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100'
                 }`}
@@ -439,6 +447,25 @@ export function MenuBar({
                         <Trees className="h-4 w-4 shrink-0" aria-hidden />
                         Biomes
                         {biomeSearchOpen && (
+                          <Check
+                            className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
+                            aria-hidden
+                          />
+                        )}
+                      </span>
+                    </Item>
+                  )}
+                  {onToggleOreVeinSearch && (
+                    <Item
+                      onClick={() => {
+                        setSearchMenuOpen(false)
+                        onToggleOreVeinSearch()
+                      }}
+                    >
+                      <span className="flex w-full items-center gap-1.5">
+                        <Gem className="h-4 w-4 shrink-0" aria-hidden />
+                        Ore veins
+                        {oreVeinSearchOpen && (
                           <Check
                             className="ml-auto h-3.5 w-3.5 shrink-0 text-emerald-400"
                             aria-hidden

@@ -26,6 +26,7 @@ import {
   type OreVeinView,
 } from './features/ore-veins/OreVeinLabels'
 import { veinDisplay } from './features/ore-veins/oreVeinRegistry'
+import { OreVeinSearchPanel } from './features/ore-veins/OreVeinSearchPanel'
 import type {
   BlockColumn,
   ChunkCoord,
@@ -76,20 +77,39 @@ import { textureDebugStore } from './features/textures/textureDebugStore'
 
 const LAST_WORLD_KEY = 'atlas:lastWorldPath'
 
+/** The side panels, which are mutually exclusive — at most one is open. */
+type PanelId =
+  | 'inspect'
+  | 'debug'
+  | 'search'
+  | 'lootGames'
+  | 'biomeSearch'
+  | 'oreVeinSearch'
+
 export default function App() {
   // Restore last session's world on startup so the loading screen runs immediately
   const [worldPath, setWorldPath] = useState<string | null>(() =>
     localStorage.getItem(LAST_WORLD_KEY)
   )
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
-  const [inspectOpen, setInspectOpen] = useState(false)
-  const [debugOpen, setDebugOpen] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [lootGamesOpen, setLootGamesOpen] = useState(false)
-  const [biomeSearchOpen, setBiomeSearchOpen] = useState(false)
+  // Only one side panel is open at a time, so a single "which one" beats a
+  // boolean per panel that every toggle has to remember to clear.
+  const [activePanel, setActivePanel] = useState<PanelId | null>(null)
+  const inspectOpen = activePanel === 'inspect'
+  const debugOpen = activePanel === 'debug'
+  const searchOpen = activePanel === 'search'
+  const lootGamesOpen = activePanel === 'lootGames'
+  const biomeSearchOpen = activePanel === 'biomeSearch'
+  const oreVeinSearchOpen = activePanel === 'oreVeinSearch'
+  const closePanel = useCallback(() => setActivePanel(null), [])
+  const togglePanel = (id: PanelId) =>
+    setActivePanel((cur) => (cur === id ? null : id))
   const [heatmapOn, setHeatmapOn] = useState(false)
   const [gridOn, setGridOn] = useState(false)
   const [oreVeinsOn, setOreVeinsOn] = useState(false)
+  // The ore the map overlay is narrowed to (null = every vein), driven by the
+  // ore-vein search panel drilling into one ore.
+  const [selectedVeinKind, setSelectedVeinKind] = useState<string | null>(null)
   const [infraViewOn, setInfraViewOn] = useState(false)
   // Infrastructure-View systems toggled off (empty = show all). Session-only.
   const [hiddenPipeSystems, setHiddenPipeSystems] = useState<Set<string>>(
@@ -332,11 +352,7 @@ export default function App() {
     textureDebugStore.clear()
     setWorldPath(path)
     setDimensionPath(null)
-    setInspectOpen(false)
-    setDebugOpen(false)
-    setSearchOpen(false)
-    setLootGamesOpen(false)
-    setBiomeSearchOpen(false)
+    closePanel()
   }
 
   function handleCloseWorld() {
@@ -344,56 +360,11 @@ export default function App() {
     textureDebugStore.clear()
     setWorldPath(null)
     setDimensionPath(null)
-    setInspectOpen(false)
-    setDebugOpen(false)
-    setSearchOpen(false)
-    setLootGamesOpen(false)
-    setBiomeSearchOpen(false)
+    closePanel()
   }
 
   function handleSelectDimension(dim: DimensionInfo) {
     setDimensionPath(dim.path)
-  }
-
-  // ── Panels are mutually exclusive ────────────────────────────────────
-  function handleToggleInspect() {
-    setInspectOpen((o) => !o)
-    setDebugOpen(false)
-    setSearchOpen(false)
-    setLootGamesOpen(false)
-    setBiomeSearchOpen(false)
-  }
-
-  function handleToggleDebug() {
-    setDebugOpen((o) => !o)
-    setInspectOpen(false)
-    setSearchOpen(false)
-    setLootGamesOpen(false)
-    setBiomeSearchOpen(false)
-  }
-
-  function handleToggleSearch() {
-    setSearchOpen((o) => !o)
-    setInspectOpen(false)
-    setDebugOpen(false)
-    setLootGamesOpen(false)
-    setBiomeSearchOpen(false)
-  }
-
-  function handleToggleLootGames() {
-    setLootGamesOpen((o) => !o)
-    setInspectOpen(false)
-    setDebugOpen(false)
-    setSearchOpen(false)
-    setBiomeSearchOpen(false)
-  }
-
-  function handleToggleBiomeSearch() {
-    setBiomeSearchOpen((o) => !o)
-    setInspectOpen(false)
-    setDebugOpen(false)
-    setSearchOpen(false)
-    setLootGamesOpen(false)
   }
 
   // Per-chunk heatmap overlay (Stage 5 stats prototype) — an independent map layer.
@@ -454,9 +425,10 @@ export default function App() {
     engineRef.current?.setGrid(gridOn)
   }, [gridOn, dimensionPath])
 
-  // Ore-vein overlay (from Visual Prospecting). Fetched lazily when toggled on;
-  // the effect below pushes the dots into the engine once data arrives.
-  const oreVeins = useOreVeins(dimensionPath, oreVeinsOn)
+  // Ore-vein overlay (from Visual Prospecting). Fetched lazily — once the overlay
+  // is toggled on, or the search panel opens to browse the veins with the overlay
+  // still off. The effect below pushes the dots into the engine once data arrives.
+  const oreVeins = useOreVeins(dimensionPath, oreVeinsOn || oreVeinSearchOpen)
   const oreVeinViews = useMemo<OreVeinView[]>(() => {
     if (!oreVeins.data) return []
     return oreVeins.data.veins.map((v) => {
@@ -464,6 +436,7 @@ export default function App() {
       return {
         x: v.x,
         z: v.z,
+        kind: v.kind,
         name,
         color,
         depleted: v.depleted,
@@ -471,6 +444,14 @@ export default function App() {
       }
     })
   }, [oreVeins.data])
+  // What the map draws: every vein, or just the ore the search panel drilled into.
+  const visibleVeins = useMemo<OreVeinView[]>(
+    () =>
+      selectedVeinKind
+        ? oreVeinViews.filter((v) => v.kind === selectedVeinKind)
+        : oreVeinViews,
+    [oreVeinViews, selectedVeinKind]
+  )
   // Ore-overlay sprites (base64 PNG → data URL), keyed by the vein `texture`; the
   // engine tints each by the vein colour. Empty on an old (pre-sprite) dump.
   const veinSprites = useMemo<Record<string, string>>(() => {
@@ -491,7 +472,7 @@ export default function App() {
   useEffect(() => {
     engineRef.current?.setOreVeins(
       oreVeinsOn
-        ? oreVeinViews.map((v) => ({
+        ? visibleVeins.map((v) => ({
             ...v,
             // Pre-coloured sprites keep their own colour; grayscale sprites (and the
             // no-sprite fallback dot) tint by the material colour. Labels use the
@@ -504,7 +485,20 @@ export default function App() {
         : null,
       veinSprites
     )
-  }, [oreVeinsOn, oreVeinViews, veinSprites, veinPrecolored])
+  }, [oreVeinsOn, visibleVeins, veinSprites, veinPrecolored])
+
+  // Drilling into an ore narrows the map to it — and turns the overlay on, since a
+  // list of veins over an empty map (and a jump landing on nothing) is no use.
+  const handleSelectVeinKind = useCallback((kind: string | null) => {
+    setSelectedVeinKind(kind)
+    if (kind) setOreVeinsOn(true)
+  }, [])
+
+  // Map coords are per-dimension, so a filter pinned to one dimension's ore has no
+  // meaning in the next — and WorldMap rebuilds the engine on the change anyway.
+  useEffect(() => {
+    setSelectedVeinKind(null)
+  }, [dimensionPath])
 
   // Infrastructure View (Stage 5): draw pipe/cable runs as a connected network.
   // It's a render-config flag, so the map re-renders chunks when it flips.
@@ -580,20 +574,30 @@ export default function App() {
         elevOverride={elevOverride}
         onSetElevOverride={worldPath ? setElevOverride : undefined}
         inspectOpen={inspectOpen}
-        onToggleInspect={worldPath ? handleToggleInspect : undefined}
+        onToggleInspect={worldPath ? () => togglePanel('inspect') : undefined}
         debugOpen={debugOpen}
-        onToggleDebug={worldPath ? handleToggleDebug : undefined}
+        onToggleDebug={worldPath ? () => togglePanel('debug') : undefined}
         searchOpen={searchOpen}
         onToggleSearch={
-          worldPath && dimensionPath ? handleToggleSearch : undefined
+          worldPath && dimensionPath ? () => togglePanel('search') : undefined
         }
         lootGamesOpen={lootGamesOpen}
         onToggleLootGames={
-          worldPath && dimensionPath ? handleToggleLootGames : undefined
+          worldPath && dimensionPath
+            ? () => togglePanel('lootGames')
+            : undefined
         }
         biomeSearchOpen={biomeSearchOpen}
         onToggleBiomeSearch={
-          worldPath && dimensionPath ? handleToggleBiomeSearch : undefined
+          worldPath && dimensionPath
+            ? () => togglePanel('biomeSearch')
+            : undefined
+        }
+        oreVeinSearchOpen={oreVeinSearchOpen}
+        onToggleOreVeinSearch={
+          worldPath && dimensionPath
+            ? () => togglePanel('oreVeinSearch')
+            : undefined
         }
         heatmapOn={heatmapOn}
         heatmapLoading={chunkStats.isPending}
@@ -706,7 +710,7 @@ export default function App() {
             />
             {gridOn && <GridLabels engineRef={engineRef} />}
             {oreVeinsOn && (
-              <OreVeinLabels engineRef={engineRef} veins={oreVeinViews} />
+              <OreVeinLabels engineRef={engineRef} veins={visibleVeins} />
             )}
             {oreVeinsOn &&
               oreVeins.data &&
@@ -763,7 +767,7 @@ export default function App() {
                 blockColors={blockColors}
                 blockNames={blockNames}
                 textureKeys={textureKeysForInspect}
-                onClose={() => setInspectOpen(false)}
+                onClose={closePanel}
               />
             ) : (
               <div className="flex h-full w-96 shrink-0 flex-col items-center justify-center gap-1.5 border-l border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
@@ -777,7 +781,7 @@ export default function App() {
             <TextureDebugPanel
               worldPath={worldPath ?? undefined}
               registry={registry}
-              onClose={() => setDebugOpen(false)}
+              onClose={closePanel}
             />
           )}
 
@@ -795,7 +799,7 @@ export default function App() {
                 })
               }
               onHighlight={handleSearchHighlight}
-              onClose={() => setSearchOpen(false)}
+              onClose={closePanel}
             />
           )}
 
@@ -813,7 +817,7 @@ export default function App() {
                 })
               }
               onHighlight={handleSearchHighlight}
-              onClose={() => setLootGamesOpen(false)}
+              onClose={closePanel}
             />
           )}
 
@@ -825,7 +829,29 @@ export default function App() {
               home={homePos}
               onFrame={handleFrameBounds}
               onHighlight={handleBiomeHighlight}
-              onClose={() => setBiomeSearchOpen(false)}
+              onClose={closePanel}
+            />
+          )}
+
+          {/* Ore vein search panel */}
+          {oreVeinSearchOpen && dimensionPath && (
+            <OreVeinSearchPanel
+              veins={oreVeinViews}
+              loading={oreVeins.isPending}
+              available={oreVeins.data?.available ?? false}
+              overlayOn={oreVeinsOn}
+              onToggleOverlay={() => setOreVeinsOn((o) => !o)}
+              selectedKind={selectedVeinKind}
+              onSelectKind={handleSelectVeinKind}
+              home={homePos}
+              onJump={(x, z) =>
+                engineRef.current?.animateCameraTo({
+                  cx: x,
+                  cz: z,
+                  scale: VIEWER_CONFIG.maxScale,
+                })
+              }
+              onClose={closePanel}
             />
           )}
         </div>
