@@ -13,6 +13,7 @@ import {
 } from './menubar/SearchMenu'
 import { type MenuId } from './menubar/types'
 import { ViewMenu, type ViewConfig } from './menubar/ViewMenu'
+import { WindowControls } from './menubar/WindowControls'
 
 interface Props {
   worldPath: string | null
@@ -73,7 +74,14 @@ export function MenuBar({
   return (
     <header ref={headerRef} className="shrink-0">
       {/* ── Identity bar ─────────────────────────────────────────────── */}
-      <div className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar px-4">
+      {/* Doubles as the window's title bar: the native decorations are off, so
+          this element is the drag handle (Tauri also gives it double-click to
+          maximise for free). Only the element carrying the attribute starts a
+          drag, so the menus and buttons inside stay clickable. */}
+      <div
+        data-tauri-drag-region
+        className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
+      >
         <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
           <Compass
             className="h-[17px] w-[17px] shrink-0 text-atlas-accent"
@@ -107,6 +115,8 @@ export function MenuBar({
             </span>
           </>
         )}
+
+        <WindowControls />
       </div>
 
       {/* ── Tools row ────────────────────────────────────────────────── */}

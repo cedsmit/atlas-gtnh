@@ -15,7 +15,10 @@
         "title": "Atlas GTNH",
         "width": 1280,
         "height": 800,
-        "resizable": true
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "decorations": false
       }
     ],
     "security": {
