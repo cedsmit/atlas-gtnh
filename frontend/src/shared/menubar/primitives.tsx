@@ -179,7 +179,10 @@ export function Item({
         mono ? 'font-mono text-xs' : 'text-[13px]'
       } ${
         disabled
-          ? 'cursor-default text-zinc-700'
+          ? // zinc-700 sat at 1.33:1 on the menu — not dimmed, invisible. This
+            // is 3.18:1: plainly inactive next to an enabled item's 11:1, but
+            // still readable as a control that exists.
+            'cursor-default text-zinc-600'
           : tone
             ? `${TONE_TEXT[tone]} hover:bg-atlas-hover`
             : active

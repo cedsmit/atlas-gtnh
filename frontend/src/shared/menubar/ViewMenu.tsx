@@ -121,9 +121,14 @@ export function ViewMenu({
                 )
               })}
               {onResetLayers && (
-                <Item onClick={onResetLayers} disabled={!hasLayerOverrides}>
-                  Reset to preset
-                </Item>
+                <>
+                  {/* An action, not an eighth layer — the rule keeps it from
+                      reading as one more toggle in the list. */}
+                  <Separator />
+                  <Item onClick={onResetLayers} disabled={!hasLayerOverrides}>
+                    Reset to preset
+                  </Item>
+                </>
               )}
             </>
           )}
