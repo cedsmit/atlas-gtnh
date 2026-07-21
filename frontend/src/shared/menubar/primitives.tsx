@@ -84,6 +84,7 @@ export function QuickToggle({
   icon,
   tone,
   title,
+  hint,
   children,
 }: {
   on: boolean
@@ -91,6 +92,8 @@ export function QuickToggle({
   icon: ReactNode
   tone: Tone
   title?: string
+  /** Distinguishes states beyond lit/unlit, for cycling toggles. */
+  hint?: string
   children: ReactNode
 }) {
   return (
@@ -107,6 +110,7 @@ export function QuickToggle({
         {icon}
       </span>
       {children}
+      {hint && <span className="opacity-70">{hint}</span>}
     </button>
   )
 }

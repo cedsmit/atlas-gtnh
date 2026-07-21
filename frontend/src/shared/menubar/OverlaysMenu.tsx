@@ -19,8 +19,6 @@ import {
 import { type MenuProps } from './types'
 
 /**
- * Every active overlay shows the same accent: in a toolbar colour reads as
- * state, not identity — the label already says which overlay it is. Tinting
  * The overlays the map can draw, in menu order. Adding one is a single entry
  * here plus its state in the `overlays` record the bar is given — nothing in
  * this component's body is per-overlay.
@@ -44,6 +42,8 @@ export interface OverlayState {
   on?: boolean
   /** Shows a spinner in place of the icon while the data is in flight. */
   loading?: boolean
+  /** Extra state for overlays that are more than on/off, e.g. the grid's mode. */
+  hint?: string
   onToggle: () => void
 }
 
@@ -141,6 +141,7 @@ export function OverlaysMenu({
                 onClick={state.onToggle}
                 icon={state.loading ? <Spinner /> : <Icon />}
                 check={state.on}
+                hint={state.hint}
                 tone={state.on ? 'accent' : undefined}
               >
                 {label}

@@ -1,4 +1,4 @@
-import { Gem, Grid3x3, TriangleAlert, X } from 'lucide-react'
+import { Gem, Grid3x3, Hash, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
@@ -179,9 +179,12 @@ export function MenuBar({
               <QuickToggle
                 on={!!grid.on}
                 onClick={grid.onToggle}
-                icon={<Grid3x3 />}
+                // Icon carries the third state instead of a text hint: spelling
+                // it out grew the button by 53px and shunted the whole group
+                // sideways on every cycle.
+                icon={grid.hint ? <Hash /> : <Grid3x3 />}
                 tone="accent"
-                title="Chunk/region grid + coordinate labels"
+                title="Grid: cycles subtle → with coordinates → off"
               >
                 Grid
               </QuickToggle>

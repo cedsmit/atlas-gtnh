@@ -1794,8 +1794,8 @@ export class MapEngine {
   }
 
   /** Brighten the reference grid (paired with the coordinate-label overlay). */
-  setGrid(on: boolean): void {
-    this._mapScene.setGridProminent(on)
+  setGrid(mode: 'off' | 'subtle' | 'prominent'): void {
+    this._mapScene.setGridMode(mode)
     this._st.forceFrame = true
   }
 }

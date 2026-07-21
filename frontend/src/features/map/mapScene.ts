@@ -54,6 +54,8 @@ export class MapScene {
     color: 0x66ff88,
     depthTest: false,
   })
+  private regionGridLines!: THREE.LineSegments
+  private chunkGridLines!: THREE.LineSegments
   private selectionLine!: THREE.LineLoop
   private previewLine!: THREE.LineLoop
 
@@ -87,21 +89,21 @@ export class MapScene {
 
     this.gridAttr.setUsage(THREE.DynamicDrawUsage)
     this.gridGeo.setAttribute('position', this.gridAttr)
-    const regionGridLines = new THREE.LineSegments(
+    this.regionGridLines = new THREE.LineSegments(
       this.gridGeo,
       this.regionGridMat
     )
-    regionGridLines.frustumCulled = false
-    this.scene.add(regionGridLines)
+    this.regionGridLines.frustumCulled = false
+    this.scene.add(this.regionGridLines)
 
     this.chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
     this.chunkGridGeo.setAttribute('position', this.chunkGridAttr)
-    const chunkGridLines = new THREE.LineSegments(
+    this.chunkGridLines = new THREE.LineSegments(
       this.chunkGridGeo,
       this.chunkGridMat
     )
-    chunkGridLines.frustumCulled = false
-    this.scene.add(chunkGridLines)
+    this.chunkGridLines.frustumCulled = false
+    this.scene.add(this.chunkGridLines)
 
     // Selection (sky) + paste-preview (green) highlights: a shared unit-square
     // outline, positioned/scaled per use.
@@ -148,11 +150,19 @@ export class MapScene {
     MapScene.place(this.previewLine, rect)
   }
 
-  /** Brighten the region/chunk reference grid when the user turns it on; the
-   *  default is a subtle always-on grid. */
-  setGridProminent(on: boolean): void {
-    this.regionGridMat.color.setHex(on ? 0x5566aa : 0x2e2e48)
-    this.chunkGridMat.color.setHex(on ? 0x40405f : 0x1c1c2e)
+  /**
+   * Reference-grid visibility. 'subtle' is the resting state the map has always
+   * had; 'prominent' brightens it for when the user is reading coordinates;
+   * 'off' hides it outright, which previously was not reachable at all.
+   */
+  setGridMode(mode: 'off' | 'subtle' | 'prominent'): void {
+    const shown = mode !== 'off'
+    this.regionGridLines.visible = shown
+    this.chunkGridLines.visible = shown
+    if (!shown) return
+    const prominent = mode === 'prominent'
+    this.regionGridMat.color.setHex(prominent ? 0x5566aa : 0x2e2e48)
+    this.chunkGridMat.color.setHex(prominent ? 0x40405f : 0x1c1c2e)
   }
 
   get domElement(): HTMLCanvasElement {

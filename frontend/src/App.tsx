@@ -104,7 +104,10 @@ export default function App() {
   const togglePanel = (id: PanelId) =>
     setActivePanel((cur) => (cur === id ? null : id))
   const [heatmapOn, setHeatmapOn] = useState(false)
-  const [gridOn, setGridOn] = useState(false)
+  // Grid cycles rather than toggles: the reference grid has always been drawn
+  // faintly, so a plain on/off could never actually turn it off. 'grid' is that
+  // resting state, 'labels' brightens it and adds coordinates, 'off' hides it.
+  const [gridMode, setGridMode] = useState<'grid' | 'labels' | 'off'>('grid')
   const [oreVeinsOn, setOreVeinsOn] = useState(false)
   // The ore the map overlay is narrowed to (null = every vein), driven by the
   // ore-vein search panel drilling into one ore.
@@ -400,7 +403,9 @@ export default function App() {
 
   // Chunk/region reference grid + coordinate labels (Stage 5).
   function handleToggleGrid() {
-    setGridOn((o) => !o)
+    setGridMode((m) =>
+      m === 'grid' ? 'labels' : m === 'labels' ? 'off' : 'grid'
+    )
   }
 
   // Reconcile the grid overlay to the engine (mirrors oreVeinsOn below). The
@@ -411,8 +416,14 @@ export default function App() {
   // new engine; WorldMap (a child) rebuilds the engine before this parent effect
   // runs, so engineRef already points at the new one.
   useEffect(() => {
-    engineRef.current?.setGrid(gridOn)
-  }, [gridOn, dimensionPath])
+    engineRef.current?.setGrid(
+      gridMode === 'off'
+        ? 'off'
+        : gridMode === 'labels'
+          ? 'prominent'
+          : 'subtle'
+    )
+  }, [gridMode, dimensionPath])
 
   // Ore-vein overlay (from Visual Prospecting). Fetched lazily — once the overlay
   // is toggled on, or the search panel opens to browse the veins with the overlay
@@ -574,7 +585,11 @@ export default function App() {
           mapReady
             ? {
                 items: {
-                  grid: { on: gridOn, onToggle: handleToggleGrid },
+                  grid: {
+                    on: gridMode !== 'off',
+                    hint: gridMode === 'labels' ? 'numbers' : undefined,
+                    onToggle: handleToggleGrid,
+                  },
                   oreVeins: {
                     on: oreVeinsOn,
                     loading: oreVeins.isFetching,
@@ -729,7 +744,7 @@ export default function App() {
               engineRef={engineRef}
               onMapContextRef={mapContextRef}
             />
-            {gridOn && <GridLabels engineRef={engineRef} />}
+            {gridMode === 'labels' && <GridLabels engineRef={engineRef} />}
             {oreVeinsOn && (
               <OreVeinLabels engineRef={engineRef} veins={visibleVeins} />
             )}
