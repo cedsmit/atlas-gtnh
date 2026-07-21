@@ -84,7 +84,12 @@ export function MenuBar({
         data-tauri-drag-region
         className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
       >
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
+        {/* Decorative bar contents are pointer-events-none so a mousedown lands
+            on the drag region behind them. Tauri starts a drag only when the
+            event target itself carries the attribute, so anything that swallows
+            the click — and the world path below spans the whole bar — would
+            otherwise leave just the gaps between elements grabbable. */}
+        <span className="pointer-events-none inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
           <img
             src={atlasIcon}
             alt=""
@@ -108,12 +113,15 @@ export function MenuBar({
 
         {worldPath && (
           <>
-            <span className="h-4 w-px bg-zinc-800" />
+            <span className="pointer-events-none h-4 w-px bg-zinc-800" />
             <span
-              className="h-[7px] w-[7px] shrink-0 rounded-full bg-atlas-accent"
+              className="pointer-events-none h-[7px] w-[7px] shrink-0 rounded-full bg-atlas-accent"
               style={{ boxShadow: '0 0 8px #34d39988' }}
             />
+            {/* Keeps pointer events for its tooltip, so it carries the drag
+                attribute itself rather than opting out of hit-testing. */}
             <span
+              data-tauri-drag-region
               className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500"
               title={worldPath}
             >
