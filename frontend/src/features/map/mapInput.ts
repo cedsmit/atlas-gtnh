@@ -98,7 +98,25 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     st.pendingSet.clear()
     updateCam()
   }
+  /** True while the user is typing — the shortcuts must not steal those keys. */
+  function isTypingTarget(target: EventTarget | null): boolean {
+    const el = target as HTMLElement | null
+    if (!el) return false
+    const tag = el.tagName
+    return (
+      tag === 'INPUT' ||
+      tag === 'TEXTAREA' ||
+      tag === 'SELECT' ||
+      el.isContentEditable
+    )
+  }
+
   function onKeyDown(e: KeyboardEvent) {
+    // This listener is on window, so without the guard an 'f' typed into a
+    // search box flies the camera home mid-word. Modifier combos are the app's
+    // or the OS's, not ours.
+    if (isTypingTarget(e.target)) return
+    if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key === 'f' || e.key === 'F' || e.key === 'Home') fitCamera()
   }
 
