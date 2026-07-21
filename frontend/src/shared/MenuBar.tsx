@@ -1,4 +1,4 @@
-import { Compass, Gem, Grid3x3, TriangleAlert, X } from 'lucide-react'
+import { Gem, Grid3x3, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
@@ -14,6 +14,8 @@ import {
 import { type MenuId } from './menubar/types'
 import { ViewMenu, type ViewConfig } from './menubar/ViewMenu'
 import { WindowControls } from './menubar/WindowControls'
+
+import atlasIcon from '../assets/atlas-icon.png'
 
 interface Props {
   worldPath: string | null
@@ -83,9 +85,13 @@ export function MenuBar({
         className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
       >
         <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
-          <Compass
-            className="h-[17px] w-[17px] shrink-0 text-atlas-accent"
-            aria-hidden
+          <img
+            src={atlasIcon}
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5 shrink-0 select-none"
+            draggable={false}
           />
           Atlas
         </span>
