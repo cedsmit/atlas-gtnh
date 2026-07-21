@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DebugMenu } from './menubar/DebugMenu'
 import { FileMenu } from './menubar/FileMenu'
 import { OverlaysMenu } from './menubar/OverlaysMenu'
-import { QuickToggle, Segmented, Spinner } from './menubar/primitives'
+import { QuickToggle, Spinner } from './menubar/primitives'
 import { SavedMenu } from './menubar/SavedMenu'
 import { SearchMenu } from './menubar/SearchMenu'
 import { type ElevOverride, type MenuId } from './menubar/types'
@@ -12,16 +12,8 @@ import { ViewMenu } from './menubar/ViewMenu'
 import {
   type LayerOverrides,
   type LayerTag,
-  type TextureFilter,
 } from '../features/blocks/renderPresets'
 import { type UserPreset } from '../features/blocks/userPresets'
-
-const FILTER_OPTIONS: { value: 'preset' | TextureFilter; label: string }[] = [
-  { value: 'preset', label: 'Preset' },
-  { value: 'pixel', label: 'Pixel' },
-  { value: 'smooth', label: 'Smooth' },
-  { value: 'journeymap', label: 'JM' },
-]
 
 interface Props {
   worldPath: string | null
@@ -35,6 +27,8 @@ interface Props {
   onToggleInspect?: () => void
   debugOpen?: boolean
   onToggleDebug?: () => void
+  diagnosticRender?: boolean
+  onToggleDiagnosticRender?: () => void
   searchOpen?: boolean
   onToggleSearch?: () => void
   lootGamesOpen?: boolean
@@ -58,8 +52,6 @@ interface Props {
   onToggleInfraSystem?: (system: string, show: boolean) => void
   showInfraCables?: boolean
   onToggleInfraCables?: () => void
-  textureFilter?: 'preset' | TextureFilter
-  onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
   layerOverrides?: LayerOverrides
   onSetLayer?: (tag: LayerTag, show: boolean) => void
   onResetLayers?: () => void
@@ -86,6 +78,8 @@ export function MenuBar({
   onToggleInspect,
   debugOpen,
   onToggleDebug,
+  diagnosticRender,
+  onToggleDiagnosticRender,
   searchOpen,
   onToggleSearch,
   lootGamesOpen,
@@ -109,8 +103,6 @@ export function MenuBar({
   onToggleInfraSystem,
   showInfraCables,
   onToggleInfraCables,
-  textureFilter,
-  onSetTextureFilter,
   layerOverrides,
   onSetLayer,
   onResetLayers,
@@ -180,19 +172,6 @@ export function MenuBar({
               {worldPath}
             </span>
           </>
-        )}
-
-        {worldPath && onSetTextureFilter && (
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <span className="text-[11px] uppercase tracking-widest text-zinc-600">
-              Filter
-            </span>
-            <Segmented
-              options={FILTER_OPTIONS}
-              value={textureFilter ?? 'preset'}
-              onChange={onSetTextureFilter}
-            />
-          </div>
         )}
       </div>
 
@@ -304,6 +283,8 @@ export function MenuBar({
                 onToggleInspect={onToggleInspect}
                 debugOpen={debugOpen}
                 onToggleDebug={onToggleDebug}
+                diagnosticRender={diagnosticRender}
+                onToggleDiagnosticRender={onToggleDiagnosticRender}
               />
             )}
           </div>
