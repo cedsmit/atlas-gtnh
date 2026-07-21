@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { ATLAS, threeColor } from '../../shared/theme'
 
 interface CameraState {
   cx: number
@@ -69,12 +70,11 @@ export class MapScene {
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.cursor = 'grab'
 
-    // Matches the app shell (tailwind `atlas.bg`) so the map sits in the window
-    // rather than on a slightly different panel. It was a neutral 0x0f0f0f while
-    // the rest of the palette is cool-tinted, which read as muddy next to the
-    // chrome — and being darker than the 0x1a1a24 region placeholder, the void
-    // now reads clearly as "no world here" versus "region known, not drawn yet".
-    this.scene.background = new THREE.Color(0x08090b)
+    // Same token the shell paints with, so the map sits in the window rather
+    // than on a slightly different panel, and re-theming moves both together.
+    // Also sits well clear of the 0x1a1a24 region placeholder, so empty space
+    // reads as "no world here" rather than "region known, tile not drawn yet".
+    this.scene.background = new THREE.Color(threeColor(ATLAS.bg))
     this.cam = new THREE.OrthographicCamera(
       -w / 2,
       w / 2,
