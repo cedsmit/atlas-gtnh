@@ -697,7 +697,10 @@ export default function App() {
             alt=""
             width={112}
             height={112}
-            className="mb-6 h-28 w-28 select-none drop-shadow-[0_12px_32px_rgba(52,211,153,0.18)]"
+            // Two layers: a tight glow that hugs the emblem plus a wider, softer
+            // one for falloff. drop-shadow follows the alpha silhouette, so this
+            // haloes the disc rather than boxing the image.
+            className="mb-6 h-28 w-28 select-none [filter:drop-shadow(0_0_16px_rgba(52,211,153,0.42))_drop-shadow(0_8px_44px_rgba(52,211,153,0.28))]"
             draggable={false}
           />
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">
