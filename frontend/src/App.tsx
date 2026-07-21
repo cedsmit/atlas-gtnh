@@ -791,7 +791,7 @@ export default function App() {
                 onClose={closePanel}
               />
             ) : (
-              <div className="flex h-full w-96 shrink-0 flex-col items-center justify-center gap-1.5 border-l border-zinc-800 bg-zinc-950 text-xs text-zinc-500">
+              <div className="flex h-full w-96 shrink-0 flex-col items-center justify-center gap-1.5 border-l border-zinc-800 bg-atlas-row text-xs text-zinc-500">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                 Loading block data…
               </div>

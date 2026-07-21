@@ -24,7 +24,7 @@ export function MenuButton({
   icon,
   caret,
   badge,
-  primary,
+  active,
   accent,
   title,
   children,
@@ -34,17 +34,22 @@ export function MenuButton({
   icon: ReactNode
   caret?: boolean
   badge?: number
-  primary?: boolean
+  /** This menu's panel is currently open. */
+  active?: boolean
   accent?: Tone
   title?: string
   children: ReactNode
 }) {
   const base =
     'inline-flex items-center gap-2 rounded-[9px] border px-3 py-2 text-[13px] transition-colors'
+  // Three lit states, all tinted rather than filled — a solid accent fill is the
+  // weight of a primary action (the world picker), not of "a panel is open".
+  // `open` (dropdown showing) and `active` (this menu's panel is open) differ by
+  // label colour so both can be true at once and still be told apart.
   const state = open
     ? 'border-atlas-accent-line bg-atlas-accent-bg text-zinc-100'
-    : primary
-      ? 'border-atlas-accent bg-atlas-accent font-semibold text-[#0b1512]'
+    : active
+      ? TONE_ACTIVE.accent
       : accent
         ? `border-zinc-700 bg-atlas-hover ${TONE_TEXT[accent]}`
         : 'border-zinc-700 bg-atlas-hover text-zinc-300 hover:text-zinc-100'

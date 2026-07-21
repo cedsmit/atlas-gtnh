@@ -297,7 +297,7 @@ export function TextureDebugPanel({ worldPath, registry, onClose }: Props) {
   }
 
   return (
-    <div className="flex h-full w-[480px] shrink-0 flex-col border-l border-zinc-800 bg-zinc-950">
+    <div className="flex h-full w-[480px] shrink-0 flex-col border-l border-zinc-800 bg-atlas-row">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
         <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-200">
