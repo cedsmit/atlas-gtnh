@@ -6,6 +6,9 @@ import type { MapEngine } from '../map/mapEngine'
 export interface OreVeinView {
   x: number
   z: number
+  // VP palette name, e.g. "ore.mix.gold". Unused by the label overlay; it's the
+  // stable ore identity the search panel groups by and the map filter keys on.
+  kind: string
   name: string
   color: string
   depleted: boolean
