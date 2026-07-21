@@ -151,18 +151,13 @@ export class MapScene {
   }
 
   /**
-   * Reference-grid visibility. 'subtle' is the resting state the map has always
-   * had; 'prominent' brightens it for when the user is reading coordinates;
-   * 'off' hides it outright, which previously was not reachable at all.
+   * Show or hide the reference grid. The lines keep one colour in both visible
+   * states — adding coordinate labels is the only difference — so brightening
+   * them would make the map's shading read differently for no reason.
    */
-  setGridMode(mode: 'off' | 'subtle' | 'prominent'): void {
-    const shown = mode !== 'off'
-    this.regionGridLines.visible = shown
-    this.chunkGridLines.visible = shown
-    if (!shown) return
-    const prominent = mode === 'prominent'
-    this.regionGridMat.color.setHex(prominent ? 0x5566aa : 0x2e2e48)
-    this.chunkGridMat.color.setHex(prominent ? 0x40405f : 0x1c1c2e)
+  setGridVisible(visible: boolean): void {
+    this.regionGridLines.visible = visible
+    this.chunkGridLines.visible = visible
   }
 
   get domElement(): HTMLCanvasElement {

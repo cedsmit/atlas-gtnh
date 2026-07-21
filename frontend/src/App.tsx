@@ -416,13 +416,7 @@ export default function App() {
   // new engine; WorldMap (a child) rebuilds the engine before this parent effect
   // runs, so engineRef already points at the new one.
   useEffect(() => {
-    engineRef.current?.setGrid(
-      gridMode === 'off'
-        ? 'off'
-        : gridMode === 'labels'
-          ? 'prominent'
-          : 'subtle'
-    )
+    engineRef.current?.setGrid(gridMode !== 'off')
   }, [gridMode, dimensionPath])
 
   // Ore-vein overlay (from Visual Prospecting). Fetched lazily — once the overlay
