@@ -124,34 +124,6 @@ export function Dropdown({
   )
 }
 
-export function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: { value: T; label: string }[]
-  value: T
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex items-center gap-0.5 rounded-lg border border-zinc-700 bg-atlas-row p-[3px]">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          onClick={() => onChange(o.value)}
-          className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-            value === o.value
-              ? 'bg-atlas-accent font-semibold text-[#0b1512]'
-              : 'text-zinc-400 hover:text-zinc-100'
-          }`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function Pill({
   active,
   onClick,

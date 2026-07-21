@@ -1,16 +1,21 @@
 import { open as openExternal } from '@tauri-apps/plugin-shell'
-import { Bug, ExternalLink, Search } from 'lucide-react'
+import { Bug, ExternalLink, Search, TriangleAlert } from 'lucide-react'
 
 import { Dropdown, Item, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { API_BASE } from '../api'
 
-interface Props extends MenuProps {
-  worldPath: string | null
+export interface DebugConfig {
   inspectOpen?: boolean
   onToggleInspect?: () => void
   debugOpen?: boolean
   onToggleDebug?: () => void
+  diagnosticRender?: boolean
+  onToggleDiagnosticRender?: () => void
+}
+
+interface Props extends MenuProps, DebugConfig {
+  worldPath: string | null
 }
 
 export function DebugMenu({
@@ -22,6 +27,8 @@ export function DebugMenu({
   onToggleInspect,
   debugOpen,
   onToggleDebug,
+  diagnosticRender,
+  onToggleDiagnosticRender,
 }: Props) {
   const pick = (fn: () => void) => () => {
     onClose()
@@ -35,7 +42,7 @@ export function DebugMenu({
         aria-label="Debug tools"
         title="Debug tools"
         className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-          isOpen || debugOpen || inspectOpen
+          isOpen || debugOpen || inspectOpen || diagnosticRender
             ? 'bg-atlas-hover text-zinc-100'
             : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
         }`}
@@ -61,6 +68,17 @@ export function DebugMenu({
               check={inspectOpen}
             >
               Block Colors
+            </Item>
+          )}
+          {onToggleDiagnosticRender && (
+            <Item
+              onClick={onToggleDiagnosticRender}
+              icon={<TriangleAlert />}
+              check={diagnosticRender}
+              tone={diagnosticRender ? 'amber' : undefined}
+              title="Flag blocks whose texture never resolved in magenta, and reveal debug-only blocks"
+            >
+              Diagnostic rendering
             </Item>
           )}
           <Separator />

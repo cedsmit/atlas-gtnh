@@ -37,7 +37,6 @@ export interface RenderPreset {
   colorSaturation: number // 0 = greyscale, 1 = full color
   terrainTextures: boolean
   biomeTint: boolean
-  showFallbackMagenta: boolean
   textureFilter: TextureFilter
 }
 
@@ -107,7 +106,6 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     colorSaturation: 1.0,
     terrainTextures: true,
     biomeTint: true,
-    showFallbackMagenta: false,
     // Crisp/nearest, no upscale: keeps block textures saturated instead of the
     // 'journeymap' filter's 256->512 bilinear + GPU-linear blur that averaged
     // them toward grey. Flat biome grass (flatBiome) keeps the smooth look.
@@ -136,107 +134,6 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     colorSaturation: 1.0,
     terrainTextures: true,
     biomeTint: true,
-    showFallbackMagenta: false,
-    textureFilter: 'smooth',
-  },
-  {
-    id: 'builder',
-    name: 'Builder',
-    description:
-      'Base inspection — hides foliage to reveal structures underneath.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: true,
-    showRedstone: true,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'hidden',
-    waterMode: 'simple',
-    elevationMode: 'subtle',
-    elevationStrength: 1.0,
-    contourMode: 'off',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    showFallbackMagenta: false,
-    textureFilter: 'smooth',
-  },
-  {
-    id: 'technical',
-    name: 'Technical',
-    description:
-      'GTNH infrastructure — GregTech, pipes, cables, AE2, rails. Hides decorative flora.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: true,
-    showRedstone: true,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'hidden',
-    waterMode: 'simple',
-    elevationMode: 'subtle',
-    elevationStrength: 0.6,
-    contourMode: 'off',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    showFallbackMagenta: false,
-    textureFilter: 'pixel',
-  },
-  {
-    id: 'explorer',
-    name: 'Explorer',
-    description:
-      'Navigation — terrain, rivers, biomes, coastlines, mountains, roads.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: true,
-    showRedstone: false,
-    showMachines: false,
-    showPipes: false,
-    showCables: false,
-    foliageMode: 'full',
-    waterMode: 'simple',
-    elevationMode: 'strong',
-    elevationStrength: 1.5,
-    contourMode: 'subtle',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    showFallbackMagenta: false,
-    textureFilter: 'journeymap',
-  },
-  {
-    id: 'relief',
-    name: 'Relief',
-    description:
-      'Terrain-focused — strong hillshade, contour lines, simplified vegetation.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: true,
-    showRedstone: false,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'simplified',
-    waterMode: 'simple',
-    elevationMode: 'strong',
-    elevationStrength: 1.5,
-    contourMode: 'normal',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    showFallbackMagenta: false,
     textureFilter: 'smooth',
   },
   {
@@ -261,34 +158,7 @@ export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
     colorSaturation: 0.25,
     terrainTextures: true,
     biomeTint: true,
-    showFallbackMagenta: false,
     textureFilter: 'smooth',
-  },
-  {
-    id: 'debug',
-    name: 'Debug',
-    description:
-      'Everything visible — overlays, fallback highlighting, texture diagnostics.',
-    showOverlays: true,
-    showFire: true,
-    showTorches: true,
-    showFlowers: true,
-    showTallgrass: true,
-    showRails: true,
-    showRedstone: true,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'full',
-    waterMode: 'textured',
-    elevationMode: 'debug-heightmap',
-    elevationStrength: 2.0,
-    contourMode: 'normal',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    showFallbackMagenta: true,
-    textureFilter: 'pixel',
   },
 ]
 
@@ -358,19 +228,27 @@ export function presetShowsTag(preset: RenderPreset, tag: LayerTag): boolean {
 
 /**
  * Convert a preset to the flat RenderConfig the renderer consumes.
- * `biomeTint` and `showFallbackMagenta` are preset-driven (magenta only via the
- * `debug` preset); pass `overrides` for the remaining per-session toggles.
+ * `biomeTint` is preset-driven; pass `overrides` for the per-session toggles.
+ * The two texture diagnostics (`showDebugBlocks`, `showFallbackMagenta`) are
+ * override-only — they used to ride on the `debug` preset and are now driven by
+ * the Debug menu's "Diagnostic rendering" toggle, independent of the preset.
  */
 export function presetToConfig(
   preset: RenderPreset,
   overrides: Partial<
-    Pick<RenderConfig, 'textureFilter' | 'highlightPlants'>
+    Pick<
+      RenderConfig,
+      | 'textureFilter'
+      | 'highlightPlants'
+      | 'showDebugBlocks'
+      | 'showFallbackMagenta'
+    >
   > = {}
 ): RenderConfig {
   return {
     hiddenTags: buildHiddenTags(preset),
     showOverlays: preset.showOverlays,
-    showDebugBlocks: preset.id === 'debug',
+    showDebugBlocks: overrides.showDebugBlocks ?? false,
     foliageMode: preset.foliageMode,
     waterMode: preset.waterMode,
     terrainTextures: preset.terrainTextures,
@@ -388,7 +266,7 @@ export function presetToConfig(
     infraView: false,
     hiddenPipeSystems: new Set(),
     showCables: false,
-    showFallbackMagenta: preset.showFallbackMagenta,
+    showFallbackMagenta: overrides.showFallbackMagenta ?? false,
     textureFilter: overrides.textureFilter ?? preset.textureFilter,
   }
 }

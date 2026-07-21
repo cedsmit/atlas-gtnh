@@ -59,6 +59,47 @@ describe('layer overrides (Stage 3.1)', () => {
   })
 })
 
+describe('built-in preset list', () => {
+  it('offers journeymap, vanilla and topo only', () => {
+    expect(BUILT_IN_PRESETS.map((p) => p.id)).toEqual([
+      'journeymap',
+      'vanilla',
+      'topo',
+    ])
+  })
+
+  it('leads with journeymap — callers fall back to [0] for an unknown id', () => {
+    // A view saved under a since-removed preset (e.g. 'technical') resolves to
+    // this entry, so the default has to stay first.
+    expect(BUILT_IN_PRESETS[0].id).toBe('journeymap')
+    const stale = BUILT_IN_PRESETS.find((p) => p.id === 'technical')
+    expect(stale ?? BUILT_IN_PRESETS[0]).toBe(BUILT_IN_PRESETS[0])
+  })
+})
+
+describe('texture diagnostics (formerly the debug preset)', () => {
+  it('are off for every preset by default', () => {
+    for (const preset of BUILT_IN_PRESETS) {
+      const cfg = presetToConfig(preset)
+      expect(cfg.showDebugBlocks).toBe(false)
+      expect(cfg.showFallbackMagenta).toBe(false)
+    }
+  })
+
+  it('compose with any preset when overridden', () => {
+    for (const preset of BUILT_IN_PRESETS) {
+      const cfg = presetToConfig(preset, {
+        showDebugBlocks: true,
+        showFallbackMagenta: true,
+      })
+      expect(cfg.showDebugBlocks).toBe(true)
+      expect(cfg.showFallbackMagenta).toBe(true)
+      // the rest of the preset is untouched by the diagnostics
+      expect(cfg.hiddenTags).toEqual(presetToConfig(preset).hiddenTags)
+    }
+  })
+})
+
 describe('isTagHidden (solid layer hiding)', () => {
   const hidden = { hiddenTags: new Set(['pipe', 'cable']) }
 

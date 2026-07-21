@@ -27,7 +27,7 @@ const ELEV_OPTIONS: { value: ElevOverride; label: string }[] = [
   { value: 'contours', label: 'Contours' },
 ]
 
-interface Props extends Omit<MenuProps, 'onClose'> {
+export interface ViewConfig {
   selectedPresetId: string
   onSetPreset: (id: string) => void
   elevOverride?: ElevOverride
@@ -36,6 +36,8 @@ interface Props extends Omit<MenuProps, 'onClose'> {
   onSetLayer?: (tag: LayerTag, show: boolean) => void
   onResetLayers?: () => void
 }
+
+interface Props extends Omit<MenuProps, 'onClose'>, ViewConfig {}
 
 /** "How the map renders" — preset, elevation and which block layers show. */
 export function ViewMenu({

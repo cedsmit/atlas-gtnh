@@ -56,7 +56,6 @@ import {
   type ElevationMode,
   type ContourMode,
   type LayerOverrides,
-  type TextureFilter,
   BUILT_IN_PRESETS,
   applyLayerOverrides,
   presetToConfig,
@@ -111,6 +110,10 @@ export default function App() {
   // ore-vein search panel drilling into one ore.
   const [selectedVeinKind, setSelectedVeinKind] = useState<string | null>(null)
   const [infraViewOn, setInfraViewOn] = useState(false)
+  // Texture diagnostics: magenta-flag blocks whose texture never resolved, and
+  // reveal debug-only blocks. Used to ride on the `debug` render preset; now an
+  // independent Debug-menu toggle so it composes with any preset. Session-only.
+  const [diagnosticRender, setDiagnosticRender] = useState(false)
   // Infrastructure-View systems toggled off (empty = show all). Session-only.
   const [hiddenPipeSystems, setHiddenPipeSystems] = useState<Set<string>>(
     () => new Set()
@@ -125,9 +128,6 @@ export default function App() {
   const [elevOverride, setElevOverride] = useState<ElevOverride>(
     () => loadRenderPrefs().elevOverride
   )
-  const [textureFilterOverride, setTextureFilterOverride] = useState<
-    'preset' | TextureFilter
-  >(() => loadRenderPrefs().textureFilter)
   // User layer toggles that override the active preset's category visibility (3.1).
   const [layerOverrides, setLayerOverrides] = useState<LayerOverrides>(
     () => loadRenderPrefs().layerOverrides
@@ -137,10 +137,9 @@ export default function App() {
     saveRenderPrefs({
       presetId: selectedPresetId,
       elevOverride,
-      textureFilter: textureFilterOverride,
       layerOverrides,
     })
-  }, [selectedPresetId, elevOverride, textureFilterOverride, layerOverrides])
+  }, [selectedPresetId, elevOverride, layerOverrides])
 
   // Named user presets (Stage 3.3) — saved snapshots of a render view. The map
   // engine lives inside WorldMap; this lifted ref lets us read the camera when
@@ -182,7 +181,6 @@ export default function App() {
   function applyUserPreset(p: UserPreset) {
     setSelectedPresetId(p.presetId)
     setElevOverride(p.elevOverride)
-    setTextureFilterOverride(p.textureFilter)
     setLayerOverrides(p.layerOverrides)
     // Restore the saved location — but only in the dimension it was saved in,
     // since map coords are per-dimension. Views saved before 3.3.1 have no camera.
@@ -249,19 +247,20 @@ export default function App() {
       infraView: infraViewOn,
       hiddenPipeSystems,
       showCables: showInfraCables,
-      textureFilter:
-        textureFilterOverride === 'preset'
-          ? preset.textureFilter
-          : textureFilterOverride,
+      showDebugBlocks: diagnosticRender,
+      showFallbackMagenta: diagnosticRender,
+      // textureFilter is preset-owned (base already carries it) — there is no
+      // user override. See RenderPreset.textureFilter for why JourneyMap uses
+      // the crisp 'pixel' filter rather than the blurrier 'journeymap' one.
     }
   }, [
     preset,
     elevOverride,
-    textureFilterOverride,
     layerOverrides,
     infraViewOn,
     hiddenPipeSystems,
     showInfraCables,
+    diagnosticRender,
   ])
 
   // ── Texture preloading ──────────────────────────────────────────────────
@@ -297,6 +296,12 @@ export default function App() {
   } else if (!tex.done) {
     loadingStage = 'textures'
   }
+
+  // The tools row only appears once the map is actually on screen. Every control
+  // in it either renders into the map or opens a panel beside it (the panels are
+  // rendered in the map branch below), so showing a partially-populated bar over
+  // the loading screen or the dimension picker offers nothing but dead buttons.
+  const mapReady = !!dimensionPath && loadingStage === null
 
   // Poll mod-JAR scan progress only while the scanning stage is on screen.
   const { data: scanProgress } = useScanProgress(
@@ -569,93 +574,106 @@ export default function App() {
         worldPath={worldPath}
         onWorldSelected={handleWorldSelected}
         onCloseWorld={handleCloseWorld}
-        selectedPresetId={selectedPresetId}
-        onSetPreset={worldPath ? setSelectedPresetId : undefined}
-        elevOverride={elevOverride}
-        onSetElevOverride={worldPath ? setElevOverride : undefined}
-        inspectOpen={inspectOpen}
-        onToggleInspect={worldPath ? () => togglePanel('inspect') : undefined}
-        debugOpen={debugOpen}
-        onToggleDebug={worldPath ? () => togglePanel('debug') : undefined}
-        searchOpen={searchOpen}
-        onToggleSearch={
-          worldPath && dimensionPath ? () => togglePanel('search') : undefined
-        }
-        lootGamesOpen={lootGamesOpen}
-        onToggleLootGames={
-          worldPath && dimensionPath
-            ? () => togglePanel('lootGames')
-            : undefined
-        }
-        biomeSearchOpen={biomeSearchOpen}
-        onToggleBiomeSearch={
-          worldPath && dimensionPath
-            ? () => togglePanel('biomeSearch')
-            : undefined
-        }
-        oreVeinSearchOpen={oreVeinSearchOpen}
-        onToggleOreVeinSearch={
-          worldPath && dimensionPath
-            ? () => togglePanel('oreVeinSearch')
-            : undefined
-        }
-        heatmapOn={heatmapOn}
-        heatmapLoading={chunkStats.isPending}
-        onToggleHeatmap={
-          worldPath && dimensionPath ? handleToggleHeatmap : undefined
-        }
-        gridOn={gridOn}
-        onToggleGrid={worldPath && dimensionPath ? handleToggleGrid : undefined}
-        oreVeinsOn={oreVeinsOn}
-        oreVeinsLoading={oreVeins.isFetching}
-        onToggleOreVeins={
-          worldPath && dimensionPath
-            ? () => setOreVeinsOn((o) => !o)
-            : undefined
-        }
-        infraViewOn={infraViewOn}
-        onToggleInfra={worldPath ? handleToggleInfra : undefined}
-        pipeSystems={pipeSystems}
-        hiddenPipeSystems={hiddenPipeSystems}
-        onToggleInfraSystem={handleToggleInfraSystem}
-        showInfraCables={showInfraCables}
-        onToggleInfraCables={handleToggleInfraCables}
-        textureFilter={textureFilterOverride}
-        onSetTextureFilter={worldPath ? setTextureFilterOverride : undefined}
-        layerOverrides={layerOverrides}
-        onSetLayer={
-          worldPath
-            ? (tag, show) =>
-                setLayerOverrides((prev) => ({ ...prev, [tag]: show }))
-            : undefined
-        }
-        onResetLayers={worldPath ? () => setLayerOverrides({}) : undefined}
-        userPresets={userPresets}
-        onSavePreset={
-          worldPath
-            ? (name) => {
-                // Capture the current map location + zoom so the view is a
-                // location bookmark, not just a render-settings snapshot.
-                const vp = engineRef.current?.getViewport()
-                setUserPresets(
-                  saveUserPreset({
-                    name,
-                    presetId: selectedPresetId,
-                    elevOverride,
-                    textureFilter: textureFilterOverride,
-                    layerOverrides,
-                    camera: vp
-                      ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
-                      : undefined,
-                    dimensionPath: dimensionPath ?? undefined,
-                  })
-                )
+        view={
+          mapReady
+            ? {
+                selectedPresetId,
+                onSetPreset: setSelectedPresetId,
+                elevOverride,
+                onSetElevOverride: setElevOverride,
+                layerOverrides,
+                onSetLayer: (tag, show) =>
+                  setLayerOverrides((prev) => ({ ...prev, [tag]: show })),
+                onResetLayers: () => setLayerOverrides({}),
               }
             : undefined
         }
-        onApplyPreset={worldPath ? applyUserPreset : undefined}
-        onDeletePreset={
-          worldPath ? (id) => setUserPresets(deleteUserPreset(id)) : undefined
+        overlays={
+          mapReady
+            ? {
+                items: {
+                  grid: { on: gridOn, onToggle: handleToggleGrid },
+                  oreVeins: {
+                    on: oreVeinsOn,
+                    loading: oreVeins.isFetching,
+                    onToggle: () => setOreVeinsOn((o) => !o),
+                  },
+                  heatmap: {
+                    on: heatmapOn,
+                    loading: chunkStats.isPending,
+                    onToggle: handleToggleHeatmap,
+                  },
+                  infra: { on: infraViewOn, onToggle: handleToggleInfra },
+                },
+                infraDetail: {
+                  systems: pipeSystems,
+                  hidden: hiddenPipeSystems,
+                  onToggleSystem: handleToggleInfraSystem,
+                  showCables: showInfraCables,
+                  onToggleCables: handleToggleInfraCables,
+                },
+              }
+            : undefined
+        }
+        search={
+          mapReady
+            ? {
+                search: {
+                  open: searchOpen,
+                  onSelect: () => togglePanel('search'),
+                },
+                lootGames: {
+                  open: lootGamesOpen,
+                  onSelect: () => togglePanel('lootGames'),
+                },
+                biomeSearch: {
+                  open: biomeSearchOpen,
+                  onSelect: () => togglePanel('biomeSearch'),
+                },
+                oreVeinSearch: {
+                  open: oreVeinSearchOpen,
+                  onSelect: () => togglePanel('oreVeinSearch'),
+                },
+              }
+            : undefined
+        }
+        saved={
+          mapReady
+            ? {
+                userPresets,
+                onSavePreset: (name) => {
+                  // Capture the current map location + zoom so the view is a
+                  // location bookmark, not just a render-settings snapshot.
+                  const vp = engineRef.current?.getViewport()
+                  setUserPresets(
+                    saveUserPreset({
+                      name,
+                      presetId: selectedPresetId,
+                      elevOverride,
+                      layerOverrides,
+                      camera: vp
+                        ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
+                        : undefined,
+                      dimensionPath: dimensionPath ?? undefined,
+                    })
+                  )
+                },
+                onApplyPreset: applyUserPreset,
+                onDeletePreset: (id) => setUserPresets(deleteUserPreset(id)),
+              }
+            : undefined
+        }
+        debug={
+          mapReady
+            ? {
+                inspectOpen,
+                onToggleInspect: () => togglePanel('inspect'),
+                debugOpen,
+                onToggleDebug: () => togglePanel('debug'),
+                diagnosticRender,
+                onToggleDiagnosticRender: () => setDiagnosticRender((o) => !o),
+              }
+            : undefined
         }
       />
 

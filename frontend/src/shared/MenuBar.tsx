@@ -1,123 +1,49 @@
 import { Compass, Gem, Grid3x3, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { DebugMenu } from './menubar/DebugMenu'
+import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
 import { FileMenu } from './menubar/FileMenu'
-import { OverlaysMenu } from './menubar/OverlaysMenu'
-import { QuickToggle, Segmented, Spinner } from './menubar/primitives'
-import { SavedMenu } from './menubar/SavedMenu'
-import { SearchMenu } from './menubar/SearchMenu'
-import { type ElevOverride, type MenuId } from './menubar/types'
-import { ViewMenu } from './menubar/ViewMenu'
+import { OverlaysMenu, type OverlaysConfig } from './menubar/OverlaysMenu'
+import { QuickToggle, Spinner } from './menubar/primitives'
+import { SavedMenu, type SavedConfig } from './menubar/SavedMenu'
 import {
-  type LayerOverrides,
-  type LayerTag,
-  type TextureFilter,
-} from '../features/blocks/renderPresets'
-import { type UserPreset } from '../features/blocks/userPresets'
-
-const FILTER_OPTIONS: { value: 'preset' | TextureFilter; label: string }[] = [
-  { value: 'preset', label: 'Preset' },
-  { value: 'pixel', label: 'Pixel' },
-  { value: 'smooth', label: 'Smooth' },
-  { value: 'journeymap', label: 'JM' },
-]
+  SearchMenu,
+  type SearchEntry,
+  type SearchId,
+} from './menubar/SearchMenu'
+import { type MenuId } from './menubar/types'
+import { ViewMenu, type ViewConfig } from './menubar/ViewMenu'
 
 interface Props {
   worldPath: string | null
   onWorldSelected: (path: string) => void
   onCloseWorld: () => void
-  selectedPresetId?: string
-  onSetPreset?: (id: string) => void
-  elevOverride?: ElevOverride
-  onSetElevOverride?: (v: ElevOverride) => void
-  inspectOpen?: boolean
-  onToggleInspect?: () => void
-  debugOpen?: boolean
-  onToggleDebug?: () => void
-  searchOpen?: boolean
-  onToggleSearch?: () => void
-  lootGamesOpen?: boolean
-  onToggleLootGames?: () => void
-  biomeSearchOpen?: boolean
-  onToggleBiomeSearch?: () => void
-  oreVeinSearchOpen?: boolean
-  onToggleOreVeinSearch?: () => void
-  heatmapOn?: boolean
-  heatmapLoading?: boolean
-  onToggleHeatmap?: () => void
-  gridOn?: boolean
-  onToggleGrid?: () => void
-  oreVeinsOn?: boolean
-  oreVeinsLoading?: boolean
-  onToggleOreVeins?: () => void
-  infraViewOn?: boolean
-  onToggleInfra?: () => void
-  pipeSystems?: string[]
-  hiddenPipeSystems?: ReadonlySet<string>
-  onToggleInfraSystem?: (system: string, show: boolean) => void
-  showInfraCables?: boolean
-  onToggleInfraCables?: () => void
-  textureFilter?: 'preset' | TextureFilter
-  onSetTextureFilter?: (f: 'preset' | TextureFilter) => void
-  layerOverrides?: LayerOverrides
-  onSetLayer?: (tag: LayerTag, show: boolean) => void
-  onResetLayers?: () => void
-  userPresets?: UserPreset[]
-  onSavePreset?: (name: string) => void
-  onApplyPreset?: (p: UserPreset) => void
-  onDeletePreset?: (id: string) => void
+  /**
+   * Each tools-row group is optional — omit it and that menu is not offered.
+   * App leaves them all out until the map is on screen, which is what makes the
+   * row appear complete in one go rather than filling in piecemeal.
+   */
+  view?: ViewConfig
+  overlays?: OverlaysConfig
+  search?: Partial<Record<SearchId, SearchEntry>>
+  saved?: SavedConfig
+  debug?: DebugConfig
 }
 
 /**
- * The map view's chrome: an identity bar (world + global render filter) above a
- * tools row of grouped menus. Each dropdown lives in `./menubar/`; this shell
- * owns only the "which menu is open" state they share.
+ * The map view's chrome: an identity bar (world) above a tools row of grouped
+ * menus. Each dropdown lives in `./menubar/`; this shell owns only the "which
+ * menu is open" state they share.
  */
 export function MenuBar({
   worldPath,
   onWorldSelected,
   onCloseWorld,
-  selectedPresetId,
-  onSetPreset,
-  elevOverride,
-  onSetElevOverride,
-  inspectOpen,
-  onToggleInspect,
-  debugOpen,
-  onToggleDebug,
-  searchOpen,
-  onToggleSearch,
-  lootGamesOpen,
-  onToggleLootGames,
-  biomeSearchOpen,
-  onToggleBiomeSearch,
-  oreVeinSearchOpen,
-  onToggleOreVeinSearch,
-  heatmapOn,
-  heatmapLoading,
-  onToggleHeatmap,
-  gridOn,
-  onToggleGrid,
-  oreVeinsOn,
-  oreVeinsLoading,
-  onToggleOreVeins,
-  infraViewOn,
-  onToggleInfra,
-  pipeSystems,
-  hiddenPipeSystems,
-  onToggleInfraSystem,
-  showInfraCables,
-  onToggleInfraCables,
-  textureFilter,
-  onSetTextureFilter,
-  layerOverrides,
-  onSetLayer,
-  onResetLayers,
-  userPresets,
-  onSavePreset,
-  onApplyPreset,
-  onDeletePreset,
+  view,
+  overlays,
+  search,
+  saved,
+  debug,
 }: Props) {
   const [menu, setMenu] = useState<MenuId | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -136,13 +62,13 @@ export function MenuBar({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  // The two overlays worth a one-click toggle also live in the Overlays menu —
+  // read straight off that config so they cannot drift out of sync with it.
+  const grid = overlays?.items.grid
+  const veins = overlays?.items.oreVeins
+
   const showTools =
-    !!worldPath &&
-    (!!onSetPreset ||
-      !!onToggleSearch ||
-      !!onToggleGrid ||
-      !!onSavePreset ||
-      !!onToggleDebug)
+    !!worldPath && !!(view || overlays || search || saved || debug)
 
   return (
     <header ref={headerRef} className="shrink-0">
@@ -181,100 +107,51 @@ export function MenuBar({
             </span>
           </>
         )}
-
-        {worldPath && onSetTextureFilter && (
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <span className="text-[11px] uppercase tracking-widest text-zinc-600">
-              Filter
-            </span>
-            <Segmented
-              options={FILTER_OPTIONS}
-              value={textureFilter ?? 'preset'}
-              onChange={onSetTextureFilter}
-            />
-          </div>
-        )}
       </div>
 
       {/* ── Tools row ────────────────────────────────────────────────── */}
       {showTools && (
         <div className="flex h-12 items-center gap-2.5 border-b border-zinc-800 bg-atlas-row px-4">
-          {onSetPreset && selectedPresetId && (
+          {view && (
             <ViewMenu
               open={menu === 'view'}
               onToggle={() => toggleMenu('view')}
-              selectedPresetId={selectedPresetId}
-              onSetPreset={onSetPreset}
-              elevOverride={elevOverride}
-              onSetElevOverride={onSetElevOverride}
-              layerOverrides={layerOverrides}
-              onSetLayer={onSetLayer}
-              onResetLayers={onResetLayers}
+              {...view}
             />
           )}
 
-          {(onToggleGrid ||
-            onToggleOreVeins ||
-            onToggleHeatmap ||
-            onToggleInfra) && (
+          {overlays && (
             <OverlaysMenu
               open={menu === 'overlays'}
               onToggle={() => toggleMenu('overlays')}
-              heatmapOn={heatmapOn}
-              heatmapLoading={heatmapLoading}
-              onToggleHeatmap={onToggleHeatmap}
-              gridOn={gridOn}
-              onToggleGrid={onToggleGrid}
-              oreVeinsOn={oreVeinsOn}
-              oreVeinsLoading={oreVeinsLoading}
-              onToggleOreVeins={onToggleOreVeins}
-              infraViewOn={infraViewOn}
-              onToggleInfra={onToggleInfra}
-              pipeSystems={pipeSystems}
-              hiddenPipeSystems={hiddenPipeSystems}
-              onToggleInfraSystem={onToggleInfraSystem}
-              showInfraCables={showInfraCables}
-              onToggleInfraCables={onToggleInfraCables}
+              {...overlays}
             />
           )}
 
-          {(onToggleSearch ||
-            onToggleLootGames ||
-            onToggleBiomeSearch ||
-            onToggleOreVeinSearch) && (
+          {search && (
             <SearchMenu
               open={menu === 'search'}
               onToggle={() => toggleMenu('search')}
               onClose={closeMenu}
-              searchOpen={searchOpen}
-              onToggleSearch={onToggleSearch}
-              lootGamesOpen={lootGamesOpen}
-              onToggleLootGames={onToggleLootGames}
-              biomeSearchOpen={biomeSearchOpen}
-              onToggleBiomeSearch={onToggleBiomeSearch}
-              oreVeinSearchOpen={oreVeinSearchOpen}
-              onToggleOreVeinSearch={onToggleOreVeinSearch}
+              entries={search}
             />
           )}
 
-          {onSavePreset && (
+          {saved && (
             <SavedMenu
               open={menu === 'saved'}
               onToggle={() => toggleMenu('saved')}
               onClose={closeMenu}
-              userPresets={userPresets}
-              onSavePreset={onSavePreset}
-              onApplyPreset={onApplyPreset}
-              onDeletePreset={onDeletePreset}
+              {...saved}
             />
           )}
 
           {/* Right side — quick toggles + debug */}
           <div className="ml-auto flex items-center gap-2">
-            {onToggleGrid && (
+            {grid && (
               <QuickToggle
-                on={!!gridOn}
-                onClick={onToggleGrid}
+                on={!!grid.on}
+                onClick={grid.onToggle}
                 icon={<Grid3x3 />}
                 tone="accent"
                 title="Chunk/region grid + coordinate labels"
@@ -282,11 +159,11 @@ export function MenuBar({
                 Grid
               </QuickToggle>
             )}
-            {onToggleOreVeins && (
+            {veins && (
               <QuickToggle
-                on={!!oreVeinsOn}
-                onClick={onToggleOreVeins}
-                icon={oreVeinsLoading ? <Spinner /> : <Gem />}
+                on={!!veins.on}
+                onClick={veins.onToggle}
+                icon={veins.loading ? <Spinner /> : <Gem />}
                 tone="amber"
                 title="Ore veins from Visual Prospecting"
               >
@@ -294,16 +171,13 @@ export function MenuBar({
               </QuickToggle>
             )}
 
-            {(onToggleDebug || onToggleInspect) && (
+            {debug && (
               <DebugMenu
                 open={menu === 'debug'}
                 onToggle={() => toggleMenu('debug')}
                 onClose={closeMenu}
                 worldPath={worldPath}
-                inspectOpen={inspectOpen}
-                onToggleInspect={onToggleInspect}
-                debugOpen={debugOpen}
-                onToggleDebug={onToggleDebug}
+                {...debug}
               />
             )}
           </div>
