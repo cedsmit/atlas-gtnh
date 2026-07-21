@@ -5,14 +5,17 @@ import { Dropdown, Item, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { API_BASE } from '../api'
 
-interface Props extends MenuProps {
-  worldPath: string | null
+export interface DebugConfig {
   inspectOpen?: boolean
   onToggleInspect?: () => void
   debugOpen?: boolean
   onToggleDebug?: () => void
   diagnosticRender?: boolean
   onToggleDiagnosticRender?: () => void
+}
+
+interface Props extends MenuProps, DebugConfig {
+  worldPath: string | null
 }
 
 export function DebugMenu({

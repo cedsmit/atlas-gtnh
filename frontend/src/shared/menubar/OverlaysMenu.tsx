@@ -1,4 +1,12 @@
-import { Flame, Gem, Grid3x3, Layers, Waypoints } from 'lucide-react'
+import {
+  Flame,
+  Gem,
+  Grid3x3,
+  Layers,
+  Waypoints,
+  type LucideIcon,
+} from 'lucide-react'
+import { type ReactNode } from 'react'
 
 import {
   Dropdown,
@@ -8,25 +16,54 @@ import {
   Separator,
   Spinner,
 } from './primitives'
-import { type MenuProps } from './types'
+import { type MenuProps, type Tone } from './types'
 
-interface Props extends Omit<MenuProps, 'onClose'> {
-  heatmapOn?: boolean
-  heatmapLoading?: boolean
-  onToggleHeatmap?: () => void
-  gridOn?: boolean
-  onToggleGrid?: () => void
-  oreVeinsOn?: boolean
-  oreVeinsLoading?: boolean
-  onToggleOreVeins?: () => void
-  infraViewOn?: boolean
-  onToggleInfra?: () => void
-  pipeSystems?: string[]
-  hiddenPipeSystems?: ReadonlySet<string>
-  onToggleInfraSystem?: (system: string, show: boolean) => void
-  showInfraCables?: boolean
-  onToggleInfraCables?: () => void
+/**
+ * The overlays the map can draw, in menu order. Adding one is a single entry
+ * here plus its state in the `overlays` record the bar is given — nothing in
+ * this component's body is per-overlay.
+ */
+const OVERLAY_DEFS = [
+  { id: 'grid', label: 'Grid', Icon: Grid3x3, tone: 'accent' },
+  { id: 'oreVeins', label: 'Ore veins', Icon: Gem, tone: 'amber' },
+  { id: 'heatmap', label: 'Heatmap', Icon: Flame, tone: 'amber' },
+  { id: 'infra', label: 'Infrastructure', Icon: Waypoints, tone: 'cyan' },
+] as const satisfies readonly {
+  id: string
+  label: string
+  Icon: LucideIcon
+  tone: Tone
+}[]
+
+export type OverlayId = (typeof OVERLAY_DEFS)[number]['id']
+
+/** Live state for one overlay. Absent from the record = not offered at all. */
+export interface OverlayState {
+  on?: boolean
+  /** Shows a spinner in place of the icon while the data is in flight. */
+  loading?: boolean
+  onToggle: () => void
 }
+
+/**
+ * Infrastructure View's per-system filter. Kept as an explicit extra rather
+ * than folded into OverlayState: it is the one overlay with sub-options, and
+ * pretending otherwise would cost every other overlay a generic slot.
+ */
+export interface InfraDetail {
+  systems?: string[]
+  hidden?: ReadonlySet<string>
+  onToggleSystem?: (system: string, show: boolean) => void
+  showCables?: boolean
+  onToggleCables?: () => void
+}
+
+export interface OverlaysConfig {
+  items: Partial<Record<OverlayId, OverlayState>>
+  infraDetail?: InfraDetail
+}
+
+interface Props extends Omit<MenuProps, 'onClose'>, OverlaysConfig {}
 
 /**
  * "What is drawn on top of the map". Toggling an item deliberately leaves the
@@ -35,25 +72,48 @@ interface Props extends Omit<MenuProps, 'onClose'> {
 export function OverlaysMenu({
   open: isOpen,
   onToggle,
-  heatmapOn,
-  heatmapLoading,
-  onToggleHeatmap,
-  gridOn,
-  onToggleGrid,
-  oreVeinsOn,
-  oreVeinsLoading,
-  onToggleOreVeins,
-  infraViewOn,
-  onToggleInfra,
-  pipeSystems,
-  hiddenPipeSystems,
-  onToggleInfraSystem,
-  showInfraCables,
-  onToggleInfraCables,
+  items,
+  infraDetail,
 }: Props) {
-  const count = [heatmapOn, gridOn, oreVeinsOn, infraViewOn].filter(
-    Boolean
-  ).length
+  const offered = OVERLAY_DEFS.filter((d) => items[d.id])
+  const count = offered.filter((d) => items[d.id]?.on).length
+
+  const infra = items.infra
+  const systems = infraDetail?.systems ?? []
+  const showInfraSystems =
+    infra?.on && infraDetail?.onToggleSystem && systems.length > 0
+
+  let detail: ReactNode = null
+  if (showInfraSystems && infraDetail?.onToggleSystem) {
+    const onToggleSystem = infraDetail.onToggleSystem
+    detail = (
+      <>
+        <Separator />
+        <SectionLabel>Systems</SectionLabel>
+        {systems.map((sys) => {
+          const visible = !infraDetail.hidden?.has(sys)
+          return (
+            <Item
+              key={sys}
+              onClick={() => onToggleSystem(sys, !visible)}
+              check={visible}
+            >
+              {sys}
+            </Item>
+          )
+        })}
+        {infraDetail.onToggleCables && (
+          <Item
+            onClick={infraDetail.onToggleCables}
+            check={infraDetail.showCables}
+            hint="power / data"
+          >
+            Cables
+          </Item>
+        )}
+      </>
+    )
+  }
 
   return (
     <div className="relative">
@@ -70,77 +130,22 @@ export function OverlaysMenu({
 
       {isOpen && (
         <Dropdown className="left-0 w-[236px]">
-          {onToggleGrid && (
-            <Item
-              onClick={onToggleGrid}
-              icon={<Grid3x3 />}
-              check={gridOn}
-              tone={gridOn ? 'accent' : undefined}
-            >
-              Grid
-            </Item>
-          )}
-          {onToggleOreVeins && (
-            <Item
-              onClick={onToggleOreVeins}
-              icon={oreVeinsLoading ? <Spinner /> : <Gem />}
-              check={oreVeinsOn}
-              tone={oreVeinsOn ? 'amber' : undefined}
-            >
-              Ore veins
-            </Item>
-          )}
-          {onToggleHeatmap && (
-            <Item
-              onClick={onToggleHeatmap}
-              icon={heatmapLoading ? <Spinner /> : <Flame />}
-              check={heatmapOn}
-              tone={heatmapOn ? 'amber' : undefined}
-            >
-              Heatmap
-            </Item>
-          )}
-          {onToggleInfra && (
-            <Item
-              onClick={onToggleInfra}
-              icon={<Waypoints />}
-              check={infraViewOn}
-              tone={infraViewOn ? 'cyan' : undefined}
-            >
-              Infrastructure
-            </Item>
-          )}
-
-          {infraViewOn &&
-            onToggleInfraSystem &&
-            pipeSystems &&
-            pipeSystems.length > 0 && (
-              <>
-                <Separator />
-                <SectionLabel>Systems</SectionLabel>
-                {pipeSystems.map((sys) => {
-                  const visible = !hiddenPipeSystems?.has(sys)
-                  return (
-                    <Item
-                      key={sys}
-                      onClick={() => onToggleInfraSystem(sys, !visible)}
-                      check={visible}
-                    >
-                      {sys}
-                    </Item>
-                  )
-                })}
-                {onToggleInfraCables && (
-                  <Item
-                    onClick={onToggleInfraCables}
-                    check={showInfraCables}
-                    hint="power / data"
-                  >
-                    Cables
-                  </Item>
-                )}
-              </>
-            )}
+          {offered.map(({ id, label, Icon, tone }) => {
+            const state = items[id]
+            if (!state) return null
+            return (
+              <Item
+                key={id}
+                onClick={state.onToggle}
+                icon={state.loading ? <Spinner /> : <Icon />}
+                check={state.on}
+                tone={state.on ? tone : undefined}
+              >
+                {label}
+              </Item>
+            )
+          })}
+          {detail}
         </Dropdown>
       )}
     </div>

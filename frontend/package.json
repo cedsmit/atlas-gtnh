@@ -17,7 +17,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@react-three/fiber": "^8.17.2",
     "@tanstack/react-query": "^5.50.0",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
@@ -25,8 +24,7 @@
     "lucide-react": "^1.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "three": "^0.166.1",
-    "zustand": "^4.5.4"
+    "three": "^0.166.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.3",

@@ -574,80 +574,106 @@ export default function App() {
         worldPath={worldPath}
         onWorldSelected={handleWorldSelected}
         onCloseWorld={handleCloseWorld}
-        selectedPresetId={selectedPresetId}
-        onSetPreset={mapReady ? setSelectedPresetId : undefined}
-        elevOverride={elevOverride}
-        onSetElevOverride={mapReady ? setElevOverride : undefined}
-        inspectOpen={inspectOpen}
-        onToggleInspect={mapReady ? () => togglePanel('inspect') : undefined}
-        debugOpen={debugOpen}
-        onToggleDebug={mapReady ? () => togglePanel('debug') : undefined}
-        diagnosticRender={diagnosticRender}
-        onToggleDiagnosticRender={
-          mapReady ? () => setDiagnosticRender((o) => !o) : undefined
-        }
-        searchOpen={searchOpen}
-        onToggleSearch={mapReady ? () => togglePanel('search') : undefined}
-        lootGamesOpen={lootGamesOpen}
-        onToggleLootGames={
-          mapReady ? () => togglePanel('lootGames') : undefined
-        }
-        biomeSearchOpen={biomeSearchOpen}
-        onToggleBiomeSearch={
-          mapReady ? () => togglePanel('biomeSearch') : undefined
-        }
-        oreVeinSearchOpen={oreVeinSearchOpen}
-        onToggleOreVeinSearch={
-          mapReady ? () => togglePanel('oreVeinSearch') : undefined
-        }
-        heatmapOn={heatmapOn}
-        heatmapLoading={chunkStats.isPending}
-        onToggleHeatmap={mapReady ? handleToggleHeatmap : undefined}
-        gridOn={gridOn}
-        onToggleGrid={mapReady ? handleToggleGrid : undefined}
-        oreVeinsOn={oreVeinsOn}
-        oreVeinsLoading={oreVeins.isFetching}
-        onToggleOreVeins={mapReady ? () => setOreVeinsOn((o) => !o) : undefined}
-        infraViewOn={infraViewOn}
-        onToggleInfra={mapReady ? handleToggleInfra : undefined}
-        pipeSystems={pipeSystems}
-        hiddenPipeSystems={hiddenPipeSystems}
-        onToggleInfraSystem={handleToggleInfraSystem}
-        showInfraCables={showInfraCables}
-        onToggleInfraCables={handleToggleInfraCables}
-        layerOverrides={layerOverrides}
-        onSetLayer={
+        view={
           mapReady
-            ? (tag, show) =>
-                setLayerOverrides((prev) => ({ ...prev, [tag]: show }))
-            : undefined
-        }
-        onResetLayers={mapReady ? () => setLayerOverrides({}) : undefined}
-        userPresets={userPresets}
-        onSavePreset={
-          mapReady
-            ? (name) => {
-                // Capture the current map location + zoom so the view is a
-                // location bookmark, not just a render-settings snapshot.
-                const vp = engineRef.current?.getViewport()
-                setUserPresets(
-                  saveUserPreset({
-                    name,
-                    presetId: selectedPresetId,
-                    elevOverride,
-                    layerOverrides,
-                    camera: vp
-                      ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
-                      : undefined,
-                    dimensionPath: dimensionPath ?? undefined,
-                  })
-                )
+            ? {
+                selectedPresetId,
+                onSetPreset: setSelectedPresetId,
+                elevOverride,
+                onSetElevOverride: setElevOverride,
+                layerOverrides,
+                onSetLayer: (tag, show) =>
+                  setLayerOverrides((prev) => ({ ...prev, [tag]: show })),
+                onResetLayers: () => setLayerOverrides({}),
               }
             : undefined
         }
-        onApplyPreset={mapReady ? applyUserPreset : undefined}
-        onDeletePreset={
-          mapReady ? (id) => setUserPresets(deleteUserPreset(id)) : undefined
+        overlays={
+          mapReady
+            ? {
+                items: {
+                  grid: { on: gridOn, onToggle: handleToggleGrid },
+                  oreVeins: {
+                    on: oreVeinsOn,
+                    loading: oreVeins.isFetching,
+                    onToggle: () => setOreVeinsOn((o) => !o),
+                  },
+                  heatmap: {
+                    on: heatmapOn,
+                    loading: chunkStats.isPending,
+                    onToggle: handleToggleHeatmap,
+                  },
+                  infra: { on: infraViewOn, onToggle: handleToggleInfra },
+                },
+                infraDetail: {
+                  systems: pipeSystems,
+                  hidden: hiddenPipeSystems,
+                  onToggleSystem: handleToggleInfraSystem,
+                  showCables: showInfraCables,
+                  onToggleCables: handleToggleInfraCables,
+                },
+              }
+            : undefined
+        }
+        search={
+          mapReady
+            ? {
+                search: {
+                  open: searchOpen,
+                  onSelect: () => togglePanel('search'),
+                },
+                lootGames: {
+                  open: lootGamesOpen,
+                  onSelect: () => togglePanel('lootGames'),
+                },
+                biomeSearch: {
+                  open: biomeSearchOpen,
+                  onSelect: () => togglePanel('biomeSearch'),
+                },
+                oreVeinSearch: {
+                  open: oreVeinSearchOpen,
+                  onSelect: () => togglePanel('oreVeinSearch'),
+                },
+              }
+            : undefined
+        }
+        saved={
+          mapReady
+            ? {
+                userPresets,
+                onSavePreset: (name) => {
+                  // Capture the current map location + zoom so the view is a
+                  // location bookmark, not just a render-settings snapshot.
+                  const vp = engineRef.current?.getViewport()
+                  setUserPresets(
+                    saveUserPreset({
+                      name,
+                      presetId: selectedPresetId,
+                      elevOverride,
+                      layerOverrides,
+                      camera: vp
+                        ? { cx: vp.cx, cz: vp.cz, scale: vp.scale }
+                        : undefined,
+                      dimensionPath: dimensionPath ?? undefined,
+                    })
+                  )
+                },
+                onApplyPreset: applyUserPreset,
+                onDeletePreset: (id) => setUserPresets(deleteUserPreset(id)),
+              }
+            : undefined
+        }
+        debug={
+          mapReady
+            ? {
+                inspectOpen,
+                onToggleInspect: () => togglePanel('inspect'),
+                debugOpen,
+                onToggleDebug: () => togglePanel('debug'),
+                diagnosticRender,
+                onToggleDiagnosticRender: () => setDiagnosticRender((o) => !o),
+              }
+            : undefined
         }
       />
 

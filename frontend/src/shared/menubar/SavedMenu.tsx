@@ -5,12 +5,14 @@ import { Dropdown, MenuButton, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { type UserPreset } from '../../features/blocks/userPresets'
 
-interface Props extends MenuProps {
+export interface SavedConfig {
   userPresets?: UserPreset[]
   onSavePreset: (name: string) => void
   onApplyPreset?: (p: UserPreset) => void
   onDeletePreset?: (id: string) => void
 }
+
+interface Props extends MenuProps, SavedConfig {}
 
 /** Saved views — a bookmark of the render settings plus camera position. */
 export function SavedMenu({
