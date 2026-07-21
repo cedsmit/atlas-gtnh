@@ -746,6 +746,10 @@ export class MapEngine {
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
         const chunks = await fetchChunkBatch(dimensionPath, coords)
+        // The engine can be torn down mid-flight (a dimension switch builds a
+        // fresh one). Its successor is already fetching, so don't decode into
+        // dead state — and above all don't let the `finally` queue more work.
+        if (destroyed) return
 
         const returned = new Set<string>()
         for (const data of chunks) {
@@ -776,7 +780,7 @@ export class MapEngine {
         if (dbg) console.error('[atlas:chunk] batch exception', err)
       } finally {
         st.activeBatches--
-        drainQueue()
+        if (!destroyed) drainQueue()
       }
     }
 
@@ -914,6 +918,7 @@ export class MapEngine {
           rz,
           st.surfaceSkipIds
         )
+        if (destroyed) return // torn down mid-flight — see fetchBatch
         if (surface.chunks.length === 0) {
           st.regionFailed.add(key)
         } else {
@@ -925,7 +930,7 @@ export class MapEngine {
       } finally {
         st.regionResolving.delete(key)
         st.activeRegionFetches--
-        drainRegionQueue()
+        if (!destroyed) drainRegionQueue()
       }
     }
 
