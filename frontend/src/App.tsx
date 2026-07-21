@@ -78,6 +78,8 @@ import {
 import { clearTextureAverages } from './features/textures/textureAverage'
 import { textureDebugStore } from './features/textures/textureDebugStore'
 
+import atlasIcon from './assets/atlas-icon.png'
+
 const LAST_WORLD_KEY = 'atlas:lastWorldPath'
 
 /** The side panels, which are mutually exclusive — at most one is open. */
@@ -689,10 +691,22 @@ export default function App() {
 
       {!worldPath ? (
         /* ── No world selected ── */
-        <div className="flex flex-1 flex-col items-center justify-center gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+        <div className="flex flex-1 flex-col items-center justify-center px-6">
+          <img
+            src={atlasIcon}
+            alt=""
+            width={112}
+            height={112}
+            className="mb-6 h-28 w-28 select-none drop-shadow-[0_12px_32px_rgba(52,211,153,0.18)]"
+            draggable={false}
+          />
+          <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">
             Atlas GTNH
           </h1>
+          <p className="mb-7 mt-2 max-w-sm text-center text-sm text-zinc-500">
+            Open a GregTech: New Horizons save to explore it as a map — no need
+            to launch the game.
+          </p>
           <WorldPicker onWorldSelected={handleWorldSelected} />
         </div>
       ) : loadingStage !== null ? (

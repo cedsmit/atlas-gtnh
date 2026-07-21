@@ -43,7 +43,7 @@ export function WorldPicker({ onWorldSelected }: Props) {
       <button
         onClick={handlePick}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50"
+        className="inline-flex items-center gap-2 rounded-lg bg-atlas-accent px-4 py-2.5 text-sm font-semibold text-[#0b1512] transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -54,7 +54,7 @@ export function WorldPicker({ onWorldSelected }: Props) {
       </button>
       {error && (
         <p
-          className="inline-flex items-center gap-1.5 text-sm text-red-400"
+          className="inline-flex items-center gap-1.5 text-sm text-atlas-danger"
           role="alert"
         >
           <TriangleAlert className="h-4 w-4 shrink-0" aria-hidden />
