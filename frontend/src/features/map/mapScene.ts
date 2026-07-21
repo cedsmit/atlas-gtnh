@@ -69,7 +69,12 @@ export class MapScene {
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.cursor = 'grab'
 
-    this.scene.background = new THREE.Color(0x0f0f0f)
+    // Matches the app shell (tailwind `atlas.bg`) so the map sits in the window
+    // rather than on a slightly different panel. It was a neutral 0x0f0f0f while
+    // the rest of the palette is cool-tinted, which read as muddy next to the
+    // chrome — and being darker than the 0x1a1a24 region placeholder, the void
+    // now reads clearly as "no world here" versus "region known, not drawn yet".
+    this.scene.background = new THREE.Color(0x08090b)
     this.cam = new THREE.OrthographicCamera(
       -w / 2,
       w / 2,
