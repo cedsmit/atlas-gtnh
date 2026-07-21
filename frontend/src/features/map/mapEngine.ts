@@ -16,6 +16,8 @@ import { fetchRegionSurface } from './api/regions'
 import { renderRegionTile } from './regionTileRenderer'
 import { TileImageCache } from './tileImageCache'
 import { VIEWER_CONFIG } from './viewerConfig'
+import { collectStaleChunks } from './staleChunks'
+import { flyDuration } from './flyDuration'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
@@ -51,6 +53,7 @@ const {
   maxConcurrentBatches: MAX_CONCURRENT_BATCHES,
   maxConcurrentRegionFetches: MAX_CONCURRENT_REGION_FETCHES,
   renderBudgetMs: RENDER_BUDGET_MS,
+  animRenderBudgetMs: ANIM_RENDER_BUDGET_MS,
 } = VIEWER_CONFIG
 
 /** A right-click on the map: viewport pixel position + the world block under it. */
@@ -153,6 +156,10 @@ export class MapEngine {
     // Set in cleanup; async continuations (fetches, createImageBitmap) check it
     // so they don't write to torn-down state after unmount / dimension change.
     let destroyed = false
+    // Aborted on teardown so in-flight chunk/region requests stop downloading
+    // and decoding for an engine nobody is looking at any more. Deliberately not
+    // aborted on pan: that data is still cached and useful when you pan back.
+    const inFlight = new AbortController()
     // Trailing-debounce timer: refresh the overview tiles once texture loading
     // quiesces (they colour blocks from texture averages — see regionRestale).
     let regionRelodTimer: ReturnType<typeof setTimeout> | null = null
@@ -185,6 +192,12 @@ export class MapEngine {
       // Rendered chunks whose edge shading is stale because a neighbor's block
       // data arrived after they were drawn. Re-rendered in the frame loop.
       shadeStale: new Set<string>(),
+      // Rendered chunks drawn before the current texVersion. Derived once per
+      // texVersion bump rather than by re-scanning the whole cache every frame:
+      // texVersion is > 0 from the first loaded texture onward, so a
+      // `texVersion > 0` guard would never actually gate anything.
+      texStale: new Set<string>(),
+      texStaleDirty: false,
       lastBcCount: 0,
       lastConfig: null as RenderConfig | null,
       lastDebugMode: false,
@@ -254,6 +267,7 @@ export class MapEngine {
 
     const unsubTextures = onTextureLoad(() => {
       st.texVersion++
+      st.texStaleDirty = true
       st.forceFrame = true
       // Overview tiles colour blocks from texture averages, so they need a
       // refresh as textures stream in. Debounce on the trailing edge: re-render
@@ -290,6 +304,7 @@ export class MapEngine {
       st.chunkPixels.clear()
       st.cache.clear()
       st.texVersionAtRender.clear()
+      st.texStale.clear()
       st.resolving.clear()
       st.pendingSet.clear()
       st.pending.length = 0
@@ -616,6 +631,7 @@ export class MapEngine {
       st.cache.delete(key)
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
+      st.texStale.delete(key)
       st.chunkPixels.delete(key)
       outlines.remove(key)
       st.liveChunks--
@@ -658,6 +674,7 @@ export class MapEngine {
       st.cache.delete(key)
       st.dataCache.delete(key)
       st.texVersionAtRender.delete(key)
+      st.texStale.delete(key)
       st.chunkPixels.delete(key)
       outlines.remove(key)
       st.liveChunks--
@@ -704,9 +721,14 @@ export class MapEngine {
 
     // Render queued chunks until the per-frame time budget is spent (at least
     // one, so progress is always made even if a single render is expensive).
+    /** Tile-work budget for this frame — tightened while the camera is flying. */
+    function renderBudget(): number {
+      return st.camAnim ? ANIM_RENDER_BUDGET_MS : RENDER_BUDGET_MS
+    }
+
     function drainRenderQueue() {
       if (st.renderQueue.length === 0) return
-      const deadline = performance.now() + RENDER_BUDGET_MS
+      const deadline = performance.now() + renderBudget()
       do {
         const item = st.renderQueue.shift()!
         if (!st.renderSet.has(item.key)) {
@@ -734,7 +756,15 @@ export class MapEngine {
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
-        const chunks = await fetchChunkBatch(dimensionPath, coords)
+        const chunks = await fetchChunkBatch(
+          dimensionPath,
+          coords,
+          inFlight.signal
+        )
+        // The engine can be torn down mid-flight (a dimension switch builds a
+        // fresh one). Its successor is already fetching, so don't decode into
+        // dead state — and above all don't let the `finally` queue more work.
+        if (destroyed) return
 
         const returned = new Set<string>()
         for (const data of chunks) {
@@ -757,6 +787,8 @@ export class MapEngine {
           if (dbg) outlines.set(key, mcx, mcz, 'empty', debugModeRef.current)
         }
       } catch (err) {
+        // A teardown abort is not a chunk failure — don't paint dead state.
+        if (destroyed) return
         for (const [mcx, mcz, key] of items) {
           st.resolving.delete(key)
           st.cache.set(key, 'error')
@@ -765,7 +797,7 @@ export class MapEngine {
         if (dbg) console.error('[atlas:chunk] batch exception', err)
       } finally {
         st.activeBatches--
-        drainQueue()
+        if (!destroyed) drainQueue()
       }
     }
 
@@ -886,7 +918,7 @@ export class MapEngine {
 
     function drainRegionRenderQueue() {
       if (st.regionRenderQueue.length === 0) return
-      const deadline = performance.now() + RENDER_BUDGET_MS
+      const deadline = performance.now() + renderBudget()
       do {
         const item = st.regionRenderQueue.shift()!
         if (st.regionRenderSet.has(item.key)) {
@@ -901,8 +933,10 @@ export class MapEngine {
           dimensionPath,
           rx,
           rz,
-          st.surfaceSkipIds
+          st.surfaceSkipIds,
+          inFlight.signal
         )
+        if (destroyed) return // torn down mid-flight — see fetchBatch
         if (surface.chunks.length === 0) {
           st.regionFailed.add(key)
         } else {
@@ -910,11 +944,12 @@ export class MapEngine {
           st.regionRenderQueue.push({ key, rx, rz, surface })
         }
       } catch {
+        if (destroyed) return // teardown abort, not a region failure
         st.regionFailed.add(key)
       } finally {
         st.regionResolving.delete(key)
         st.activeRegionFetches--
-        drainRegionQueue()
+        if (!destroyed) drainRegionQueue()
       }
     }
 
@@ -1072,6 +1107,7 @@ export class MapEngine {
       if (bcCount !== st.lastBcCount) {
         st.lastBcCount = bcCount
         st.texVersion++
+        st.texStaleDirty = true
         st.lodVersion++
         st.forceFrame = true
       }
@@ -1079,6 +1115,7 @@ export class MapEngine {
       if (cfg !== st.lastConfig) {
         st.lastConfig = cfg
         st.texVersion++
+        st.texStaleDirty = true
         st.lodVersion++
         st.forceFrame = true
       }
@@ -1117,6 +1154,7 @@ export class MapEngine {
         // old look until they happen to be redrawn.
         if (regChanged) {
           st.texVersion++
+          st.texStaleDirty = true
           st.lodVersion++
           st.forceFrame = true
         }
@@ -1173,29 +1211,48 @@ export class MapEngine {
         return
       }
 
+      // A texVersion bump makes every drawn tile stale at once, so collect the
+      // affected keys once per bump. Deriving them by scanning the whole cache
+      // each frame — as this used to — cost an instanceof + two map lookups per
+      // live chunk (up to 3500) on every non-idle frame, including plain panning
+      // where nothing was actually stale.
+      if (st.texStaleDirty) {
+        st.texStale = collectStaleChunks(
+          st.cache,
+          (entry) => entry instanceof THREE.Mesh,
+          st.texVersionAtRender,
+          st.texVersion
+        )
+        st.texStaleDirty = false
+      }
+
       // Re-render stale chunks (max 4 per frame) when textures/colors changed
       // or a late-arriving neighbor invalidated their edge shading.
-      if (st.texVersion > 0 || st.shadeStale.size > 0) {
-        // Prune shade-stale keys whose tile has been evicted meanwhile.
-        for (const key of st.shadeStale) {
-          if (!(st.cache.get(key) instanceof THREE.Mesh)) {
-            st.shadeStale.delete(key)
-          }
-        }
+      if (st.texStale.size > 0 || st.shadeStale.size > 0) {
+        // Both sets can name the same chunk; merge only when both are in play so
+        // the common single-cause case iterates the live set directly.
+        const candidates =
+          st.shadeStale.size === 0
+            ? st.texStale
+            : st.texStale.size === 0
+              ? st.shadeStale
+              : new Set([...st.texStale, ...st.shadeStale])
         let rerendered = 0
-        let moreStale = false
         const staleNoData: string[] = []
-        for (const [key, entry] of st.cache) {
-          if (!(entry instanceof THREE.Mesh)) continue
+        for (const key of candidates) {
+          const entry = st.cache.get(key)
+          // Evicted since being marked — drop it from both sets.
+          if (!(entry instanceof THREE.Mesh)) {
+            st.texStale.delete(key)
+            st.shadeStale.delete(key)
+            continue
+          }
           const texCurrent =
             (st.texVersionAtRender.get(key) ?? 0) >= st.texVersion
-          if (texCurrent && !st.shadeStale.has(key)) continue
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
-            if (rerendered >= 4) {
-              moreStale = true
-              continue
-            }
+            // Budget spent — leave the rest marked for the next frame.
+            if (rerendered >= 4) continue
             const [rmxs, rmzs] = key.split(',')
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
@@ -1235,6 +1292,7 @@ export class MapEngine {
             mat.map = makeChunkTexture(uploadCanvas, texFilter)
             mat.needsUpdate = true
             st.texVersionAtRender.set(key, st.texVersion)
+            st.texStale.delete(key)
             st.shadeStale.delete(key)
             rerendered++
           } else if (!texCurrent) {
@@ -1251,8 +1309,10 @@ export class MapEngine {
           const entry = st.cache.get(key)
           if (entry instanceof THREE.Mesh) disposeLiveChunk(key, entry)
         }
-        // Keep frames coming until the re-render backlog is cleared.
-        st.staleWork = moreStale
+        // Keep frames coming until the re-render backlog is cleared. Reading the
+        // sets directly also covers keys dropped above, so an evicted tile can't
+        // leave the loop spinning on work that no longer exists.
+        st.staleWork = st.texStale.size > 0 || st.shadeStale.size > 0
       }
 
       // Render freshly-fetched chunks and region tiles, time-sliced, for a smooth UI.
@@ -1467,6 +1527,7 @@ export class MapEngine {
           st.cache.delete(key)
           st.dataCache.delete(key)
           st.texVersionAtRender.delete(key)
+          st.texStale.delete(key)
           st.chunkPixels.delete(key)
           outlines.remove(key)
         }
@@ -1490,6 +1551,7 @@ export class MapEngine {
 
     this._cleanup = () => {
       destroyed = true
+      inFlight.abort()
       if (regionRelodTimer !== null) clearTimeout(regionRelodTimer)
       unsubTextures()
       syncRegionsRef.current = null
@@ -1565,7 +1627,7 @@ export class MapEngine {
    */
   animateCameraTo(
     cam: { cx: number; cz: number; scale: number },
-    duration = 500
+    duration?: number
   ): void {
     const st = this._st
     st.camAnim = {
@@ -1576,7 +1638,7 @@ export class MapEngine {
       toCz: cam.cz,
       toScale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale)),
       start: performance.now(),
-      duration,
+      duration: duration ?? flyDuration(st.cam, cam),
     }
     st.forceFrame = true
   }
@@ -1588,7 +1650,7 @@ export class MapEngine {
    */
   animateCameraToBounds(
     bounds: { minX: number; minZ: number; maxX: number; maxZ: number },
-    duration = 500
+    duration?: number
   ): void {
     const { w, h } = this._getDims()
     const worldW = Math.max(16, bounds.maxX - bounds.minX)

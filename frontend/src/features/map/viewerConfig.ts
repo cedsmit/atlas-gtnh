@@ -67,4 +67,15 @@ export const VIEWER_CONFIG = {
   maxConcurrentRegionFetches: 6,
   /** Per-frame time budget for heavy canvas renders (ms). */
   renderBudgetMs: 12,
+  /**
+   * Tighter budget while a fly-to is running. The chunk and region drains take
+   * this deadline each, so the standing 12ms lets one frame spend 24ms on tile
+   * work — fine while parked and filling in, but a fly-to crosses unloaded
+   * terrain *and* lands at max zoom, saturating both queues for the whole
+   * animation. Since the camera moves on wall-clock time, a long frame makes it
+   * leap rather than stall, which reads as stutter. Yielding the frame back
+   * keeps the motion smooth; the tiles land a moment later, while the camera is
+   * moving and nobody is looking closely.
+   */
+  animRenderBudgetMs: 4,
 } as const

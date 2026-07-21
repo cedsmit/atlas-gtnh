@@ -58,25 +58,52 @@ function tintScratch(n: number): TintScratch {
   return _tintScratch
 }
 
-/** Separable box blur (radius R) of an N×N Uint8 channel, in place via tmp. */
-function boxBlur(buf: Uint8Array, tmp: Uint8Array, N: number, R: number): void {
+/**
+ * Separable box blur (radius R) of an N×N Uint8 channel, in place via tmp.
+ *
+ * Each pass carries a running window sum — adding the entering column and
+ * dropping the leaving one — so the cost per pixel is constant instead of the
+ * 2R+1 adds a re-summed window needs. At the sizes this runs on (512², six
+ * channels per region tile) that is the difference between ~22M and ~3M adds
+ * inside the frame's 12ms tile budget.
+ *
+ * The window still clamps at the edges and divides by its actual width, and the
+ * sliding updates preserve that exactly — output is identical to re-summing,
+ * which `regionTileRenderer.test.ts` pins against a naive reference.
+ */
+export function boxBlur(
+  buf: Uint8Array,
+  tmp: Uint8Array,
+  N: number,
+  R: number
+): void {
+  // Horizontal pass: buf → tmp.
   for (let z = 0; z < N; z++) {
     const row = z * N
+    let lo = 0
+    let hi = R < N ? R : N - 1
+    let sum = 0
+    for (let j = lo; j <= hi; j++) sum += buf[row + j]
     for (let x = 0; x < N; x++) {
-      const lo = x - R < 0 ? 0 : x - R
-      const hi = x + R >= N ? N - 1 : x + R
-      let sum = 0
-      for (let j = lo; j <= hi; j++) sum += buf[row + j]
       tmp[row + x] = (sum / (hi - lo + 1)) | 0
+      const nlo = x + 1 - R > 0 ? x + 1 - R : 0
+      const nhi = x + 1 + R < N ? x + 1 + R : N - 1
+      if (nlo > lo) sum -= buf[row + lo++]
+      if (nhi > hi) sum += buf[row + ++hi]
     }
   }
+  // Vertical pass: tmp → buf (strided).
   for (let x = 0; x < N; x++) {
+    let lo = 0
+    let hi = R < N ? R : N - 1
+    let sum = 0
+    for (let j = lo; j <= hi; j++) sum += tmp[j * N + x]
     for (let z = 0; z < N; z++) {
-      const lo = z - R < 0 ? 0 : z - R
-      const hi = z + R >= N ? N - 1 : z + R
-      let sum = 0
-      for (let j = lo; j <= hi; j++) sum += tmp[j * N + x]
       buf[z * N + x] = (sum / (hi - lo + 1)) | 0
+      const nlo = z + 1 - R > 0 ? z + 1 - R : 0
+      const nhi = z + 1 + R < N ? z + 1 + R : N - 1
+      if (nlo > lo) sum -= tmp[lo++ * N + x]
+      if (nhi > hi) sum += tmp[++hi * N + x]
     }
   }
 }

@@ -71,7 +71,11 @@ import {
   loadUserPresets,
   saveUserPreset,
 } from './features/blocks/userPresets'
-import { getTextureState } from './features/textures/textureLoader'
+import {
+  clearTextures,
+  getTextureState,
+} from './features/textures/textureLoader'
+import { clearTextureAverages } from './features/textures/textureAverage'
 import { textureDebugStore } from './features/textures/textureDebugStore'
 
 const LAST_WORLD_KEY = 'atlas:lastWorldPath'
@@ -346,6 +350,8 @@ export default function App() {
     if (worldError) {
       localStorage.removeItem(LAST_WORLD_KEY)
       textureDebugStore.clear()
+      clearTextures()
+      clearTextureAverages()
       setWorldPath(null)
       setDimensionPath(null)
     }
@@ -355,6 +361,8 @@ export default function App() {
   function handleWorldSelected(path: string) {
     localStorage.setItem(LAST_WORLD_KEY, path)
     textureDebugStore.clear()
+    clearTextures()
+    clearTextureAverages()
     setWorldPath(path)
     setDimensionPath(null)
     closePanel()
@@ -363,6 +371,8 @@ export default function App() {
   function handleCloseWorld() {
     localStorage.removeItem(LAST_WORLD_KEY)
     textureDebugStore.clear()
+    clearTextures()
+    clearTextureAverages()
     setWorldPath(null)
     setDimensionPath(null)
     closePanel()
