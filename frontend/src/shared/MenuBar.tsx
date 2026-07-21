@@ -82,7 +82,10 @@ export function MenuBar({
           drag, so the menus and buttons inside stay clickable. */}
       <div
         data-tauri-drag-region
-        className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
+        // cursor-default/select-none because this is a title bar, not copy: the
+        // world path would otherwise show a text I-beam, and a drag across it
+        // would start selecting instead of moving the window.
+        className="flex h-11 cursor-default select-none items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
       >
         {/* Decorative bar contents are pointer-events-none so a mousedown lands
             on the drag region behind them. Tauri starts a drag only when the
