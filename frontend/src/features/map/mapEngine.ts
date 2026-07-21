@@ -156,6 +156,10 @@ export class MapEngine {
     // Set in cleanup; async continuations (fetches, createImageBitmap) check it
     // so they don't write to torn-down state after unmount / dimension change.
     let destroyed = false
+    // Aborted on teardown so in-flight chunk/region requests stop downloading
+    // and decoding for an engine nobody is looking at any more. Deliberately not
+    // aborted on pan: that data is still cached and useful when you pan back.
+    const inFlight = new AbortController()
     // Trailing-debounce timer: refresh the overview tiles once texture loading
     // quiesces (they colour blocks from texture averages — see regionRestale).
     let regionRelodTimer: ReturnType<typeof setTimeout> | null = null
@@ -752,7 +756,11 @@ export class MapEngine {
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
-        const chunks = await fetchChunkBatch(dimensionPath, coords)
+        const chunks = await fetchChunkBatch(
+          dimensionPath,
+          coords,
+          inFlight.signal
+        )
         // The engine can be torn down mid-flight (a dimension switch builds a
         // fresh one). Its successor is already fetching, so don't decode into
         // dead state — and above all don't let the `finally` queue more work.
@@ -779,6 +787,8 @@ export class MapEngine {
           if (dbg) outlines.set(key, mcx, mcz, 'empty', debugModeRef.current)
         }
       } catch (err) {
+        // A teardown abort is not a chunk failure — don't paint dead state.
+        if (destroyed) return
         for (const [mcx, mcz, key] of items) {
           st.resolving.delete(key)
           st.cache.set(key, 'error')
@@ -923,7 +933,8 @@ export class MapEngine {
           dimensionPath,
           rx,
           rz,
-          st.surfaceSkipIds
+          st.surfaceSkipIds,
+          inFlight.signal
         )
         if (destroyed) return // torn down mid-flight — see fetchBatch
         if (surface.chunks.length === 0) {
@@ -933,6 +944,7 @@ export class MapEngine {
           st.regionRenderQueue.push({ key, rx, rz, surface })
         }
       } catch {
+        if (destroyed) return // teardown abort, not a region failure
         st.regionFailed.add(key)
       } finally {
         st.regionResolving.delete(key)
@@ -1539,6 +1551,7 @@ export class MapEngine {
 
     this._cleanup = () => {
       destroyed = true
+      inFlight.abort()
       if (regionRelodTimer !== null) clearTimeout(regionRelodTimer)
       unsubTextures()
       syncRegionsRef.current = null

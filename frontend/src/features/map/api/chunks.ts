@@ -36,12 +36,16 @@ async function fetchChunkData(
  */
 export async function fetchChunkBatch(
   worldPath: string,
-  coords: [number, number][]
+  coords: [number, number][],
+  /** Aborted when the map engine is torn down, so a dimension switch stops
+   *  downloading and decoding megabytes destined for a dead engine. */
+  signal?: AbortSignal
 ): Promise<ChunkData[]> {
   const res = await fetch(`${API_BASE}/worlds/chunks/batch`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ world_path: worldPath, coords }),
+    signal,
   })
   if (!res.ok) throw new Error(`Failed to load chunk batch: ${res.statusText}`)
   const json = (await res.json()) as { chunks: ChunkData[] }

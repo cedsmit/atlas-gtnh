@@ -57,7 +57,9 @@ export async function fetchRegionSurface(
   worldPath: string,
   rx: number,
   rz: number,
-  skipIds?: number[]
+  skipIds?: number[],
+  /** Aborted on map-engine teardown — see fetchChunkBatch. */
+  signal?: AbortSignal
 ): Promise<RegionSurface> {
   // POST (not GET) so the skip-id list travels in the body — it can be long, and
   // keeping it out of the URL keeps the backend access logs readable.
@@ -65,6 +67,7 @@ export async function fetchRegionSurface(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ world_path: worldPath, skip_ids: skipIds ?? [] }),
+    signal,
   })
   if (!res.ok)
     throw new Error(
