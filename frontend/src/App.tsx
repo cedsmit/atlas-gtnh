@@ -703,9 +703,12 @@ export default function App() {
           <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">
             Atlas GTNH
           </h1>
-          <p className="mb-7 mt-2 max-w-sm text-center text-sm text-zinc-500">
-            Open a GregTech: New Horizons save to explore it as a map — no need
-            to launch the game.
+          {/* No dash: at this width the wrap orphaned it onto the next line,
+              and a dash should never open a line. `text-balance` also evens the
+              two lines out instead of leaving a long one over a short one. */}
+          <p className="mb-7 mt-2 max-w-sm text-balance text-center text-sm text-zinc-500">
+            Open a GregTech: New Horizons save and explore it as a map, without
+            launching the game.
           </p>
           <WorldPicker onWorldSelected={handleWorldSelected} />
         </div>
