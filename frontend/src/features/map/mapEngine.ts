@@ -17,6 +17,7 @@ import { renderRegionTile } from './regionTileRenderer'
 import { TileImageCache } from './tileImageCache'
 import { VIEWER_CONFIG } from './viewerConfig'
 import { collectStaleChunks } from './staleChunks'
+import { flyDuration } from './flyDuration'
 import { textureDebugStore } from '../textures/textureDebugStore'
 import type { BlockRenderRegistry } from '../blocks/blockRenderRegistry'
 import type { RenderConfig, TextureFilter } from '../blocks/renderPresets'
@@ -52,6 +53,7 @@ const {
   maxConcurrentBatches: MAX_CONCURRENT_BATCHES,
   maxConcurrentRegionFetches: MAX_CONCURRENT_REGION_FETCHES,
   renderBudgetMs: RENDER_BUDGET_MS,
+  animRenderBudgetMs: ANIM_RENDER_BUDGET_MS,
 } = VIEWER_CONFIG
 
 /** A right-click on the map: viewport pixel position + the world block under it. */
@@ -715,9 +717,14 @@ export class MapEngine {
 
     // Render queued chunks until the per-frame time budget is spent (at least
     // one, so progress is always made even if a single render is expensive).
+    /** Tile-work budget for this frame — tightened while the camera is flying. */
+    function renderBudget(): number {
+      return st.camAnim ? ANIM_RENDER_BUDGET_MS : RENDER_BUDGET_MS
+    }
+
     function drainRenderQueue() {
       if (st.renderQueue.length === 0) return
-      const deadline = performance.now() + RENDER_BUDGET_MS
+      const deadline = performance.now() + renderBudget()
       do {
         const item = st.renderQueue.shift()!
         if (!st.renderSet.has(item.key)) {
@@ -901,7 +908,7 @@ export class MapEngine {
 
     function drainRegionRenderQueue() {
       if (st.regionRenderQueue.length === 0) return
-      const deadline = performance.now() + RENDER_BUDGET_MS
+      const deadline = performance.now() + renderBudget()
       do {
         const item = st.regionRenderQueue.shift()!
         if (st.regionRenderSet.has(item.key)) {
@@ -1607,7 +1614,7 @@ export class MapEngine {
    */
   animateCameraTo(
     cam: { cx: number; cz: number; scale: number },
-    duration = 500
+    duration?: number
   ): void {
     const st = this._st
     st.camAnim = {
@@ -1618,7 +1625,7 @@ export class MapEngine {
       toCz: cam.cz,
       toScale: Math.max(MIN_SCALE, Math.min(MAX_SCALE, cam.scale)),
       start: performance.now(),
-      duration,
+      duration: duration ?? flyDuration(st.cam, cam),
     }
     st.forceFrame = true
   }
@@ -1630,7 +1637,7 @@ export class MapEngine {
    */
   animateCameraToBounds(
     bounds: { minX: number; minZ: number; maxX: number; maxZ: number },
-    duration = 500
+    duration?: number
   ): void {
     const { w, h } = this._getDims()
     const worldW = Math.max(16, bounds.maxX - bounds.minX)
