@@ -171,37 +171,55 @@ export function Item({
   mono?: boolean
   children: ReactNode
 }) {
+  // Beside the menu, not below it, so the tip never covers the next item.
+  const { trigger, tip } = useTooltip(title, 'side')
+  const { onFocus, onBlur, 'aria-describedby': describedBy, ...hover } = trigger
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
-        mono ? 'font-mono text-xs' : 'text-[13px]'
-      } ${
-        disabled
-          ? // zinc-700 sat at 1.33:1 on the menu — not dimmed, invisible. This
-            // is 3.18:1: plainly inactive next to an enabled item's 11:1, but
-            // still readable as a control that exists.
-            'cursor-default text-zinc-600'
-          : tone
-            ? `${TONE_TEXT[tone]} hover:bg-atlas-hover`
-            : active
-              ? 'bg-atlas-hover text-zinc-100'
-              : 'text-zinc-300 hover:bg-atlas-hover hover:text-zinc-100'
-      }`}
-    >
-      {icon && (
-        <span className="shrink-0 [&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
-          {icon}
-        </span>
-      )}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {hint && <span className="text-[10px] text-zinc-600">{hint}</span>}
-      {check && (
-        <Check className="h-3.5 w-3.5 shrink-0 text-atlas-accent" aria-hidden />
-      )}
-    </button>
+    <>
+      {/* Hover handling sits on a wrapper because a disabled button fires no
+          mouse events at all — and "why is this greyed out?" is exactly when
+          the tip earns its keep. Focus stays on the button, which is the thing
+          that can actually take it. */}
+      <span {...hover} className="block">
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          onFocus={onFocus}
+          onBlur={onBlur}
+          aria-describedby={describedBy}
+          className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors ${
+            mono ? 'font-mono text-xs' : 'text-[13px]'
+          } ${
+            disabled
+              ? // zinc-700 sat at 1.33:1 on the menu — not dimmed, invisible. This
+                // is 3.18:1: plainly inactive next to an enabled item's 11:1, but
+                // still readable as a control that exists.
+                'cursor-default text-zinc-600'
+              : tone
+                ? `${TONE_TEXT[tone]} hover:bg-atlas-hover`
+                : active
+                  ? 'bg-atlas-hover text-zinc-100'
+                  : 'text-zinc-300 hover:bg-atlas-hover hover:text-zinc-100'
+          }`}
+        >
+          {icon && (
+            <span className="shrink-0 [&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
+              {icon}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate">{children}</span>
+          {hint && <span className="text-[10px] text-zinc-600">{hint}</span>}
+          {check && (
+            <Check
+              className="h-3.5 w-3.5 shrink-0 text-atlas-accent"
+              aria-hidden
+            />
+          )}
+        </button>
+      </span>
+      {tip}
+    </>
   )
 }
 

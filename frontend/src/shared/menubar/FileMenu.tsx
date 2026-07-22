@@ -81,7 +81,11 @@ export function FileMenu({
 
       {isOpen && (
         <Dropdown className="left-0 min-w-[230px]">
-          <Item onClick={() => void openWorld()} icon={<FolderOpen />}>
+          <Item
+            onClick={() => void openWorld()}
+            icon={<FolderOpen />}
+            title="Pick a world folder to load"
+          >
             Open World…
           </Item>
 
@@ -112,6 +116,7 @@ export function FileMenu({
               onCloseWorld()
             }}
             disabled={!worldPath}
+            title="Unload this world and go back to the picker"
           >
             Close World
           </Item>

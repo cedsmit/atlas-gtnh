@@ -4,11 +4,29 @@ import { createPortal } from 'react-dom'
 /** Long enough that crossing the bar on the way elsewhere does not trigger tips. */
 const DELAY_MS = 400
 
-/** Half the tip's max width, used to keep it clear of the window edges. */
-const HALF_MAX = 150
+/** Widest a tip gets before it wraps. */
+const MAX_W = 300
+
+/** Narrower than this beside a menu and the tip flips to the other side. */
+const MIN_SIDE = 170
 
 /** Gap between the trigger and the tip. */
 const OFFSET = 8
+
+/**
+ * Where the tip sits. `below` suits the bar; `side` is for menu items, where a
+ * tip underneath would cover the next item down — the one thing you are most
+ * likely to be reading towards.
+ */
+export type TipPlace = 'below' | 'side'
+
+interface Pos {
+  x: number
+  y: number
+  /** Transform that anchors the tip's box to (x, y) for the chosen side. */
+  cls: string
+  max: number
+}
 
 /**
  * Hover text for the bar's buttons.
@@ -23,8 +41,8 @@ const OFFSET = 8
  * window drag. `aria-describedby` carries the text to assistive tech, which is
  * the one job the `title` attribute was still doing.
  */
-export function useTooltip(text?: string) {
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null)
+export function useTooltip(text?: string, place: TipPlace = 'below') {
+  const [at, setAt] = useState<Pos | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const id = useId()
 
@@ -38,13 +56,31 @@ export function useTooltip(text?: string) {
   const show = (e: { currentTarget: HTMLElement }) => {
     if (!text) return
     const r = e.currentTarget.getBoundingClientRect()
-    const x = Math.min(
-      Math.max(r.left + r.width / 2, HALF_MAX + OFFSET),
-      window.innerWidth - HALF_MAX - OFFSET
-    )
-    const y = r.bottom + OFFSET
+    let pos: Pos
+
+    if (place === 'side') {
+      // Menus sit at either end of the bar, so which side has room varies.
+      const right = window.innerWidth - r.right - OFFSET * 2
+      const left = r.left - OFFSET * 2
+      pos =
+        right >= Math.min(MIN_SIDE, left)
+          ? { x: r.right + OFFSET, y: r.top + r.height / 2, cls: '-translate-y-1/2', max: right } // prettier-ignore
+          : { x: r.left - OFFSET, y: r.top + r.height / 2, cls: '-translate-y-1/2 -translate-x-full', max: left } // prettier-ignore
+    } else {
+      const half = MAX_W / 2
+      pos = {
+        x: Math.min(
+          Math.max(r.left + r.width / 2, half + OFFSET),
+          window.innerWidth - half - OFFSET
+        ),
+        y: r.bottom + OFFSET,
+        cls: '-translate-x-1/2',
+        max: MAX_W,
+      }
+    }
+
     cancel()
-    timer.current = setTimeout(() => setAt({ x, y }), DELAY_MS)
+    timer.current = setTimeout(() => setAt(pos), DELAY_MS)
   }
 
   const hide = () => {
@@ -70,8 +106,12 @@ export function useTooltip(text?: string) {
             <div
               id={id}
               role="tooltip"
-              style={{ left: at.x, top: at.y }}
-              className="pointer-events-none fixed z-[100] max-w-[300px] -translate-x-1/2 rounded-md border border-zinc-700 bg-atlas-menu px-2.5 py-1.5 text-xs leading-snug text-zinc-300 shadow-xl"
+              style={{
+                left: at.x,
+                top: at.y,
+                maxWidth: Math.min(at.max, MAX_W),
+              }}
+              className={`pointer-events-none fixed z-[100] rounded-md border border-zinc-700 bg-atlas-menu px-2.5 py-1.5 text-xs leading-snug text-zinc-300 shadow-xl ${at.cls}`}
             >
               {text}
             </div>,
