@@ -197,3 +197,35 @@ will not appear in the dump. These blocks render via raw OpenGL calls:
 
 These are already unresolvable by any static method and remain as gray
 fallbacks on the map.
+
+## rotation_dump.json (v1.5.0)
+
+Written on world load, alongside the biome and ore-vein dumps.
+
+Atlas re-faces machines when it rotates a pasted chunk selection, and facing
+lives in tile-entity NBT under a key each mod picks for itself — GregTech uses
+`mFacing`, others use `facing`, `direction`, `orientation`. There is no registry
+of these, so without this dump the rotator can only pattern-match key names and
+hope, which means guessing inside somebody's save.
+
+This asks the game instead, the same way the icon dump does: every registered
+tile entity is constructed standalone and asked to serialise itself, and the
+keys it emits are its real storage schema.
+
+```json
+{
+  "format": "atlas-gtnh-rotation-dump-v1",
+  "tile_entity_keys": { "GT_TileEntity_...": ["mFacing", "mConnections", ...] },
+  "failed": ["SomeTE: NullPointerException"]
+}
+```
+
+Nothing is placed or changed in the world — the instances are throwaway. Classes
+that will not construct or serialise in isolation are listed under `failed`
+rather than dropped, because from the Python side a missing entry and a machine
+that cannot be rotated look identical.
+
+Being a schema rather than a rule, it narrows the guess rather than removing it:
+it says *which* key holds the facing, not what its values mean. Encodings still
+have to be confirmed per mod (ForgeDirection ordinals cover most of 1.7.10).
+

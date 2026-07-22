@@ -40,7 +40,8 @@ import javax.imageio.ImageIO;
  * At runtime Forge's LaunchClassLoader deobfuscates vanilla classes to MCP names,
  * so reflection lookups by MCP name ("getIcon", "getIconName", etc.) succeed.
  *
- * Output: {gameDir}/config/atlas/icon_dump.json
+ * Output: {gameDir}/config/atlas/icon_dump.json, biome_dump.json,
+ *         ore_vein_dump.json, rotation_dump.json
  * Format: atlas-gtnh-icon-dump-v1
  */
 @Mod(
@@ -52,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.4.4";
+    public static final String VERSION = "1.5.0";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -67,6 +68,8 @@ public class AtlasDumper {
     // after the (early) texture stitch, so dumping at stitch time throws an Error
     // from the enum's static init and silently fails — wait for a loaded world.
     private boolean oreVeinsDumped = false;
+    // Tile-entity NBT schemas, for re-facing machines in a rotated paste.
+    private boolean rotationsDumped = false;
 
     // Resolved once on first dump; cached for the life of the process.
     private Method getIconMethod     = null;  // Block.getIcon(int, int) → IIcon
@@ -91,7 +94,7 @@ public class AtlasDumper {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (biomesDumped && oreVeinsDumped) return;
+        if (biomesDumped && oreVeinsDumped && rotationsDumped) return;
         // Wait for a loaded world: the grass/foliage colormaps (biomes) and the
         // fully-baked GregTech OreMixes / Materials / ore-block icons (ore veins)
         // are only guaranteed once a world is in — not at texture-stitch time.
@@ -105,6 +108,11 @@ public class AtlasDumper {
             oreVeinsDumped = true;
             System.out.println("[AtlasDumper] World loaded — starting ore-vein dump...");
             dumpOreVeins(); // GregTech ore-vein registry (name + representative ore texture + colour)
+        }
+        if (!rotationsDumped) {
+            rotationsDumped = true;
+            System.out.println("[AtlasDumper] World loaded — starting rotation dump...");
+            dumpRotations(); // tile-entity NBT schemas, so a rotated paste can re-face machines
         }
     }
 
@@ -982,4 +990,135 @@ public class AtlasDumper {
         }
         return sb.append('"').toString();
     }
+
+    // ── Rotation dump ────────────────────────────────────────────────────
+    // Which NBT keys each tile entity actually writes.
+    //
+    // Atlas has to re-face machines when it rotates a pasted selection, and
+    // facing lives in tile-entity NBT under a name each mod picks for itself
+    // (GregTech uses mFacing, others use facing/direction/orientation...).
+    // Without this list the rotator can only pattern-match key names and hope,
+    // which is a guess written into somebody's save.
+    //
+    // Read the same way the icon dump reads icons — by asking the game rather
+    // than by inferring from ids. Each tile entity is constructed and asked to
+    // serialise itself; the keys it emits are its real storage schema.
+    //
+    // Nothing is placed or modified in the world: instances are standalone and
+    // discarded. Classes that refuse to construct or serialise in isolation are
+    // recorded as failures rather than skipped silently, since a missing entry
+    // and an unrotatable machine look identical from the Python side.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void dumpRotations() {
+        Map<String, String[]> teKeys = new TreeMap<String, String[]>();
+        List<String> failed = new ArrayList<String>();
+
+        try {
+            Class<?> teClass = Class.forName("net.minecraft.tileentity.TileEntity");
+            Map<String, Class<?>> byName = null;
+            // Forge 1.7.10 keeps the registry in a private static map; the field
+            // name differs between obfuscated and MCP-mapped runs.
+            for (Field f : teClass.getDeclaredFields()) {
+                if (!Map.class.isAssignableFrom(f.getType())) continue;
+                f.setAccessible(true);
+                Map<?, ?> m = (Map<?, ?>) f.get(null);
+                if (m == null || m.isEmpty()) continue;
+                Object k = m.keySet().iterator().next();
+                if (k instanceof String) { byName = (Map<String, Class<?>>) m; break; }
+            }
+            if (byName == null) {
+                System.err.println("[AtlasDumper] Could not find the tile-entity registry; skipping rotation dump.");
+                return;
+            }
+
+            Class<?> nbtClass = Class.forName("net.minecraft.nbt.NBTTagCompound");
+            Method writeToNBT = null;
+            for (Method m : teClass.getMethods()) {
+                if (m.getParameterTypes().length == 1
+                        && m.getParameterTypes()[0] == nbtClass
+                        && m.getReturnType() == void.class
+                        && m.getName().length() <= 12) {
+                    // writeToNBT and readFromNBT have the same shape; the writer
+                    // is the one that leaves keys behind, so probe rather than
+                    // trust the name (it is obfuscated in a production run).
+                    Object probe = nbtClass.newInstance();
+                    try {
+                        Object inst = teClass.newInstance();
+                        m.invoke(inst, probe);
+                        if (!keysOf(probe).isEmpty()) { writeToNBT = m; break; }
+                    } catch (Throwable ignored) { /* try the next candidate */ }
+                }
+            }
+            if (writeToNBT == null) {
+                System.err.println("[AtlasDumper] Could not resolve writeToNBT; skipping rotation dump.");
+                return;
+            }
+
+            for (Map.Entry<String, Class<?>> e : byName.entrySet()) {
+                try {
+                    Object inst = e.getValue().newInstance();
+                    Object tag = nbtClass.newInstance();
+                    writeToNBT.invoke(inst, tag);
+                    Set<String> keys = keysOf(tag);
+                    teKeys.put(e.getKey(), keys.toArray(new String[keys.size()]));
+                } catch (Throwable t) {
+                    failed.add(e.getKey() + ": " + t.getClass().getSimpleName());
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[AtlasDumper] Rotation dump failed: " + t);
+            return;
+        }
+
+        File outDir = new File(gameDir, "config/atlas");
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            System.err.println("[AtlasDumper] Could not create output directory: " + outDir);
+            return;
+        }
+        File outFile = new File(outDir, "rotation_dump.json");
+        try (FileWriter w = new FileWriter(outFile)) {
+            String ts = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date());
+            w.write("{\n");
+            w.write("  \"format\": \"atlas-gtnh-rotation-dump-v1\",\n");
+            w.write("  \"dumper_version\": " + jsonStr(VERSION) + ",\n");
+            w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
+            w.write("  \"tile_entity_keys\": {\n");
+            int i = 0;
+            for (Map.Entry<String, String[]> e : teKeys.entrySet()) {
+                w.write("    " + jsonStr(e.getKey()) + ": [");
+                for (int k = 0; k < e.getValue().length; k++) {
+                    if (k > 0) w.write(", ");
+                    w.write(jsonStr(e.getValue()[k]));
+                }
+                w.write("]");
+                w.write(++i < teKeys.size() ? ",\n" : "\n");
+            }
+            w.write("  },\n");
+            w.write("  \"failed\": [");
+            for (int k = 0; k < failed.size(); k++) {
+                if (k > 0) w.write(", ");
+                w.write(jsonStr(failed.get(k)));
+            }
+            w.write("]\n}\n");
+            System.out.println("[AtlasDumper] Wrote " + teKeys.size() + " tile-entity schemas ("
+                    + failed.size() + " failed) to " + outFile);
+        } catch (IOException e) {
+            System.err.println("[AtlasDumper] Could not write rotation dump: " + e);
+        }
+    }
+
+    /** Key names of an NBTTagCompound, via whichever accessor this build exposes. */
+    @SuppressWarnings("unchecked")
+    private static Set<String> keysOf(Object tag) {
+        for (Method m : tag.getClass().getMethods()) {
+            if (m.getParameterTypes().length == 0 && Set.class.isAssignableFrom(m.getReturnType())) {
+                try {
+                    Set<String> s = (Set<String>) m.invoke(tag);
+                    if (s != null) return s;
+                } catch (Throwable ignored) { /* next */ }
+            }
+        }
+        return Collections.emptySet();
+    }
+
 }
