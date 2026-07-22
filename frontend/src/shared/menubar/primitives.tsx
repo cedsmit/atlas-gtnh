@@ -23,7 +23,6 @@ export function MenuButton({
   onClick,
   icon,
   caret,
-  badge,
   active,
   accent,
   title,
@@ -33,7 +32,6 @@ export function MenuButton({
   onClick: () => void
   icon: ReactNode
   caret?: boolean
-  badge?: number
   /** This menu's panel is currently open. */
   active?: boolean
   accent?: Tone
@@ -60,17 +58,6 @@ export function MenuButton({
         {icon}
       </span>
       {children}
-      {badge !== undefined && (
-        <span
-          className={`rounded-full px-1.5 text-[11px] font-semibold ${
-            badge > 0
-              ? 'bg-atlas-accent text-[#0b1512]'
-              : 'bg-zinc-800 text-zinc-500'
-          }`}
-        >
-          {badge}
-        </span>
-      )}
       {caret && (
         <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
       )}

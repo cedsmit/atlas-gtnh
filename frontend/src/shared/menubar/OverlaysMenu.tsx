@@ -78,7 +78,6 @@ export function OverlaysMenu({
   infraDetail,
 }: Props) {
   const offered = OVERLAY_DEFS.filter((d) => items[d.id])
-  const count = offered.filter((d) => items[d.id]?.on).length
 
   const infra = items.infra
   const systems = infraDetail?.systems ?? []
@@ -124,7 +123,6 @@ export function OverlaysMenu({
         onClick={onToggle}
         icon={<Layers />}
         caret
-        badge={count}
         title="Overlays drawn on top of the map"
       >
         Overlays
