@@ -7,6 +7,7 @@ import {
   createWorld,
   deleteChunks,
   deleteChunksExcept,
+  type RotationReport,
 } from './api/chunkOps'
 import { setClipboard, useClipboard } from './chunkClipboard'
 
@@ -25,6 +26,27 @@ export type Destructive = 'delete' | 'deleteExcept'
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
+/**
+ * Turn the backend's rotation report into one honest sentence.
+ *
+ * The guessed count is the point: those are tile-entity fields matched by name
+ * rather than by a verified rule, so the number is really "how many machines to
+ * go and look at". Reporting only the successes would imply a confidence the
+ * rotation does not have.
+ */
+export function rotationNote(report?: RotationReport): string {
+  if (!report) return ''
+  const guessed = Object.values(report.guessed_keys).reduce((a, b) => a + b, 0)
+  const parts = [`Turned ${report.turn}°`]
+  if (report.blocks_turned)
+    parts.push(`${report.blocks_turned} block(s) re-faced`)
+  if (guessed)
+    parts.push(
+      `${guessed} machine field(s) rotated on a guess — check them in game`
+    )
+  return ` ${parts.join(', ')}.`
+}
+
 export function selectionCount(s: ChunkSelection): number {
   return (Math.abs(s.cx1 - s.cx0) + 1) * (Math.abs(s.cz1 - s.cz0) + 1)
 }
@@ -35,6 +57,34 @@ export function normalise(s: ChunkSelection): ChunkSelection {
     cz0: Math.min(s.cz0, s.cz1),
     cx1: Math.max(s.cx0, s.cx1),
     cz1: Math.max(s.cz0, s.cz1),
+  }
+}
+
+/**
+ * Where a chunk at offset (i, j) inside a w×h selection lands after *turn*
+ * degrees clockwise.
+ *
+ * Mirrors `rotate_grid` in the backend's `chunk_rotate`. The duplication is
+ * deliberate and small: the map has to know which chunks a turned paste will
+ * cover before the request is sent (to draw the preview) and which ones to
+ * redraw after (to refresh them), and neither can wait for a round trip.
+ */
+export function rotateInBox(
+  i: number,
+  j: number,
+  turn: number,
+  w: number,
+  h: number
+): [number, number] {
+  switch (((turn % 360) + 360) % 360) {
+    case 90:
+      return [h - 1 - j, i]
+    case 180:
+      return [w - 1 - i, h - 1 - j]
+    case 270:
+      return [j, w - 1 - i]
+    default:
+      return [i, j]
   }
 }
 
@@ -64,6 +114,7 @@ export function useChunkOps(
   const [mode, setMode] = useState<ChunkOpsMode>('select')
   const [selection, setSelection] = useState<ChunkSelection | null>(null)
   const [anchor, setAnchor] = useState<{ cx: number; cz: number } | null>(null)
+  const [turn, setTurn] = useState(0)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState(false)
@@ -80,6 +131,7 @@ export function useChunkOps(
     setMode('select')
     setSelection(null)
     setAnchor(null)
+    setTurn(0)
     setResult(null)
     engineRef.current?.setSelection(null)
     engineRef.current?.setPreview(null)
@@ -108,9 +160,16 @@ export function useChunkOps(
   }, [engineRef])
 
   // ── Paste preview ────────────────────────────────────────────────────
-  const size = clipboard && {
+  // A quarter turn swaps the footprint, so the preview has to swap with it —
+  // otherwise the outline stops matching what the paste will actually cover.
+  const quarter = turn === 90 || turn === 270
+  const raw = clipboard && {
     w: clipboard.bounds.cx1 - clipboard.bounds.cx0 + 1,
     h: clipboard.bounds.cz1 - clipboard.bounds.cz0 + 1,
+  }
+  const size = raw && {
+    w: quarter ? raw.h : raw.w,
+    h: quarter ? raw.w : raw.h,
   }
 
   useEffect(() => {
@@ -126,12 +185,15 @@ export function useChunkOps(
       cz1: anchor.cz + size.h - 1,
     })
     return () => eng?.setPreview(null)
-  }, [mode, anchor, size?.w, size?.h, engineRef]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, anchor, size?.w, size?.h, turn, engineRef]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const placeAnchor = useCallback((cx: number, cz: number) => {
     setAnchor({ cx, cz })
     setResult(null)
   }, [])
+
+  /** Quarter turn clockwise; wraps back to none after a full circle. */
+  const rotate = useCallback(() => setTurn((t) => (t + 90) % 360), [])
 
   const nudge = useCallback(
     (dx: number, dz: number) =>
@@ -163,6 +225,7 @@ export function useChunkOps(
   function exitPaste() {
     setMode('select')
     setAnchor(null)
+    setTurn(0)
     setResult(null)
     engineRef.current?.setPreview(null)
   }
@@ -213,17 +276,32 @@ export function useChunkOps(
     if (!clipboard || !anchor) return
     const dx = anchor.cx - clipboard.bounds.cx0
     const dz = anchor.cz - clipboard.bounds.cz0
+    const b = clipboard.bounds
+    const w = b.cx1 - b.cx0 + 1
+    const h = b.cz1 - b.cz0 + 1
     await run(
       () =>
-        copyChunks(clipboard.srcDim, dimensionPath, clipboard.chunks, [dx, dz]),
+        copyChunks(
+          clipboard.srcDim,
+          dimensionPath,
+          clipboard.chunks,
+          [dx, dz],
+          turn
+        ),
       (r) => {
+        // Redraw where the chunks actually landed — a turn moves them somewhere
+        // the plain offset would not predict.
         engineRef.current?.invalidateChunks(
-          clipboard.chunks.map(([cx, cz]) => [cx + dx, cz + dz])
+          clipboard.chunks.map(([cx, cz]) => {
+            const [i, j] = rotateInBox(cx - b.cx0, cz - b.cz0, turn, w, h)
+            return [b.cx0 + dx + i, b.cz0 + dz + j]
+          })
         )
         return (
           `Pasted ${r.copied ?? 0} chunk(s)` +
           (r.missing ? `, ${r.missing} missing` : '') +
-          '.'
+          '.' +
+          rotationNote(r.rotation)
         )
       }
     )
@@ -253,6 +331,8 @@ export function useChunkOps(
     mode,
     selection,
     anchor,
+    turn,
+    rotate,
     busy,
     result,
     error,

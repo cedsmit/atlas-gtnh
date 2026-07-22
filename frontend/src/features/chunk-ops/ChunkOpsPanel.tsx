@@ -8,6 +8,7 @@ import {
   ClipboardPaste,
   FolderPlus,
   Loader2,
+  RotateCw,
   Trash2,
   TriangleAlert,
   X,
@@ -173,8 +174,44 @@ function PasteStep({ ops }: { ops: ChunkOps }) {
       <Step n={1} label="Place">
         <p className="text-xs text-zinc-500">
           Click the map to position the {clipboard.chunks.length}-chunk paste,
-          then nudge it.
+          then nudge or turn it.
         </p>
+
+        {/* Rotation is the one control here that can be wrong in a way the map
+            cannot show: blocks land correctly, but a machine's facing is only
+            as good as our rules for its mod. Say so where the choice is made,
+            not in a result message after the save has been written. */}
+        <div className="mt-2.5 rounded-lg border border-atlas-amber-line bg-atlas-amber-bg p-2.5">
+          <div className="flex items-center gap-2">
+            <RotateCw
+              className="h-3.5 w-3.5 shrink-0 text-atlas-amber"
+              aria-hidden
+            />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-atlas-amber">
+              Rotate
+            </span>
+            <span className="rounded border border-atlas-amber-line px-1.5 py-px text-[9px] uppercase tracking-wider text-atlas-amber">
+              WIP
+            </span>
+            <span className="ml-auto font-mono text-xs text-zinc-300">
+              {ops.turn}°
+            </span>
+          </div>
+
+          <div className="mt-2 flex gap-1.5">
+            <Action onClick={ops.rotate} disabled={busy} icon={<RotateCw />}>
+              Turn 90° clockwise
+            </Action>
+          </div>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-atlas-amber">
+            Blocks and terrain turn exactly. Machine and pipe facing is
+            best-effort — mods store it in their own way, so some may come out
+            pointing the wrong direction.{' '}
+            <strong>Back up the world first</strong>, and check your machines
+            after pasting.
+          </p>
+        </div>
         {anchor && (
           <div className="mt-2 flex items-center gap-2">
             <span className="font-mono text-xs text-zinc-300">

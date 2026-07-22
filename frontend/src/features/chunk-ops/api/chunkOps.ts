@@ -1,11 +1,26 @@
 import { API_BASE } from '../../../shared/api'
 
+/**
+ * What a turned paste could and could not re-face.
+ *
+ * Present only when the paste was rotated, because only then is anything
+ * uncertain. `guessed_keys` are tile-entity fields matched by name rather than
+ * by a verified rule — the machines worth checking in game.
+ */
+export interface RotationReport {
+  turn: number
+  blocks_turned: number
+  blocks_skipped: Record<string, number>
+  guessed_keys: Record<string, number>
+}
+
 export interface ChunkOpResult {
   deleted?: number
   copied?: number
   kept?: number
   missing?: number
   regions: string[]
+  rotation?: RotationReport
 }
 
 async function post(path: string, body: unknown): Promise<ChunkOpResult> {
@@ -45,13 +60,16 @@ export function copyChunks(
   srcWorld: string,
   dstWorld: string,
   chunks: [number, number][],
-  offset: [number, number] = [0, 0]
+  offset: [number, number] = [0, 0],
+  /** Degrees clockwise seen from above; a multiple of 90. */
+  turn = 0
 ): Promise<ChunkOpResult> {
   return post('/worlds/chunks/copy', {
     src_world: srcWorld,
     dst_world: dstWorld,
     chunks,
     offset,
+    turn,
   })
 }
 
