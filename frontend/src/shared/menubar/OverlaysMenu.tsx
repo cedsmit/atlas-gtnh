@@ -29,11 +29,36 @@ import { type MenuProps } from './types'
  * stays reserved for the Debug menu's diagnostics, where the kind differs.
  */
 const OVERLAY_DEFS = [
-  { id: 'grid', label: 'Grid', Icon: Grid3x3 },
-  { id: 'oreVeins', label: 'Ore veins', Icon: Gem },
-  { id: 'heatmap', label: 'Heatmap', Icon: Flame },
-  { id: 'infra', label: 'Infrastructure', Icon: Waypoints },
-] as const satisfies readonly { id: string; label: string; Icon: LucideIcon }[]
+  {
+    id: 'grid',
+    label: 'Grid',
+    Icon: Grid3x3,
+    desc: 'Region and chunk boundaries over the map',
+  },
+  {
+    id: 'oreVeins',
+    label: 'Ore veins',
+    Icon: Gem,
+    desc: 'Ore veins recorded by Visual Prospecting',
+  },
+  {
+    id: 'heatmap',
+    label: 'Heatmap',
+    Icon: Flame,
+    desc: 'Shades each chunk by machine and infrastructure density, so factories stand out from terrain',
+  },
+  {
+    id: 'infra',
+    label: 'Infrastructure',
+    Icon: Waypoints,
+    desc: 'Machines, pipes and cables, grouped into connected systems',
+  },
+] as const satisfies readonly {
+  id: string
+  label: string
+  Icon: LucideIcon
+  desc: string
+}[]
 
 export type OverlayId = (typeof OVERLAY_DEFS)[number]['id']
 
@@ -98,6 +123,7 @@ export function OverlaysMenu({
               key={sys}
               onClick={() => onToggleSystem(sys, !visible)}
               check={visible}
+              title="Show or hide this system without turning off the rest of the overlay"
             >
               {sys}
             </Item>
@@ -108,6 +134,7 @@ export function OverlaysMenu({
             onClick={infraDetail.onToggleCables}
             check={infraDetail.showCables}
             hint="power / data"
+            title="Draw the power and data runs that connect the systems"
           >
             Cables
           </Item>
@@ -130,7 +157,7 @@ export function OverlaysMenu({
 
       {isOpen && (
         <Dropdown className="left-0 w-[236px]">
-          {offered.map(({ id, label, Icon }) => {
+          {offered.map(({ id, label, Icon, desc }) => {
             const state = items[id]
             if (!state) return null
             return (
@@ -140,6 +167,7 @@ export function OverlaysMenu({
                 icon={state.loading ? <Spinner /> : <Icon />}
                 check={state.on}
                 hint={state.hint}
+                title={desc}
                 tone={state.on ? 'accent' : undefined}
               >
                 {label}

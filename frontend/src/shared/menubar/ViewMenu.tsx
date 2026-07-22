@@ -82,6 +82,9 @@ export function ViewMenu({
                     key={tag}
                     onClick={() => onSetLayer(tag, !visible)}
                     check={visible}
+                    // The label already says which blocks these are; what is
+                    // worth explaining is that the choice outranks the preset.
+                    title={`Show or hide ${label.toLowerCase()} regardless of the preset`}
                   >
                     {label}
                   </Item>
@@ -92,7 +95,11 @@ export function ViewMenu({
                   {/* An action, not an eighth layer — the rule keeps it from
                       reading as one more toggle in the list. */}
                   <Separator />
-                  <Item onClick={onResetLayers} disabled={!hasLayerOverrides}>
+                  <Item
+                    onClick={onResetLayers}
+                    disabled={!hasLayerOverrides}
+                    title="Drop your layer choices and go back to what the preset shows"
+                  >
                     Reset to preset
                   </Item>
                 </>
