@@ -53,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.5.2";
+    public static final String VERSION = "1.5.3";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -154,6 +154,11 @@ public class AtlasDumper {
         int skippedNoName   = 0;   // registry entries with no resolvable name
         int errorCount      = 0;
         List<String> errorSamples = new ArrayList<>();
+        // Per-block tallies: a bare total cannot tell a thin spread across
+        // every block (normal - most blocks use two or three metas of the
+        // sixteen probed) from a handful of blocks failing every probe, which
+        // is the case worth looking at.
+        Map<String, Integer> errorsByBlock = new HashMap<>();
         List<String> noIconNames  = new ArrayList<>();  // named but zero icons (full list)
 
         // Raw registry — generics erased at runtime, elements are Block at runtime.
@@ -260,6 +265,8 @@ public class AtlasDumper {
                         }
                     } catch (Exception e) {
                         errorCount++;
+                        Integer prior = errorsByBlock.get(regName);
+                        errorsByBlock.put(regName, prior == null ? 1 : prior + 1);
                         if (errorSamples.size() < 50) {
                             Throwable cause = (e.getCause() != null) ? e.getCause() : e;
                             errorSamples.add(regName + " m=" + meta + " s=" + side
@@ -307,7 +314,7 @@ public class AtlasDumper {
 
         try (FileWriter w = new FileWriter(outFile)) {
             writeJson(w, blocksMap, totalBlocks, resolvedBlocks, skippedNoName,
-                      errorCount, errorSamples, noIconNames, modList,
+                      errorCount, errorSamples, errorsByBlock, noIconNames, modList,
                       iterCount, idScanMethod, idScanAdded);
             System.out.printf(
                 "[AtlasDumper] Done — %d/%d blocks (%d no-icon, %d unnamed), "
@@ -359,7 +366,8 @@ public class AtlasDumper {
         FileWriter w,
         Map<String, Map<String, Map<String, String>>> blocksMap,
         int total, int resolved, int skippedNoName, int errors,
-        List<String> errorSamples, List<String> noIconNames, List<String> modList,
+        List<String> errorSamples, Map<String, Integer> errorsByBlock,
+        List<String> noIconNames, List<String> modList,
         int iterCount, String idScanMethod, int idScanAdded
     ) throws IOException {
         String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
@@ -384,6 +392,23 @@ public class AtlasDumper {
             w.write(jsonStr(errorSamples.get(i)));
         }
         w.write("],\n");
+        // Worst offenders only: the long tail is one or two misses per block and
+        // says nothing, while a block failing every probe is a real finding.
+        List<Map.Entry<String, Integer>> worst =
+            new ArrayList<Map.Entry<String, Integer>>(errorsByBlock.entrySet());
+        Collections.sort(worst, new Comparator<Map.Entry<String, Integer>>() {
+            public int compare(Map.Entry<String, Integer> a, Map.Entry<String, Integer> b) {
+                int d = b.getValue().intValue() - a.getValue().intValue();
+                return d != 0 ? d : a.getKey().compareTo(b.getKey());
+            }
+        });
+        w.write("    \"blocks_with_errors\": " + errorsByBlock.size() + ",\n");
+        w.write("    \"worst_error_blocks\": {");
+        for (int k = 0; k < worst.size() && k < 40; k++) {
+            if (k > 0) w.write(", ");
+            w.write(jsonStr(worst.get(k).getKey()) + ": " + worst.get(k).getValue());
+        }
+        w.write("},\n");
         w.write("    \"no_icon_blocks\": [");
         for (int i = 0; i < noIconNames.size(); i++) {
             if (i > 0) w.write(", ");
