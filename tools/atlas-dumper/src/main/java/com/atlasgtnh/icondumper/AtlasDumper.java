@@ -53,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.5.1";
+    public static final String VERSION = "1.5.2";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -1021,20 +1021,56 @@ public class AtlasDumper {
         try {
             Class<?> teClass = Class.forName("net.minecraft.tileentity.TileEntity");
             Map<String, Class<?>> byName = null;
-            // Forge 1.7.10 keeps the registry in a private static map; the field
-            // name differs between obfuscated and MCP-mapped runs.
+            StringBuilder seen = new StringBuilder();
+
+            // The registry is a private static map on TileEntity, under an
+            // obfuscated field name, so it is found by shape: String keys and
+            // Class values. GameRegistry.registerTileEntity writes into it, so
+            // it is populated by the time mod loading finishes.
+            //
+            // Both directions exist (name->class and class->name); either will
+            // do, since one is just the other inverted. Whatever is found gets
+            // logged, because "could not find it" with no detail is not a report
+            // anyone can act on.
             for (Field f : teClass.getDeclaredFields()) {
                 if (!Map.class.isAssignableFrom(f.getType())) continue;
-                f.setAccessible(true);
-                Map<?, ?> m = (Map<?, ?>) f.get(null);
-                if (m == null || m.isEmpty()) continue;
-                Object k = m.keySet().iterator().next();
-                if (k instanceof String) { byName = (Map<String, Class<?>>) m; break; }
+                Map<?, ?> m;
+                try {
+                    f.setAccessible(true);
+                    m = (Map<?, ?>) f.get(null);
+                } catch (Throwable t) {
+                    seen.append(" [").append(f.getName()).append(": ")
+                        .append(t.getClass().getSimpleName()).append("]");
+                    continue;
+                }
+                if (m == null || m.isEmpty()) {
+                    seen.append(" [").append(f.getName()).append(": ")
+                        .append(m == null ? "null" : "empty").append("]");
+                    continue;
+                }
+                Map.Entry<?, ?> e = m.entrySet().iterator().next();
+                seen.append(" [").append(f.getName()).append(": ").append(m.size())
+                    .append(" ").append(kindOf(e.getKey())).append("->")
+                    .append(kindOf(e.getValue())).append("]");
+
+                if (e.getKey() instanceof String && e.getValue() instanceof Class) {
+                    byName = (Map<String, Class<?>>) m;
+                } else if (e.getKey() instanceof Class && e.getValue() instanceof String) {
+                    Map<String, Class<?>> flipped = new TreeMap<String, Class<?>>();
+                    for (Map.Entry<?, ?> x : m.entrySet())
+                        flipped.put((String) x.getValue(), (Class<?>) x.getKey());
+                    byName = flipped;
+                }
+                if (byName != null) break;
             }
             if (byName == null) {
-                System.err.println("[AtlasDumper] Could not find the tile-entity registry; skipping rotation dump.");
+                System.err.println("[AtlasDumper] No tile-entity registry on "
+                        + teClass.getName() + "; maps seen:"
+                        + (seen.length() == 0 ? " none" : seen)
+                        + " - skipping rotation dump.");
                 return;
             }
+            System.out.println("[AtlasDumper] Tile-entity registry: " + byName.size() + " entries.");
 
             Class<?> nbtClass = Class.forName("net.minecraft.nbt.NBTTagCompound");
             // Resolved from the first tile entity that will actually construct.
@@ -1105,6 +1141,14 @@ public class AtlasDumper {
         } catch (IOException e) {
             System.err.println("[AtlasDumper] Could not write rotation dump: " + e);
         }
+    }
+
+    /** Short description of a map key/value, for the registry-discovery log. */
+    private static String kindOf(Object o) {
+        if (o == null) return "null";
+        if (o instanceof String) return "String";
+        if (o instanceof Class) return "Class";
+        return o.getClass().getSimpleName();
     }
 
     /**
