@@ -144,6 +144,56 @@ def test_entity_yaw_turns_with_the_world() -> None:
     assert float(level["Entities"][0]["Rotation"][0]) == pytest.approx(90.0)
 
 
+def test_block_moves_and_refaces_in_one_pass() -> None:
+    """The whole feature end to end: a stair has to land in the turned position
+    *and* face the turned direction. Moving without re-facing is the bug this
+    guards — it looks right on the map and wrong in game."""
+    from app.world.chunk_orient import OrientReport
+
+    stairs, east, south = 53, 0, 2
+    blocks = np.zeros(4096, dtype=np.uint8)
+    data = [0] * 4096
+    idx = 5 * 256 + 9 * 16 + 4  # local (x=4, z=9)
+    blocks[idx] = stairs
+    data[idx] = east
+
+    level = Compound(
+        {
+            "xPos": Int(0),
+            "zPos": Int(0),
+            "Sections": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Y": Int(0),
+                            "Blocks": ByteArray(
+                                np.frombuffer(blocks.tobytes(), dtype=np.int8).tolist()
+                            ),
+                            "Data": _nibbles(data),
+                        }
+                    )
+                ]
+            ),
+        }
+    )
+    buf = io.BytesIO()
+    nbtlib.File({"Level": level}).write(buf, byteorder="big")
+    payload = zlib.compress(buf.getvalue())
+    record = struct.pack(">I", len(payload) + 1) + b"\x02" + payload
+
+    report = OrientReport()
+    out = _parse(remap_chunk_record(record, 0, 0, 0, 0, turn=90, report=report))
+
+    ids = np.asarray(out["Sections"][0]["Blocks"], dtype=np.int8).astype(np.uint8)
+    moved = int(np.flatnonzero(ids == stairs)[0])
+    assert (moved % 16, (moved // 16) % 16) == (15 - 9, 4)  # local turn applied
+
+    raw = np.asarray(out["Sections"][0]["Data"], dtype=np.int8).astype(np.uint8)
+    nibble = raw[moved // 2] & 0xF if moved % 2 == 0 else (raw[moved // 2] >> 4) & 0xF
+    assert nibble == south  # east -> south, matching the geometry
+    assert report.blocks_turned == 1
+
+
 def test_offset_paste_is_unchanged_by_the_rotation_work() -> None:
     """turn=0 must still be a pure shift, the path every existing paste uses."""
     level = _parse(remap_chunk_record(_chunk(0, 0, 4, 9), 3, 5, 48, 80))

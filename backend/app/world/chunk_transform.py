@@ -18,8 +18,10 @@ import zlib
 
 import nbtlib
 import numpy as np
+import numpy.typing as npt
 from nbtlib import ByteArray, Double, Int
 
+from app.world.chunk_orient import OrientReport, meta_lut, rotate_tile_entity
 from app.world.chunk_rotate import (
     pack_bytes,
     pack_nibbles,
@@ -111,6 +113,84 @@ def _rotate_chunk_arrays(level: nbtlib.Compound, turn: int) -> None:
             level[name] = ByteArray(np.frombuffer(out, dtype=np.int8).tolist())
 
 
+def _section_ids_and_meta(
+    section: nbtlib.Compound,
+) -> tuple[npt.NDArray[np.int32], npt.NDArray[np.int32], str] | None:
+    """(block ids, metadata, which packing) for one section, or None if unreadable."""
+    b16 = section.get("Blocks16")
+    if b16 is not None:
+        raw = _as_bytes(b16)
+        if len(raw) != 8192:
+            return None
+        ids = unpack_u16(raw).astype(np.int32)
+        d16 = section.get("Data16")
+        meta = (
+            unpack_u16(_as_bytes(d16)).astype(np.int32)
+            if d16 is not None and len(_as_bytes(d16)) == 8192
+            else np.zeros(4096, dtype=np.int32)
+        )
+        return ids, meta, "u16"
+
+    blocks = section.get("Blocks")
+    if blocks is None:
+        return None
+    raw = _as_bytes(blocks)
+    if len(raw) != 4096:
+        return None
+    ids = unpack_bytes(raw).astype(np.int32)
+    add = section.get("Add")
+    if add is not None and len(_as_bytes(add)) == 2048:
+        ids |= unpack_nibbles(_as_bytes(add), 4096).astype(np.int32) << 8
+    data = section.get("Data")
+    meta = (
+        unpack_nibbles(_as_bytes(data), 4096).astype(np.int32)
+        if data is not None and len(_as_bytes(data)) == 2048
+        else np.zeros(4096, dtype=np.int32)
+    )
+    return ids, meta, "nibble"
+
+
+def _orient_blocks(level: nbtlib.Compound, turn: int, report: OrientReport) -> None:
+    """Re-face every block whose metadata encodes a direction.
+
+    Applied per distinct block id with a lookup table, so the cost is a handful
+    of vectorised passes rather than one Python call per block.
+    """
+    for section in level.get("Sections") or []:
+        read = _section_ids_and_meta(section)
+        if read is None:
+            continue
+        ids, meta, packing = read
+        out = meta.copy()
+
+        for block_id in np.unique(ids):
+            bid = int(block_id)
+            mask = ids == bid
+            lut = meta_lut(bid, turn)
+            if lut is None:
+                # Only vanilla ids are worth reporting; see rotate_block_meta.
+                if 0 < bid < 256 and bool((meta[mask] != 0).any()):
+                    n = int((meta[mask] != 0).sum())
+                    report.blocks_skipped[bid] = report.blocks_skipped.get(bid, 0) + n
+                continue
+            table = np.array(lut, dtype=np.int32)
+            low = meta[mask] & 0xF
+            out[mask] = (meta[mask] & ~0xF) | table[low]
+
+        changed = int((out != meta).sum())
+        if not changed:
+            continue
+        report.blocks_turned += changed
+        if packing == "u16":
+            section["Data16"] = ByteArray(
+                np.frombuffer(pack_u16(out.astype(np.uint16)), dtype=np.int8).tolist()
+            )
+        else:
+            section["Data"] = ByteArray(
+                np.frombuffer(pack_nibbles(out.astype(np.uint16)), dtype=np.int8).tolist()
+            )
+
+
 def _turn_local(lx: float, lz: float, turn: int, span: float) -> tuple[float, float]:
     """Turn a position within one chunk's square about that square's centre.
 
@@ -142,6 +222,7 @@ def remap_chunk_record(
     turn: int = 0,
     old_cx: int | None = None,
     old_cz: int | None = None,
+    report: OrientReport | None = None,
 ) -> bytes:
     """Return a new region record for the chunk moved to (new_cx, new_cz).
 
@@ -168,8 +249,10 @@ def remap_chunk_record(
     level["xPos"] = Int(new_cx)
     level["zPos"] = Int(new_cz)
 
+    rep = report if report is not None else OrientReport()
     if turn:
         _rotate_chunk_arrays(level, turn)
+        _orient_blocks(level, turn, rep)
 
     def move_block(x: int, z: int) -> tuple[int, int]:
         if not turn:
@@ -179,6 +262,8 @@ def remap_chunk_record(
 
     for te in level.get("TileEntities") or []:
         te["x"], te["z"] = (Int(v) for v in move_block(int(te["x"]), int(te["z"])))
+        if turn:
+            rotate_tile_entity(te, turn, rep)
 
     for tt in level.get("TileTicks") or []:
         tt["x"], tt["z"] = (Int(v) for v in move_block(int(tt["x"]), int(tt["z"])))
