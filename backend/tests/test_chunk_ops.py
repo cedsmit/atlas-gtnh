@@ -233,3 +233,83 @@ def test_same_world_rotation_in_place_is_allowed(tmp_path: Path) -> None:
     _write_nbt_chunk(src, 0, 0)
     _write_nbt_chunk(src, 1, 0)
     copy_chunks(str(src), str(src), [(0, 0), (1, 0)], (0, 0), turn=90)  # must not raise
+
+
+def _blocks_chunk(cx: int, cz: int, marks: list[tuple[int, int]]) -> bytes:
+    """A chunk whose y=0 layer has stone at each (x, z) in *marks*."""
+    blocks = bytearray(4096)
+    for x, z in marks:
+        blocks[z * 16 + x] = 1  # y=0 => index is z*16 + x
+    level = Compound(
+        {
+            "xPos": Int(cx),
+            "zPos": Int(cz),
+            "Sections": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Y": nbtlib.Byte(0),
+                            "Blocks": nbtlib.ByteArray([b - 256 if b > 127 else b for b in blocks]),
+                        }
+                    )
+                ]
+            ),
+            "TileEntities": List[Compound]([]),
+            "Entities": List[Compound]([]),
+        }
+    )
+    buf = io.BytesIO()
+    nbtlib.File({"Level": level}).write(buf, byteorder="big")
+    return buf.getvalue()
+
+
+def _blocks_at(dim: Path, cx: int, cz: int) -> list[tuple[int, int]]:
+    rec = read_region_records(dim / "region" / f"r.{cx >> 5}.{cz >> 5}.mca")[
+        local_index(cx % 32, cz % 32)
+    ][0]
+    length = struct.unpack_from(">I", rec, 0)[0]
+    level = nbtlib.File.parse(io.BytesIO(zlib.decompress(rec[5 : 4 + length])), byteorder="big")[
+        "Level"
+    ]
+    raw = level["Sections"][0]["Blocks"]
+    return sorted((x, z) for z in range(16) for x in range(16) if int(raw[z * 16 + x]) != 0)
+
+
+def test_rotated_copy_actually_turns_the_block_contents(tmp_path: Path) -> None:
+    """The blocks inside a chunk move, not just the chunk's place in the grid.
+
+    Everything else about rotation was covered — the footprint, the metadata,
+    the tile entities — but nothing asserted that a turned paste rewrites the
+    block array itself. That is the part a user sees, and it is the part that
+    silently did nothing when an older server ignored the "turn" field.
+    """
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    (src / "region").mkdir(parents=True)
+    (dst / "region").mkdir(parents=True)
+    # An L, so no symmetry can make a wrong turn look right.
+    marks = [(0, 0), (0, 1), (0, 2), (1, 0)]
+    _write_chunk(src, 0, 0, _blocks_chunk(0, 0, marks))
+
+    copy_chunks(str(src), str(dst), [(0, 0)], (0, 0), 90)
+
+    # A quarter turn clockwise sends (x, z) to (15 - z, x).
+    assert _blocks_at(dst, 0, 0) == sorted((15 - z, x) for x, z in marks)
+
+
+def test_copy_rejects_unknown_fields_rather_than_ignoring_them(tmp_path: Path) -> None:
+    """A client sending a field this server does not know must fail loudly.
+
+    Pydantic ignores extras by default, which is how a rotation request reached
+    a server that predated rotation, got dropped, and still reported success.
+    """
+    resp = client.post(
+        "/worlds/chunks/copy",
+        json={
+            "src_world": str(tmp_path),
+            "dst_world": str(tmp_path / "other"),
+            "chunks": [[0, 0]],
+            "offset": [1, 0],
+            "somethingThisServerDoesNotKnow": 90,
+        },
+    )
+    assert resp.status_code == 422
