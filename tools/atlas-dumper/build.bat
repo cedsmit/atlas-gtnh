@@ -22,19 +22,46 @@ echo   Atlas Dumper  -  build v%VERSION%
 echo ============================================================
 echo.
 
-REM --- 1. Locate javac + jar (PATH first, then JAVA_HOME) --------------------
+REM --- 1. Locate javac + jar (PATH, then JAVA_HOME, then any installed JDK) --
+REM  Finding javac is not evidence the toolchain is reachable: Oracle's
+REM  javapath shim puts javac.exe on PATH but omits jar.exe, so the build got
+REM  all the way through compiling and then failed on packaging. Resolve jar
+REM  separately, and if it only turns up inside a full JDK take that JDK's
+REM  javac too, so both halves come from the same install.
 set "JAVAC="
 set "JARC="
 for /f "delims=" %%J in ('where javac 2^>nul') do if not defined JAVAC set "JAVAC=%%J"
 for /f "delims=" %%J in ('where jar 2^>nul')   do if not defined JARC  set "JARC=%%J"
 if not defined JAVAC if exist "%JAVA_HOME%\bin\javac.exe" set "JAVAC=%JAVA_HOME%\bin\javac.exe"
 if not defined JARC  if exist "%JAVA_HOME%\bin\jar.exe"   set "JARC=%JAVA_HOME%\bin\jar.exe"
+REM  jar sitting next to the javac we already found?
+if not defined JARC if defined JAVAC for %%D in ("%JAVAC%") do (
+  if exist "%%~dpDjar.exe" set "JARC=%%~dpDjar.exe"
+)
+
+REM  Still nothing - scan the usual JDK roots for a matched javac+jar pair.
+if not defined JARC for %%R in (
+  "%ProgramFiles%\Java" "%ProgramFiles%\Eclipse Adoptium"
+  "%ProgramFiles%\Microsoft" "%ProgramFiles%\Amazon Corretto"
+) do if exist "%%~R" for /f "delims=" %%J in ('dir /b /s "%%~R\jar.exe" 2^>nul') do (
+  if not defined JARC (
+    set "JARC=%%J"
+    for %%D in ("%%J") do if exist "%%~dpDjavac.exe" set "JAVAC=%%~dpDjavac.exe"
+  )
+)
+
 if not defined JAVAC (
   echo [ERROR] Could not find javac. Install a JDK 8+ or set JAVA_HOME.
   goto :fail
 )
-if not defined JARC set "JARC=jar"
+if not defined JARC (
+  echo [ERROR] Found javac but no jar.exe - PATH probably has Oracle's javapath
+  echo         shim, which omits it. Point JAVA_HOME at a full JDK and re-run:
+  echo             set "JAVA_HOME=C:\Program Files\Java\jdk-25.0.3"
+  goto :fail
+)
 echo [ok]  javac : %JAVAC%
+echo [ok]  jar   : %JARC%
 
 REM --- 2. Locate Forge universal + Minecraft client jars --------------------
 if not defined FORGE for /f "delims=" %%F in ('dir /b /s "%APPDATA%\PrismLauncher\libraries\net\minecraftforge\forge\*universal*.jar" 2^>nul') do set "FORGE=%%F"
