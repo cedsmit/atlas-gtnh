@@ -1040,9 +1040,8 @@ export class MapEngine {
           ? Object.keys(textureKeysRef.current).length
           : 0
       }
-      const rt = debugModeRef.current
-        ? textureDebugStore.getRenderTotals()
-        : null
+      const dbg = debugModeRef.current
+      const rt = dbg ? textureDebugStore.getRenderTotals() : null
       const hudX =
         st.mouseWorldX !== null
           ? Math.round(st.mouseWorldX)
@@ -1051,14 +1050,22 @@ export class MapEngine {
         st.mouseWorldZ !== null
           ? Math.round(st.mouseWorldZ)
           : Math.round(st.cam.cz)
+      // Where you are and how far in is all the readout owes a player. Live
+      // chunk / colour / tex-key counts describe the renderer's internals, not
+      // the world, so they ride along with the debug panel like the render
+      // totals already did.
       const text =
         `X ${hudX}  Z ${hudZ}  ×${st.cam.scale.toFixed(2)}` +
-        `  |  ${st.liveChunks} chunks` +
-        (bcCountRef.current > 0 ? `  |  ${bcCountRef.current} colors` : '') +
-        (st.texKeyCount > 0 ? `  |  ${st.texKeyCount} tex-keys` : '') +
-        (rt
-          ? `  |  drawImage=${rt.drawImage} fillRect=${rt.fillRect}` +
-            ` miss=${rt.missingTexKey} fail=${rt.failedTexLoad}`
+        (dbg
+          ? `  |  ${st.liveChunks} chunks` +
+            (bcCountRef.current > 0
+              ? `  |  ${bcCountRef.current} colors`
+              : '') +
+            (st.texKeyCount > 0 ? `  |  ${st.texKeyCount} tex-keys` : '') +
+            (rt
+              ? `  |  drawImage=${rt.drawImage} fillRect=${rt.fillRect}` +
+                ` miss=${rt.missingTexKey} fail=${rt.failedTexLoad}`
+              : '')
           : '')
       if (text !== st.lastHud) {
         hud.textContent = text
