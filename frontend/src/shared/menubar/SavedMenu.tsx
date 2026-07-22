@@ -1,7 +1,7 @@
 import { Star, X } from 'lucide-react'
 import { useState } from 'react'
 
-import { Dropdown, MenuButton, Separator } from './primitives'
+import { Dropdown, IconButton, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { type UserPreset } from '../../features/blocks/userPresets'
 
@@ -35,18 +35,18 @@ export function SavedMenu({
 
   return (
     <div className="relative">
-      <MenuButton
+      <IconButton
         open={isOpen}
         onClick={onToggle}
         icon={<Star />}
-        caret
+        label="Saved views"
         title="Saved views — bookmark this location, zoom and look"
-      >
-        Saved
-      </MenuButton>
+      />
 
+      {/* Anchored right: this sits in the bar's right-hand cluster, so a
+          left-anchored panel would run off the window edge. */}
       {isOpen && (
-        <Dropdown className="left-0 w-[268px]">
+        <Dropdown className="right-0 w-[268px]">
           <div className="flex items-center gap-1.5 p-1.5">
             <input
               value={newPresetName}

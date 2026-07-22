@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
 import { FileMenu } from './menubar/FileMenu'
 import { OverlaysMenu, type OverlaysConfig } from './menubar/OverlaysMenu'
-import { MenuButton, QuickToggle, Spinner } from './menubar/primitives'
+import { IconButton, MenuButton, Spinner } from './menubar/primitives'
 import { SavedMenu, type SavedConfig } from './menubar/SavedMenu'
 import {
   SearchMenu,
@@ -167,15 +167,6 @@ export function MenuBar({
             />
           )}
 
-          {saved && (
-            <SavedMenu
-              open={menu === 'saved'}
-              onToggle={() => toggleMenu('saved')}
-              onClose={closeMenu}
-              {...saved}
-            />
-          )}
-
           {chunkOps && (
             <MenuButton
               open={false}
@@ -188,32 +179,42 @@ export function MenuBar({
             </MenuButton>
           )}
 
-          {/* Right side — quick toggles + debug */}
-          <div className="ml-auto flex items-center gap-2">
+          {/* Right side — accessories, all label-less so the named menus on the
+              left keep the eye. Two overlay toggles, then the two menus you
+              open occasionally rather than to get work done. */}
+          <div className="ml-auto flex items-center gap-1">
             {grid && (
-              <QuickToggle
+              <IconButton
                 on={!!grid.on}
                 onClick={grid.onToggle}
-                // Icon carries the third state instead of a text hint: spelling
-                // it out grew the button by 53px and shunted the whole group
-                // sideways on every cycle.
+                // Icon carries the third state: as text it grew the button by
+                // 53px and shunted the group sideways on every cycle.
                 icon={grid.hint ? <Hash /> : <Grid3x3 />}
-                tone="accent"
+                label="Grid"
                 title="Grid: cycles subtle → with coordinates → off"
-              >
-                Grid
-              </QuickToggle>
+              />
             )}
             {veins && (
-              <QuickToggle
+              <IconButton
                 on={!!veins.on}
                 onClick={veins.onToggle}
                 icon={veins.loading ? <Spinner /> : <Gem />}
-                tone="accent"
+                label="Ore veins"
                 title="Ore veins from Visual Prospecting"
-              >
-                Veins
-              </QuickToggle>
+              />
+            )}
+
+            {(grid || veins) && (saved || debug) && (
+              <span className="mx-1 h-4 w-px bg-zinc-800" />
+            )}
+
+            {saved && (
+              <SavedMenu
+                open={menu === 'saved'}
+                onToggle={() => toggleMenu('saved')}
+                onClose={closeMenu}
+                {...saved}
+              />
             )}
 
             {debug && (

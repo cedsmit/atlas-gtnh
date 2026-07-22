@@ -7,7 +7,7 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 
-import { Dropdown, Item, Separator } from './primitives'
+import { Dropdown, IconButton, Item, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { API_BASE } from '../api'
 
@@ -47,18 +47,17 @@ export function DebugMenu({
 
   return (
     <div className="relative">
-      <button
+      {/* Amber, not accent: the colour is what separates "a diagnostic is on"
+          from an ordinary overlay, and it is the one thing here you would want
+          to notice you left running. */}
+      <IconButton
+        open={isOpen}
+        on={debugOpen || inspectOpen || diagnosticRender || heightMap}
+        tone="amber"
         onClick={onToggle}
-        aria-label="Debug tools"
-        title="Debug tools"
-        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-          isOpen || debugOpen || inspectOpen || diagnosticRender || heightMap
-            ? 'bg-atlas-hover text-zinc-100'
-            : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
-        }`}
-      >
-        <Bug className="h-4 w-4" aria-hidden />
-      </button>
+        icon={<Bug />}
+        label="Debug tools"
+      />
 
       {isOpen && (
         <Dropdown className="right-0 w-[236px]">

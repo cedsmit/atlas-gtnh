@@ -65,39 +65,51 @@ export function MenuButton({
   )
 }
 
-export function QuickToggle({
+/**
+ * A square, label-less button for the bar's right-hand cluster — the quick
+ * toggles and the accessory menus.
+ *
+ * No visible text, so the icon has to carry the meaning: only give this to
+ * controls whose icon is unambiguous and whose absence costs nothing, and leave
+ * anything you would have to read to `MenuButton` on the left. Borderless at
+ * rest keeps the cluster quieter than the named menus, and the transparent
+ * border reserves the space a lit one takes so nothing shifts when it lights.
+ */
+export function IconButton({
   on,
+  open,
   onClick,
   icon,
-  tone,
+  tone = 'accent',
+  label,
   title,
-  hint,
-  children,
 }: {
-  on: boolean
+  /** The thing this controls is on. */
+  on?: boolean
+  /** This button's dropdown is showing. */
+  open?: boolean
   onClick: () => void
   icon: ReactNode
-  tone: Tone
+  tone?: Tone
+  /** The accessible name, since there is no visible text to serve as one. */
+  label: string
+  /** Defaults to `label`; pass a longer form to explain a cycle or a source. */
   title?: string
-  /** Distinguishes states beyond lit/unlit, for cycling toggles. */
-  hint?: string
-  children: ReactNode
 }) {
+  const state = open
+    ? 'border-atlas-accent-line bg-atlas-accent-bg text-zinc-100'
+    : on
+      ? TONE_ACTIVE[tone]
+      : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
+
   return (
     <button
       onClick={onClick}
-      title={title}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
-        on
-          ? TONE_ACTIVE[tone]
-          : 'border-zinc-700 bg-transparent text-zinc-400 hover:bg-atlas-hover hover:text-zinc-100'
-      }`}
+      aria-label={label}
+      title={title ?? label}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 ${state}`}
     >
-      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0">
-        {icon}
-      </span>
-      {children}
-      {hint && <span className="opacity-70">{hint}</span>}
+      {icon}
     </button>
   )
 }
