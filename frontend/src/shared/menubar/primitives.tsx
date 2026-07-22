@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { type ReactNode } from 'react'
 
+import { useTooltip } from './tooltip'
 import { type Tone } from './types'
 
 export const TONE_TEXT: Record<Tone, string> = {
@@ -52,16 +53,26 @@ export function MenuButton({
         ? `border-zinc-700 bg-atlas-hover ${TONE_TEXT[accent]}`
         : 'border-zinc-700 bg-atlas-hover text-zinc-300 hover:text-zinc-100'
 
+  // Suppressed while the panel is open: the menu itself is the better answer,
+  // and a tip over it would cover the first item.
+  const { trigger, tip } = useTooltip(open ? undefined : title)
+
   return (
-    <button onClick={onClick} title={title} className={`${base} ${state}`}>
-      <span className="[&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
-        {icon}
-      </span>
-      {children}
-      {caret && (
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
-      )}
-    </button>
+    <>
+      <button onClick={onClick} {...trigger} className={`${base} ${state}`}>
+        <span className="[&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
+          {icon}
+        </span>
+        {children}
+        {caret && (
+          <ChevronDown
+            className="h-3.5 w-3.5 shrink-0 opacity-60"
+            aria-hidden
+          />
+        )}
+      </button>
+      {tip}
+    </>
   )
 }
 
@@ -102,15 +113,22 @@ export function IconButton({
       ? TONE_ACTIVE[tone]
       : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
 
+  // These have no visible text, so the tip is the only thing naming them on
+  // screen — but with the panel open the menu below says it better.
+  const { trigger, tip } = useTooltip(open ? undefined : (title ?? label))
+
   return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      title={title ?? label}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 ${state}`}
-    >
-      {icon}
-    </button>
+    <>
+      <button
+        onClick={onClick}
+        aria-label={label}
+        {...trigger}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 ${state}`}
+      >
+        {icon}
+      </button>
+      {tip}
+    </>
   )
 }
 

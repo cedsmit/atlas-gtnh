@@ -2,6 +2,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Copy, Minus, Square, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { useTooltip } from './tooltip'
+
 /**
  * True only inside the Tauri shell. The app is also developed against a plain
  * browser preview, which has no window to control and its own chrome already —
@@ -85,21 +87,26 @@ function Button({
   onClick: () => void
   children: React.ReactNode
 }) {
+  const { trigger, tip } = useTooltip(label)
+
   return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      // No drag-region opt-out needed: Tauri only starts a drag when the event
-      // target itself carries the attribute, and a `false` value would still
-      // count as present.
-      className={`inline-flex w-[46px] items-center justify-center text-zinc-400 transition-colors ${
-        danger
-          ? 'hover:bg-atlas-danger hover:text-white'
-          : 'hover:bg-atlas-hover hover:text-zinc-100'
-      }`}
-    >
-      {children}
-    </button>
+    <>
+      <button
+        onClick={onClick}
+        aria-label={label}
+        {...trigger}
+        // No drag-region opt-out needed: Tauri only starts a drag when the event
+        // target itself carries the attribute, and a `false` value would still
+        // count as present.
+        className={`inline-flex w-[46px] items-center justify-center text-zinc-400 transition-colors ${
+          danger
+            ? 'hover:bg-atlas-danger hover:text-white'
+            : 'hover:bg-atlas-hover hover:text-zinc-100'
+        }`}
+      >
+        {children}
+      </button>
+      {tip}
+    </>
   )
 }

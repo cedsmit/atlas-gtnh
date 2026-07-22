@@ -3,6 +3,7 @@ import { FolderOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Dropdown, Item, SectionLabel, Separator } from './primitives'
+import { useTooltip } from './tooltip'
 import { type MenuProps } from './types'
 import { validateWorld } from '../../features/world/api/worlds'
 import {
@@ -59,11 +60,15 @@ export function FileMenu({
     }
   }
 
+  const fileTip = useTooltip(
+    isOpen ? undefined : 'Open a world, reopen a recent one, or close this one'
+  )
+
   return (
     <div className="relative">
       <button
         onClick={onToggle}
-        title="Open a world, reopen a recent one, or close this one"
+        {...fileTip.trigger}
         className={`rounded-md px-2.5 py-1 text-[13px] transition-colors ${
           isOpen
             ? 'bg-atlas-hover text-zinc-100'
@@ -72,6 +77,7 @@ export function FileMenu({
       >
         File
       </button>
+      {fileTip.tip}
 
       {isOpen && (
         <Dropdown className="left-0 min-w-[230px]">
