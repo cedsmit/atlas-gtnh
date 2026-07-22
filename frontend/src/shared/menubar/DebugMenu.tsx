@@ -57,6 +57,7 @@ export function DebugMenu({
         onClick={onToggle}
         icon={<Bug />}
         label="Debug tools"
+        title="Debug tools — texture and block-colour diagnostics, height map"
       />
 
       {isOpen && (

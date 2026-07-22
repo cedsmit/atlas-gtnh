@@ -63,6 +63,7 @@ export function FileMenu({
     <div className="relative">
       <button
         onClick={onToggle}
+        title="Open a world, reopen a recent one, or close this one"
         className={`rounded-md px-2.5 py-1 text-[13px] transition-colors ${
           isOpen
             ? 'bg-atlas-hover text-zinc-100'
