@@ -8,11 +8,36 @@ import { type MenuProps } from './types'
  * is one entry here plus its panel — nothing in this component's body changes.
  */
 const SEARCH_DEFS = [
-  { id: 'search', label: 'Blocks', Icon: Search },
-  { id: 'lootGames', label: 'LootGames dungeons', Icon: Puzzle },
-  { id: 'biomeSearch', label: 'Biomes', Icon: Trees },
-  { id: 'oreVeinSearch', label: 'Ore veins', Icon: Gem },
-] as const satisfies readonly { id: string; label: string; Icon: LucideIcon }[]
+  {
+    id: 'search',
+    label: 'Blocks',
+    Icon: Search,
+    desc: 'Find where a block occurs, by name or id',
+  },
+  {
+    id: 'lootGames',
+    label: 'LootGames dungeons',
+    Icon: Puzzle,
+    desc: 'Locate LootGames dungeons across the dimension',
+  },
+  {
+    id: 'biomeSearch',
+    label: 'Biomes',
+    Icon: Trees,
+    desc: 'Find a biome and highlight where it covers',
+  },
+  {
+    id: 'oreVeinSearch',
+    label: 'Ore veins',
+    Icon: Gem,
+    desc: 'Find Visual Prospecting veins, grouped by ore and sorted by distance from home',
+  },
+] as const satisfies readonly {
+  id: string
+  label: string
+  Icon: LucideIcon
+  desc: string
+}[]
 
 export type SearchId = (typeof SEARCH_DEFS)[number]['id']
 
@@ -50,7 +75,7 @@ export function SearchMenu({
 
       {isOpen && (
         <Dropdown className="left-0 w-[228px]">
-          {offered.map(({ id, label, Icon }) => {
+          {offered.map(({ id, label, Icon, desc }) => {
             const entry = entries[id]
             if (!entry) return null
             return (
@@ -63,6 +88,7 @@ export function SearchMenu({
                 }}
                 icon={<Icon />}
                 check={entry.open}
+                title={desc}
               >
                 {label}
               </Item>

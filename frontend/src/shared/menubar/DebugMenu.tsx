@@ -67,6 +67,7 @@ export function DebugMenu({
               onClick={pick(onToggleDebug)}
               icon={<Bug />}
               check={debugOpen}
+              title="Which block textures resolved, which fell back, and why"
             >
               Texture Debug Panel
             </Item>
@@ -76,6 +77,7 @@ export function DebugMenu({
               onClick={pick(onToggleInspect)}
               icon={<Search />}
               check={inspectOpen}
+              title="Inspect the resolved colour and texture for a single block"
             >
               Block Colors
             </Item>
@@ -113,6 +115,7 @@ export function DebugMenu({
               }
             }}
             icon={<ExternalLink />}
+            title="Open the stitched texture atlas as a page in your browser"
           >
             Texture grid (browser)
           </Item>
