@@ -8,7 +8,7 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.4.4"
+set "VERSION=1.5.0"
 set "MCVER=1.7.10"
 
 REM ==== Manual override - ONLY if auto-detect below fails ====================

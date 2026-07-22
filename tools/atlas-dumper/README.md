@@ -227,14 +227,18 @@ that will not construct or serialise in isolation are listed under `failed`
 rather than dropped, because from the Python side a missing entry and a machine
 that cannot be rotated look identical.
 
-`dumpRotations` reaches Minecraft only through reflection, so it has no
-compile-time dependency on Forge and can be checked with a plain JDK:
+Build with `build.bat`, which compiles against the Forge and Minecraft jars in
+your PrismLauncher instance. It works on a current JDK — verified on 25 — so the
+Gradle wrapper here (2.14.1, from 2016) is not the path to use.
+
+`dumpRotations` additionally reaches Minecraft only through reflection, so it
+has no compile-time dependency on Forge and a plain JDK can check it alone:
 
 ```bash
 javac -proc:none -d /tmp src/main/java/com/atlasgtnh/icondumper/AtlasDumper.java
 ```
 
-Every error that comes back should be a missing `net.minecraft` / `cpw.mods`
+Every error that comes back should then be a missing `net.minecraft` / `cpw.mods`
 symbol from the absent modding classpath. Anything else is a real fault.
 
 Expect `failed` to have entries, and check it before assuming a mod is covered.
