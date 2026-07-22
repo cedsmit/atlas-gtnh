@@ -92,6 +92,9 @@ class CopyChunksRequest(BaseModel):
     dst_world: str  # destination dimension path
     chunks: list[tuple[int, int]]  # source chunk coords
     offset: tuple[int, int] = (0, 0)  # (dx, dz) chunk offset applied at the destination
+    # Degrees clockwise seen from above; must be a multiple of 90. A quarter turn
+    # swaps the pasted footprint's width and height.
+    turn: int = 0
 
 
 class CreateWorldRequest(BaseModel):
