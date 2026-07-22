@@ -1,10 +1,10 @@
-import { Gem, Grid3x3, Hash, TriangleAlert, X } from 'lucide-react'
+import { Boxes, Gem, Grid3x3, Hash, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
 import { FileMenu } from './menubar/FileMenu'
 import { OverlaysMenu, type OverlaysConfig } from './menubar/OverlaysMenu'
-import { QuickToggle, Spinner } from './menubar/primitives'
+import { MenuButton, QuickToggle, Spinner } from './menubar/primitives'
 import { SavedMenu, type SavedConfig } from './menubar/SavedMenu'
 import {
   SearchMenu,
@@ -30,6 +30,8 @@ interface Props {
   overlays?: OverlaysConfig
   search?: Partial<Record<SearchId, SearchEntry>>
   saved?: SavedConfig
+  /** Save-editing tools; omitted when the world cannot be written. */
+  chunkOps?: { open: boolean; onToggle: () => void }
   debug?: DebugConfig
 }
 
@@ -46,6 +48,7 @@ export function MenuBar({
   overlays,
   search,
   saved,
+  chunkOps,
   debug,
 }: Props) {
   const [menu, setMenu] = useState<MenuId | null>(null)
@@ -71,7 +74,7 @@ export function MenuBar({
   const veins = overlays?.items.oreVeins
 
   const showTools =
-    !!worldPath && !!(view || overlays || search || saved || debug)
+    !!worldPath && !!(view || overlays || search || saved || chunkOps || debug)
 
   return (
     <header ref={headerRef} className="shrink-0">
@@ -171,6 +174,18 @@ export function MenuBar({
               onClose={closeMenu}
               {...saved}
             />
+          )}
+
+          {chunkOps && (
+            <MenuButton
+              open={false}
+              active={chunkOps.open}
+              onClick={chunkOps.onToggle}
+              icon={<Boxes />}
+              title="Select chunks to copy, paste or delete for regeneration"
+            >
+              Chunks
+            </MenuButton>
           )}
 
           {/* Right side — quick toggles + debug */}

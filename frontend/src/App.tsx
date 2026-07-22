@@ -49,6 +49,9 @@ import { WorldPicker } from './features/world/WorldPicker'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
 import { useRenderOverrides } from './features/blocks/api/renderOverrides'
+import { ChunkOpsLayer } from './features/chunk-ops/ChunkOpsLayer'
+import { ChunkOpsPanel } from './features/chunk-ops/ChunkOpsPanel'
+import { useChunkOps } from './features/chunk-ops/useChunkOps'
 import { columnTally } from './features/map/columnTally'
 import { VIEWER_CONFIG } from './features/map/viewerConfig'
 import { pipeSystemName } from './features/blocks/pipeSystems'
@@ -84,6 +87,7 @@ type PanelId =
   | 'lootGames'
   | 'biomeSearch'
   | 'oreVeinSearch'
+  | 'chunkOps'
 
 export default function App() {
   // Restore last session's world on startup so the loading screen runs immediately
@@ -100,6 +104,7 @@ export default function App() {
   const lootGamesOpen = activePanel === 'lootGames'
   const biomeSearchOpen = activePanel === 'biomeSearch'
   const oreVeinSearchOpen = activePanel === 'oreVeinSearch'
+  const chunkOpsOpen = activePanel === 'chunkOps'
   const closePanel = useCallback(() => setActivePanel(null), [])
   const togglePanel = (id: PanelId) =>
     setActivePanel((cur) => (cur === id ? null : id))
@@ -149,6 +154,12 @@ export default function App() {
   const [userPresets, setUserPresets] = useState(loadUserPresets)
   const engineRef = useRef<MapEngine | null>(null)
   const chunkStats = useChunkStats(dimensionPath ?? '')
+  const chunkOps = useChunkOps(
+    dimensionPath ?? '',
+    worldPath ?? '',
+    engineRef,
+    chunkOpsOpen
+  )
 
   // Home waypoint (your base) for the current dimension: drives the map marker and
   // is the reference point search panels sort dungeons by distance from. The map
@@ -653,6 +664,11 @@ export default function App() {
               }
             : undefined
         }
+        chunkOps={
+          mapReady
+            ? { open: chunkOpsOpen, onToggle: () => togglePanel('chunkOps') }
+            : undefined
+        }
         debug={
           mapReady
             ? {
@@ -730,7 +746,6 @@ export default function App() {
               biomeColors={biomeColors}
               textureKeys={textureKeys}
               metaTextureKeys={metaTextureKeys}
-              worldPath={worldPath ?? undefined}
               blockNames={blockNames}
               registry={registry}
               config={config}
@@ -739,6 +754,9 @@ export default function App() {
               onMapContextRef={mapContextRef}
             />
             {gridMode === 'labels' && <GridLabels engineRef={engineRef} />}
+            {chunkOpsOpen && (
+              <ChunkOpsLayer ops={chunkOps} engineRef={engineRef} />
+            )}
             {oreVeinsOn && (
               <OreVeinLabels engineRef={engineRef} veins={visibleVeins} />
             )}
@@ -861,6 +879,11 @@ export default function App() {
               onHighlight={handleBiomeHighlight}
               onClose={closePanel}
             />
+          )}
+
+          {/* Chunk tools */}
+          {chunkOpsOpen && (
+            <ChunkOpsPanel ops={chunkOps} onClose={closePanel} />
           )}
 
           {/* Ore vein search panel */}
