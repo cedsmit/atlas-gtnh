@@ -1,7 +1,13 @@
 import { open as openExternal } from '@tauri-apps/plugin-shell'
-import { Bug, ExternalLink, Search, TriangleAlert } from 'lucide-react'
+import {
+  Bug,
+  ExternalLink,
+  Mountain,
+  Search,
+  TriangleAlert,
+} from 'lucide-react'
 
-import { Dropdown, Item, Separator } from './primitives'
+import { Dropdown, IconButton, Item, Separator } from './primitives'
 import { type MenuProps } from './types'
 import { API_BASE } from '../api'
 
@@ -12,6 +18,8 @@ export interface DebugConfig {
   onToggleDebug?: () => void
   diagnosticRender?: boolean
   onToggleDiagnosticRender?: () => void
+  heightMap?: boolean
+  onToggleHeightMap?: () => void
 }
 
 interface Props extends MenuProps, DebugConfig {
@@ -29,6 +37,8 @@ export function DebugMenu({
   onToggleDebug,
   diagnosticRender,
   onToggleDiagnosticRender,
+  heightMap,
+  onToggleHeightMap,
 }: Props) {
   const pick = (fn: () => void) => () => {
     onClose()
@@ -37,18 +47,18 @@ export function DebugMenu({
 
   return (
     <div className="relative">
-      <button
+      {/* Amber, not accent: the colour is what separates "a diagnostic is on"
+          from an ordinary overlay, and it is the one thing here you would want
+          to notice you left running. */}
+      <IconButton
+        open={isOpen}
+        on={debugOpen || inspectOpen || diagnosticRender || heightMap}
+        tone="amber"
         onClick={onToggle}
-        aria-label="Debug tools"
-        title="Debug tools"
-        className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-          isOpen || debugOpen || inspectOpen || diagnosticRender
-            ? 'bg-atlas-hover text-zinc-100'
-            : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
-        }`}
-      >
-        <Bug className="h-4 w-4" aria-hidden />
-      </button>
+        icon={<Bug />}
+        label="Debug tools"
+        title="Debug tools — texture and block-colour diagnostics, height map"
+      />
 
       {isOpen && (
         <Dropdown className="right-0 w-[236px]">
@@ -79,6 +89,17 @@ export function DebugMenu({
               title="Flag blocks whose texture never resolved in magenta, and reveal debug-only blocks"
             >
               Diagnostic rendering
+            </Item>
+          )}
+          {onToggleHeightMap && (
+            <Item
+              onClick={onToggleHeightMap}
+              icon={<Mountain />}
+              check={heightMap}
+              tone={heightMap ? 'amber' : undefined}
+              title="False-colour the terrain by height instead of shading it"
+            >
+              Height map
             </Item>
           )}
           <Separator />

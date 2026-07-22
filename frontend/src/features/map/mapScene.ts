@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { ATLAS, threeColor } from '../../shared/theme'
 
 interface CameraState {
   cx: number
@@ -7,6 +8,19 @@ interface CameraState {
 }
 
 const MAX_GV = 8000 // max grid vertices per layer
+
+/**
+ * Render order for the chunk-tool highlights. Above every overlay the engine
+ * draws (search 1000, ore veins 1001, their labels up to 1003) — you are
+ * pointing at these, so nothing should cover them.
+ */
+const HIGHLIGHT_ORDER = 1010
+
+/** A rectangular highlight: translucent fill plus its outline, moved as one. */
+interface RectHighlight {
+  fill: THREE.Mesh
+  line: THREE.LineLoop
+}
 
 /**
  * The Three.js *view* layer for the world map: renderer, scene, orthographic
@@ -45,16 +59,33 @@ export class MapScene {
   })
 
   private readonly rectGeo = new THREE.BufferGeometry()
+  private readonly rectFillGeo = new THREE.BufferGeometry()
   private readonly selectionMat = new THREE.LineBasicMaterial({
-    color: 0x66ccff,
+    color: threeColor(ATLAS.accent),
     depthTest: false,
+    transparent: true,
+  })
+  private readonly selectionFillMat = new THREE.MeshBasicMaterial({
+    color: threeColor(ATLAS.accent),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.2,
   })
   private readonly previewMat = new THREE.LineBasicMaterial({
-    color: 0x66ff88,
+    color: threeColor(ATLAS.cyan),
     depthTest: false,
+    transparent: true,
   })
-  private selectionLine!: THREE.LineLoop
-  private previewLine!: THREE.LineLoop
+  private readonly previewFillMat = new THREE.MeshBasicMaterial({
+    color: threeColor(ATLAS.cyan),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.2,
+  })
+  private regionGridLines!: THREE.LineSegments
+  private chunkGridLines!: THREE.LineSegments
+  private selection!: RectHighlight
+  private preview!: RectHighlight
 
   constructor(container: HTMLElement, w: number, h: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
@@ -69,7 +100,11 @@ export class MapScene {
     container.appendChild(this.renderer.domElement)
     this.renderer.domElement.style.cursor = 'grab'
 
-    this.scene.background = new THREE.Color(0x0f0f0f)
+    // Same token the shell paints with, so the map sits in the window rather
+    // than on a slightly different panel, and re-theming moves both together.
+    // Also sits well clear of the 0x1a1a24 region placeholder, so empty space
+    // reads as "no world here" rather than "region known, tile not drawn yet".
+    this.scene.background = new THREE.Color(threeColor(ATLAS.bg))
     this.cam = new THREE.OrthographicCamera(
       -w / 2,
       w / 2,
@@ -82,72 +117,114 @@ export class MapScene {
 
     this.gridAttr.setUsage(THREE.DynamicDrawUsage)
     this.gridGeo.setAttribute('position', this.gridAttr)
-    const regionGridLines = new THREE.LineSegments(
+    this.regionGridLines = new THREE.LineSegments(
       this.gridGeo,
       this.regionGridMat
     )
-    regionGridLines.frustumCulled = false
-    this.scene.add(regionGridLines)
+    this.regionGridLines.frustumCulled = false
+    this.scene.add(this.regionGridLines)
 
     this.chunkGridAttr.setUsage(THREE.DynamicDrawUsage)
     this.chunkGridGeo.setAttribute('position', this.chunkGridAttr)
-    const chunkGridLines = new THREE.LineSegments(
+    this.chunkGridLines = new THREE.LineSegments(
       this.chunkGridGeo,
       this.chunkGridMat
     )
-    chunkGridLines.frustumCulled = false
-    this.scene.add(chunkGridLines)
+    this.chunkGridLines.frustumCulled = false
+    this.scene.add(this.chunkGridLines)
 
-    // Selection (sky) + paste-preview (green) highlights: a shared unit-square
-    // outline, positioned/scaled per use.
+    // Selection (accent) + paste-preview (cyan) highlights: a shared unit
+    // square — one outline, one fill — positioned/scaled per use.
+    const unit = [0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]
     this.rectGeo.setAttribute(
       'position',
-      new THREE.BufferAttribute(
-        new Float32Array([0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]),
-        3
-      )
+      new THREE.BufferAttribute(new Float32Array(unit), 3)
     )
-    this.selectionLine = new THREE.LineLoop(this.rectGeo, this.selectionMat)
-    this.previewLine = new THREE.LineLoop(this.rectGeo, this.previewMat)
-    for (const line of [this.selectionLine, this.previewLine]) {
-      line.frustumCulled = false
-      line.visible = false
-      this.scene.add(line)
+    this.rectFillGeo.setAttribute(
+      'position',
+      new THREE.BufferAttribute(new Float32Array(unit), 3)
+    )
+    this.rectFillGeo.setIndex([0, 1, 2, 0, 2, 3])
+
+    this.selection = this.addHighlight(
+      this.selectionFillMat,
+      this.selectionMat,
+      HIGHLIGHT_ORDER
+    )
+    this.preview = this.addHighlight(
+      this.previewFillMat,
+      this.previewMat,
+      HIGHLIGHT_ORDER + 2
+    )
+  }
+
+  /**
+   * A rectangle highlight, drawn above every other overlay.
+   *
+   * The explicit render order is load-bearing, not a nicety: `depthTest: false`
+   * alone puts these *behind* the map. Three sorts opaque draws by render order,
+   * then material id, then depth — so without one, these materials (created with
+   * the scene, hence low ids) go out before the chunk tiles, and turning off the
+   * depth test also stops them writing depth, leaving nothing to mask the tiles
+   * that follow. The grid escapes this only because it still depth-tests.
+   */
+  private addHighlight(
+    fillMat: THREE.Material,
+    lineMat: THREE.Material,
+    renderOrder: number
+  ): RectHighlight {
+    const h: RectHighlight = {
+      fill: new THREE.Mesh(this.rectFillGeo, fillMat),
+      line: new THREE.LineLoop(this.rectGeo, lineMat),
     }
+    h.fill.renderOrder = renderOrder
+    // Both are transparent, so they share a queue and this ordering is real.
+    h.line.renderOrder = renderOrder + 1
+    for (const o of [h.fill, h.line]) {
+      o.frustumCulled = false
+      o.visible = false
+      this.scene.add(o)
+    }
+    return h
   }
 
   private static place(
-    line: THREE.LineLoop,
+    h: RectHighlight,
     rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
   ): void {
-    if (!rect) {
-      line.visible = false
-      return
+    for (const o of [h.fill, h.line]) {
+      if (!rect) {
+        o.visible = false
+        continue
+      }
+      o.position.set(rect.minX, -rect.minZ, 1)
+      o.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
+      o.visible = true
     }
-    line.position.set(rect.minX, -rect.minZ, 1)
-    line.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
-    line.visible = true
   }
 
   /** Draw (or hide, when null) the selection highlight over a world-space area. */
   setSelectionRect(
     rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
   ): void {
-    MapScene.place(this.selectionLine, rect)
+    MapScene.place(this.selection, rect)
   }
 
   /** Draw (or hide, when null) the paste-preview highlight over a world-space area. */
   setPreviewRect(
     rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
   ): void {
-    MapScene.place(this.previewLine, rect)
+    MapScene.place(this.preview, rect)
   }
 
-  /** Brighten the region/chunk reference grid when the user turns it on; the
-   *  default is a subtle always-on grid. */
-  setGridProminent(on: boolean): void {
-    this.regionGridMat.color.setHex(on ? 0x5566aa : 0x2e2e48)
-    this.chunkGridMat.color.setHex(on ? 0x40405f : 0x1c1c2e)
+  /**
+   * Show or hide the reference grid. The lines keep one colour in both visible
+   * states — adding coordinate labels is the only difference — so brightening
+   * them would make the map's shading read differently for no reason.
+   */
+  setGridVisible(visible: boolean): void {
+    this.regionGridLines.visible = visible
+    this.chunkGridLines.visible = visible
   }
 
   get domElement(): HTMLCanvasElement {
@@ -248,8 +325,11 @@ export class MapScene {
     this.regionGridMat.dispose()
     this.chunkGridMat.dispose()
     this.rectGeo.dispose()
+    this.rectFillGeo.dispose()
     this.selectionMat.dispose()
+    this.selectionFillMat.dispose()
     this.previewMat.dispose()
+    this.previewFillMat.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()
   }

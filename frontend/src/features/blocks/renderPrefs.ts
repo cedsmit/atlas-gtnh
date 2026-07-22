@@ -1,19 +1,8 @@
 import type { LayerOverrides } from './renderPresets'
 
-// The elevation-override options offered in the menu bar (superset of a preset's
-// own elevationMode; 'preset' = defer to the preset).
-export type ElevOverride =
-  | 'preset'
-  | 'off'
-  | 'subtle'
-  | 'strong'
-  | 'relief'
-  | 'heightmap'
-  | 'contours'
-
 /**
  * The user's current render view — the selected preset plus the session overrides
- * layered on top (elevation, per-category layer toggles). Persisted so reopening a
+ * layered on top (per-category layer toggles). Persisted so reopening a
  * world restores the exact view (Stage 3.3), mirroring how the last world path is
  * persisted.
  *
@@ -23,7 +12,6 @@ export type ElevOverride =
  */
 export interface RenderPrefs {
   presetId: string
-  elevOverride: ElevOverride
   layerOverrides: LayerOverrides
 }
 
@@ -31,7 +19,6 @@ const KEY = 'atlas:renderPrefs'
 
 const DEFAULTS: RenderPrefs = {
   presetId: 'journeymap',
-  elevOverride: 'preset',
   layerOverrides: {},
 }
 
@@ -45,7 +32,6 @@ export function loadRenderPrefs(): RenderPrefs {
     // now preset-owned) that must not leak back out as part of the view.
     return {
       presetId: parsed.presetId ?? DEFAULTS.presetId,
-      elevOverride: parsed.elevOverride ?? DEFAULTS.elevOverride,
       layerOverrides: parsed.layerOverrides ?? DEFAULTS.layerOverrides,
     }
   } catch {

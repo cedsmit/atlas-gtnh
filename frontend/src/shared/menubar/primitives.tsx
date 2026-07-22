@@ -1,18 +1,17 @@
 import { Check, ChevronDown, Loader2 } from 'lucide-react'
 import { type ReactNode } from 'react'
 
+import { useTooltip } from './tooltip'
 import { type Tone } from './types'
 
 export const TONE_TEXT: Record<Tone, string> = {
   accent: 'text-atlas-accent',
   amber: 'text-atlas-amber',
-  cyan: 'text-atlas-cyan',
 }
 
 export const TONE_ACTIVE: Record<Tone, string> = {
   accent: 'border-atlas-accent-line bg-atlas-accent-bg text-atlas-accent',
   amber: 'border-atlas-amber-line bg-atlas-amber-bg text-atlas-amber',
-  cyan: 'border-atlas-cyan-line bg-atlas-cyan-bg text-atlas-cyan',
 }
 
 /** Sized by the icon slot it sits in, so it swaps 1:1 with a lucide icon. */
@@ -25,8 +24,7 @@ export function MenuButton({
   onClick,
   icon,
   caret,
-  badge,
-  primary,
+  active,
   accent,
   title,
   children,
@@ -35,76 +33,102 @@ export function MenuButton({
   onClick: () => void
   icon: ReactNode
   caret?: boolean
-  badge?: number
-  primary?: boolean
+  /** This menu's panel is currently open. */
+  active?: boolean
   accent?: Tone
   title?: string
   children: ReactNode
 }) {
   const base =
     'inline-flex items-center gap-2 rounded-[9px] border px-3 py-2 text-[13px] transition-colors'
+  // Three lit states, all tinted rather than filled — a solid accent fill is the
+  // weight of a primary action (the world picker), not of "a panel is open".
+  // `open` (dropdown showing) and `active` (this menu's panel is open) differ by
+  // label colour so both can be true at once and still be told apart.
   const state = open
     ? 'border-atlas-accent-line bg-atlas-accent-bg text-zinc-100'
-    : primary
-      ? 'border-atlas-accent bg-atlas-accent font-semibold text-[#0b1512]'
+    : active
+      ? TONE_ACTIVE.accent
       : accent
         ? `border-zinc-700 bg-atlas-hover ${TONE_TEXT[accent]}`
         : 'border-zinc-700 bg-atlas-hover text-zinc-300 hover:text-zinc-100'
 
+  // Suppressed while the panel is open: the menu itself is the better answer,
+  // and a tip over it would cover the first item.
+  const { trigger, tip } = useTooltip(open ? undefined : title)
+
   return (
-    <button onClick={onClick} title={title} className={`${base} ${state}`}>
-      <span className="[&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
-        {icon}
-      </span>
-      {children}
-      {badge !== undefined && (
-        <span
-          className={`rounded-full px-1.5 text-[11px] font-semibold ${
-            badge > 0
-              ? 'bg-atlas-accent text-[#0b1512]'
-              : 'bg-zinc-800 text-zinc-500'
-          }`}
-        >
-          {badge}
+    <>
+      <button onClick={onClick} {...trigger} className={`${base} ${state}`}>
+        <span className="[&>svg]:h-[15px] [&>svg]:w-[15px] [&>svg]:shrink-0">
+          {icon}
         </span>
-      )}
-      {caret && (
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
-      )}
-    </button>
+        {children}
+        {caret && (
+          <ChevronDown
+            className="h-3.5 w-3.5 shrink-0 opacity-60"
+            aria-hidden
+          />
+        )}
+      </button>
+      {tip}
+    </>
   )
 }
 
-export function QuickToggle({
+/**
+ * A square, label-less button for the bar's right-hand cluster — the quick
+ * toggles and the accessory menus.
+ *
+ * No visible text, so the icon has to carry the meaning: only give this to
+ * controls whose icon is unambiguous and whose absence costs nothing, and leave
+ * anything you would have to read to `MenuButton` on the left. Borderless at
+ * rest keeps the cluster quieter than the named menus, and the transparent
+ * border reserves the space a lit one takes so nothing shifts when it lights.
+ */
+export function IconButton({
   on,
+  open,
   onClick,
   icon,
-  tone,
+  tone = 'accent',
+  label,
   title,
-  children,
 }: {
-  on: boolean
+  /** The thing this controls is on. */
+  on?: boolean
+  /** This button's dropdown is showing. */
+  open?: boolean
   onClick: () => void
   icon: ReactNode
-  tone: Tone
+  tone?: Tone
+  /** The accessible name, since there is no visible text to serve as one. */
+  label: string
+  /** Defaults to `label`; pass a longer form to explain a cycle or a source. */
   title?: string
-  children: ReactNode
 }) {
+  const state = open
+    ? 'border-atlas-accent-line bg-atlas-accent-bg text-zinc-100'
+    : on
+      ? TONE_ACTIVE[tone]
+      : 'text-zinc-500 hover:bg-atlas-hover hover:text-zinc-100'
+
+  // These have no visible text, so the tip is the only thing naming them on
+  // screen — but with the panel open the menu below says it better.
+  const { trigger, tip } = useTooltip(open ? undefined : (title ?? label))
+
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
-        on
-          ? TONE_ACTIVE[tone]
-          : 'border-zinc-700 bg-transparent text-zinc-400 hover:bg-atlas-hover hover:text-zinc-100'
-      }`}
-    >
-      <span className="[&>svg]:h-3.5 [&>svg]:w-3.5 [&>svg]:shrink-0">
+    <>
+      <button
+        onClick={onClick}
+        aria-label={label}
+        {...trigger}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-transparent transition-colors [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0 ${state}`}
+      >
         {icon}
-      </span>
-      {children}
-    </button>
+      </button>
+      {tip}
+    </>
   )
 }
 
@@ -121,29 +145,6 @@ export function Dropdown({
     >
       {children}
     </div>
-  )
-}
-
-export function Pill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean
-  onClick: () => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`rounded-md px-2.5 py-1 text-[11px] transition-colors ${
-        active
-          ? 'bg-atlas-accent font-semibold text-[#0b1512]'
-          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-100'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 
@@ -179,7 +180,10 @@ export function Item({
         mono ? 'font-mono text-xs' : 'text-[13px]'
       } ${
         disabled
-          ? 'cursor-default text-zinc-700'
+          ? // zinc-700 sat at 1.33:1 on the menu — not dimmed, invisible. This
+            // is 3.18:1: plainly inactive next to an enabled item's 11:1, but
+            // still readable as a control that exists.
+            'cursor-default text-zinc-600'
           : tone
             ? `${TONE_TEXT[tone]} hover:bg-atlas-hover`
             : active

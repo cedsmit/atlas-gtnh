@@ -1,18 +1,9 @@
-/** Elevation override applied on top of the active preset's setting. */
-export type ElevOverride =
-  | 'preset'
-  | 'off'
-  | 'subtle'
-  | 'strong'
-  | 'relief'
-  | 'heightmap'
-  | 'contours'
-
 /** Which dropdown is open — at most one, so switching menus is a single set. */
 export type MenuId = 'file' | 'view' | 'overlays' | 'search' | 'saved' | 'debug'
 
 /** Accent colour a control adopts when it is active. */
-export type Tone = 'accent' | 'amber' | 'cyan'
+/** Emerald marks an active feature; amber marks an active diagnostic. */
+export type Tone = 'accent' | 'amber'
 
 /** Props every dropdown needs to participate in the shared open/close state. */
 export interface MenuProps {

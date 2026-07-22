@@ -1,10 +1,10 @@
-import { Compass, Gem, Grid3x3, TriangleAlert, X } from 'lucide-react'
+import { Boxes, Gem, Grid3x3, Hash, TriangleAlert, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
 import { FileMenu } from './menubar/FileMenu'
 import { OverlaysMenu, type OverlaysConfig } from './menubar/OverlaysMenu'
-import { QuickToggle, Spinner } from './menubar/primitives'
+import { IconButton, MenuButton, Spinner } from './menubar/primitives'
 import { SavedMenu, type SavedConfig } from './menubar/SavedMenu'
 import {
   SearchMenu,
@@ -13,6 +13,9 @@ import {
 } from './menubar/SearchMenu'
 import { type MenuId } from './menubar/types'
 import { ViewMenu, type ViewConfig } from './menubar/ViewMenu'
+import { WindowControls } from './menubar/WindowControls'
+
+import atlasIcon from '../assets/atlas-icon.png'
 
 interface Props {
   worldPath: string | null
@@ -27,6 +30,8 @@ interface Props {
   overlays?: OverlaysConfig
   search?: Partial<Record<SearchId, SearchEntry>>
   saved?: SavedConfig
+  /** Save-editing tools; omitted when the world cannot be written. */
+  chunkOps?: { open: boolean; onToggle: () => void }
   debug?: DebugConfig
 }
 
@@ -43,6 +48,7 @@ export function MenuBar({
   overlays,
   search,
   saved,
+  chunkOps,
   debug,
 }: Props) {
   const [menu, setMenu] = useState<MenuId | null>(null)
@@ -68,16 +74,35 @@ export function MenuBar({
   const veins = overlays?.items.oreVeins
 
   const showTools =
-    !!worldPath && !!(view || overlays || search || saved || debug)
+    !!worldPath && !!(view || overlays || search || saved || chunkOps || debug)
 
   return (
     <header ref={headerRef} className="shrink-0">
       {/* ── Identity bar ─────────────────────────────────────────────── */}
-      <div className="flex h-11 items-center gap-3 border-b border-zinc-800 bg-atlas-bar px-4">
-        <span className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
-          <Compass
-            className="h-[17px] w-[17px] shrink-0 text-atlas-accent"
-            aria-hidden
+      {/* Doubles as the window's title bar: the native decorations are off, so
+          this element is the drag handle (Tauri also gives it double-click to
+          maximise for free). Only the element carrying the attribute starts a
+          drag, so the menus and buttons inside stay clickable. */}
+      <div
+        data-tauri-drag-region
+        // cursor-default/select-none because this is a title bar, not copy: the
+        // world path would otherwise show a text I-beam, and a drag across it
+        // would start selecting instead of moving the window.
+        className="flex h-11 cursor-default select-none items-center gap-3 border-b border-zinc-800 bg-atlas-bar pl-4"
+      >
+        {/* Decorative bar contents are pointer-events-none so a mousedown lands
+            on the drag region behind them. Tauri starts a drag only when the
+            event target itself carries the attribute, so anything that swallows
+            the click — and the world path below spans the whole bar — would
+            otherwise leave just the gaps between elements grabbable. */}
+        <span className="pointer-events-none inline-flex items-center gap-2 text-sm font-semibold text-zinc-100">
+          <img
+            src={atlasIcon}
+            alt=""
+            width={20}
+            height={20}
+            className="h-5 w-5 shrink-0 select-none"
+            draggable={false}
           />
           Atlas
         </span>
@@ -94,12 +119,15 @@ export function MenuBar({
 
         {worldPath && (
           <>
-            <span className="h-4 w-px bg-zinc-800" />
+            <span className="pointer-events-none h-4 w-px bg-zinc-800" />
             <span
-              className="h-[7px] w-[7px] shrink-0 rounded-full bg-atlas-accent"
+              className="pointer-events-none h-[7px] w-[7px] shrink-0 rounded-full bg-atlas-accent"
               style={{ boxShadow: '0 0 8px #34d39988' }}
             />
+            {/* Keeps pointer events for its tooltip, so it carries the drag
+                attribute itself rather than opting out of hit-testing. */}
             <span
+              data-tauri-drag-region
               className="min-w-0 flex-1 truncate font-mono text-xs text-zinc-500"
               title={worldPath}
             >
@@ -107,6 +135,8 @@ export function MenuBar({
             </span>
           </>
         )}
+
+        <WindowControls />
       </div>
 
       {/* ── Tools row ────────────────────────────────────────────────── */}
@@ -137,38 +167,54 @@ export function MenuBar({
             />
           )}
 
-          {saved && (
-            <SavedMenu
-              open={menu === 'saved'}
-              onToggle={() => toggleMenu('saved')}
-              onClose={closeMenu}
-              {...saved}
-            />
+          {chunkOps && (
+            <MenuButton
+              open={false}
+              active={chunkOps.open}
+              onClick={chunkOps.onToggle}
+              icon={<Boxes />}
+              title="Select chunks to copy, paste or delete for regeneration"
+            >
+              Chunks
+            </MenuButton>
           )}
 
-          {/* Right side — quick toggles + debug */}
-          <div className="ml-auto flex items-center gap-2">
+          {/* Right side — accessories, all label-less so the named menus on the
+              left keep the eye. Two overlay toggles, then the two menus you
+              open occasionally rather than to get work done. */}
+          <div className="ml-auto flex items-center gap-1">
             {grid && (
-              <QuickToggle
+              <IconButton
                 on={!!grid.on}
                 onClick={grid.onToggle}
-                icon={<Grid3x3 />}
-                tone="accent"
-                title="Chunk/region grid + coordinate labels"
-              >
-                Grid
-              </QuickToggle>
+                // Icon carries the third state: as text it grew the button by
+                // 53px and shunted the group sideways on every cycle.
+                icon={grid.hint ? <Hash /> : <Grid3x3 />}
+                label="Grid"
+                title="Grid: cycles subtle → with coordinates → off"
+              />
             )}
             {veins && (
-              <QuickToggle
+              <IconButton
                 on={!!veins.on}
                 onClick={veins.onToggle}
                 icon={veins.loading ? <Spinner /> : <Gem />}
-                tone="amber"
+                label="Ore veins"
                 title="Ore veins from Visual Prospecting"
-              >
-                Veins
-              </QuickToggle>
+              />
+            )}
+
+            {(grid || veins) && (saved || debug) && (
+              <span className="mx-1 h-4 w-px bg-zinc-800" />
+            )}
+
+            {saved && (
+              <SavedMenu
+                open={menu === 'saved'}
+                onToggle={() => toggleMenu('saved')}
+                onClose={closeMenu}
+                {...saved}
+              />
             )}
 
             {debug && (

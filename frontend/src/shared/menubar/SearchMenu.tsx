@@ -42,7 +42,7 @@ export function SearchMenu({
         onClick={onToggle}
         icon={<Search />}
         caret
-        primary={anyOpen}
+        active={anyOpen}
         title="Search the world — blocks, LootGames, biomes, ore veins"
       >
         Search

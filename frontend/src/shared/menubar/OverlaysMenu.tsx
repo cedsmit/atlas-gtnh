@@ -16,24 +16,24 @@ import {
   Separator,
   Spinner,
 } from './primitives'
-import { type MenuProps, type Tone } from './types'
+import { type MenuProps } from './types'
 
 /**
  * The overlays the map can draw, in menu order. Adding one is a single entry
  * here plus its state in the `overlays` record the bar is given — nothing in
  * this component's body is per-overlay.
+ *
+ * They deliberately share one accent: in a toolbar colour reads as state, not
+ * identity — the label already says which overlay it is. Tinting each one
+ * differently made two lit toggles look like different kinds of thing. Amber
+ * stays reserved for the Debug menu's diagnostics, where the kind differs.
  */
 const OVERLAY_DEFS = [
-  { id: 'grid', label: 'Grid', Icon: Grid3x3, tone: 'accent' },
-  { id: 'oreVeins', label: 'Ore veins', Icon: Gem, tone: 'amber' },
-  { id: 'heatmap', label: 'Heatmap', Icon: Flame, tone: 'amber' },
-  { id: 'infra', label: 'Infrastructure', Icon: Waypoints, tone: 'cyan' },
-] as const satisfies readonly {
-  id: string
-  label: string
-  Icon: LucideIcon
-  tone: Tone
-}[]
+  { id: 'grid', label: 'Grid', Icon: Grid3x3 },
+  { id: 'oreVeins', label: 'Ore veins', Icon: Gem },
+  { id: 'heatmap', label: 'Heatmap', Icon: Flame },
+  { id: 'infra', label: 'Infrastructure', Icon: Waypoints },
+] as const satisfies readonly { id: string; label: string; Icon: LucideIcon }[]
 
 export type OverlayId = (typeof OVERLAY_DEFS)[number]['id']
 
@@ -42,6 +42,8 @@ export interface OverlayState {
   on?: boolean
   /** Shows a spinner in place of the icon while the data is in flight. */
   loading?: boolean
+  /** Extra state for overlays that are more than on/off, e.g. the grid's mode. */
+  hint?: string
   onToggle: () => void
 }
 
@@ -76,7 +78,6 @@ export function OverlaysMenu({
   infraDetail,
 }: Props) {
   const offered = OVERLAY_DEFS.filter((d) => items[d.id])
-  const count = offered.filter((d) => items[d.id]?.on).length
 
   const infra = items.infra
   const systems = infraDetail?.systems ?? []
@@ -122,7 +123,6 @@ export function OverlaysMenu({
         onClick={onToggle}
         icon={<Layers />}
         caret
-        badge={count}
         title="Overlays drawn on top of the map"
       >
         Overlays
@@ -130,7 +130,7 @@ export function OverlaysMenu({
 
       {isOpen && (
         <Dropdown className="left-0 w-[236px]">
-          {offered.map(({ id, label, Icon, tone }) => {
+          {offered.map(({ id, label, Icon }) => {
             const state = items[id]
             if (!state) return null
             return (
@@ -139,7 +139,8 @@ export function OverlaysMenu({
                 onClick={state.onToggle}
                 icon={state.loading ? <Spinner /> : <Icon />}
                 check={state.on}
-                tone={state.on ? tone : undefined}
+                hint={state.hint}
+                tone={state.on ? 'accent' : undefined}
               >
                 {label}
               </Item>

@@ -17,7 +17,6 @@ import {
   presetToConfig,
   BUILT_IN_PRESETS,
 } from '../blocks/renderPresets'
-import { ChunkTools } from '../chunk-ops/ChunkTools'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
 import { MapEngine, type MapContextInfo } from './mapEngine'
 import { loadLastView, saveLastView } from './lastView'
@@ -32,7 +31,6 @@ interface Props {
   biomeColors?: DumpedBiomeColors
   textureKeys?: Record<number, string>
   metaTextureKeys?: Record<string, string>
-  worldPath?: string
   blockNames?: Record<number, string>
   registry?: BlockRenderRegistry
   config?: RenderConfig
@@ -52,7 +50,6 @@ export function WorldMap({
   biomeColors,
   textureKeys,
   metaTextureKeys,
-  worldPath,
   blockNames,
   registry: registryProp,
   config: configProp,
@@ -181,11 +178,6 @@ export function WorldMap({
         ref={inspectorRef}
         className="pointer-events-auto absolute hidden rounded border border-zinc-600 bg-black/80 px-2 py-1 font-mono text-xs text-zinc-200"
         style={{ maxWidth: 280 }}
-      />
-      <ChunkTools
-        engineRef={engineRef}
-        dimensionPath={dimensionPath}
-        worldPath={worldPath ?? ''}
       />
     </div>
   )
