@@ -53,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.5.3";
+    public static final String VERSION = "1.5.4";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -1073,17 +1073,31 @@ public class AtlasDumper {
                         .append(m == null ? "null" : "empty").append("]");
                     continue;
                 }
-                Map.Entry<?, ?> e = m.entrySet().iterator().next();
+                // Judge the map's shape by the first entry that HAS a shape. A
+                // HashMap permits one null key and iterates it first (null hashes
+                // to bucket zero), and at least one mod in the wild registers a
+                // tile entity under a null name - sampling only entry zero lets
+                // that single bad entry hide a registry of 1500 good ones.
+                Map.Entry<?, ?> e = null;
+                for (Map.Entry<?, ?> x : m.entrySet()) {
+                    if (x.getKey() != null && x.getValue() != null) { e = x; break; }
+                }
                 seen.append(" [").append(f.getName()).append(": ").append(m.size())
-                    .append(" ").append(kindOf(e.getKey())).append("->")
-                    .append(kindOf(e.getValue())).append("]");
+                    .append(" ").append(e == null ? "all-null" : kindOf(e.getKey()))
+                    .append("->").append(e == null ? "" : kindOf(e.getValue())).append("]");
+                if (e == null) continue;
 
                 if (e.getKey() instanceof String && e.getValue() instanceof Class) {
-                    byName = (Map<String, Class<?>>) m;
+                    Map<String, Class<?>> clean = new TreeMap<String, Class<?>>();
+                    for (Map.Entry<?, ?> x : m.entrySet())
+                        if (x.getKey() instanceof String && x.getValue() instanceof Class)
+                            clean.put((String) x.getKey(), (Class<?>) x.getValue());
+                    byName = clean;
                 } else if (e.getKey() instanceof Class && e.getValue() instanceof String) {
                     Map<String, Class<?>> flipped = new TreeMap<String, Class<?>>();
                     for (Map.Entry<?, ?> x : m.entrySet())
-                        flipped.put((String) x.getValue(), (Class<?>) x.getKey());
+                        if (x.getKey() instanceof Class && x.getValue() instanceof String)
+                            flipped.put((String) x.getValue(), (Class<?>) x.getKey());
                     byName = flipped;
                 }
                 if (byName != null) break;
