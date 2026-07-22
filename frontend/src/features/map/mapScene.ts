@@ -71,16 +71,21 @@ export class MapScene {
     transparent: true,
     opacity: 0.2,
   })
+  // Same accent as the selection. The two are never on screen together —
+  // entering paste mode clears the selection — so a second hue bought no
+  // distinction and only put a colour on the map that appears nowhere else in
+  // the app. The lighter fill is what separates a pending paste from a
+  // committed selection.
   private readonly previewMat = new THREE.LineBasicMaterial({
-    color: threeColor(ATLAS.cyan),
+    color: threeColor(ATLAS.accent),
     depthTest: false,
     transparent: true,
   })
   private readonly previewFillMat = new THREE.MeshBasicMaterial({
-    color: threeColor(ATLAS.cyan),
+    color: threeColor(ATLAS.accent),
     depthTest: false,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.12,
   })
   private regionGridLines!: THREE.LineSegments
   private chunkGridLines!: THREE.LineSegments
