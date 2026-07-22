@@ -166,12 +166,15 @@ class OrientReport:
     blocks_turned: int = 0
     blocks_skipped: dict[int, int] = field(default_factory=dict)
     guessed: dict[str, int] = field(default_factory=dict)
+    #: Keys turned by a rule confirmed against the game, not by name-matching.
+    verified: dict[str, int] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, object]:
         return {
             "blocks_turned": self.blocks_turned,
             "blocks_skipped": dict(sorted(self.blocks_skipped.items())),
             "guessed_keys": dict(sorted(self.guessed.items())),
+            "verified_keys": dict(sorted(self.verified.items())),
         }
 
 
@@ -192,6 +195,15 @@ def meta_lut(block_id: int, turn: int) -> list[int] | None:
 
 def has_meta_rule(block_id: int) -> bool:
     return block_id in _META_RULES
+
+
+# Verified against a rotation dump taken from the running pack (atlas-dumper
+# 1.5.4, GTNH 2.9.0): every GregTech machine is one shared BaseMetaTileEntity
+# carrying "mFacing", and every GT pipe/cable is a BaseMetaPipeEntity carrying
+# the side bitmask "mConnections". Those two names cover the whole of GT, so
+# they are rules rather than guesses and are not reported as needing a check.
+_TE_VERIFIED_DIR = frozenset({"mFacing"})
+_TE_VERIFIED_MASK = frozenset({"mConnections"})
 
 
 def rotate_block_meta(block_id: int, meta: int, turn: int, report: OrientReport) -> int:
@@ -231,7 +243,13 @@ def rotate_tile_entity(te: MutableMapping[str, Any], turn: int, report: OrientRe
             continue  # compounds, strings, lists — not a facing
         low = key.lower()
 
-        if key in _TE_SIGN16_KEYS and 0 <= number <= 15:
+        if key in _TE_VERIFIED_DIR and 0 <= number <= 5:
+            te[key] = type(value)(rotate_forge_direction(number, turn))
+            report.verified[key] = report.verified.get(key, 0) + 1
+        elif key in _TE_VERIFIED_MASK and 0 <= number <= 0x3F:
+            te[key] = type(value)(rotate_forge_mask(number, turn))
+            report.verified[key] = report.verified.get(key, 0) + 1
+        elif key in _TE_SIGN16_KEYS and 0 <= number <= 15:
             te[key] = type(value)((number + 4 * turns) % 16)
             report.guessed[key] = report.guessed.get(key, 0) + 1
         elif any(h in low for h in _TE_MASK_HINTS) and 0 <= number <= 0x3F:

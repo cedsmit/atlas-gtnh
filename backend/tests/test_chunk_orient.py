@@ -113,19 +113,33 @@ def test_modded_ids_are_not_counted_as_misses() -> None:
     assert r.blocks_skipped == {}
 
 
-def test_tile_entity_facing_is_turned_and_flagged_as_a_guess() -> None:
-    te = Compound({"id": String("GT_TileEntity"), "mFacing": Byte(EAST)})
+def test_gregtech_machine_facing_is_turned_as_a_verified_rule() -> None:
+    """Every GT machine is one shared BaseMetaTileEntity carrying mFacing.
+
+    Confirmed by dumping the tile-entity registry out of the running pack, so
+    this is not reported as a guess the user has to go and check.
+    """
+    te = Compound({"id": String("BaseMetaTileEntity"), "mFacing": Byte(EAST)})
     r = OrientReport()
     rotate_tile_entity(te, 90, r)
     assert int(te["mFacing"]) == SOUTH
-    assert r.guessed == {"mFacing": 1}  # reported: nobody verified this key
+    assert r.verified == {"mFacing": 1}
+    assert r.guessed == {}
 
 
-def test_tile_entity_connection_mask_is_turned() -> None:
-    te = Compound({"mConnections": Byte((1 << NORTH) | (1 << EAST))})
+def test_gregtech_pipe_connections_turn_as_a_mask_not_a_direction() -> None:
+    """GT pipes carry mConnections, a bitmask of sides — bits move, not values.
+
+    Treating it as a direction ordinal would silently rewire every pipe, so the
+    distinction is the whole point of having a verified rule for this key.
+    """
+    te = Compound(
+        {"id": String("BaseMetaPipeEntity"), "mConnections": Byte((1 << NORTH) | (1 << EAST))}
+    )
     r = OrientReport()
     rotate_tile_entity(te, 90, r)
     assert int(te["mConnections"]) == (1 << EAST) | (1 << SOUTH)
+    assert r.verified == {"mConnections": 1}
 
 
 def test_out_of_range_values_are_left_alone() -> None:
