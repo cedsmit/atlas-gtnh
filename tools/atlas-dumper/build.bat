@@ -125,11 +125,32 @@ if %N%==0 (
 echo Install into which instance's mods folder? (replaces any older atlas-dumper jars there)
 for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
 echo    [0]  skip
+echo    [r]  remove the dumper from an instance instead
 echo.
+set "REMOVEONLY="
 set "PICK="
 set /p "PICK=Enter a number: "
 if not defined PICK goto :end
 if "%PICK%"=="0" goto :end
+
+REM  The dumper is a diagnostic, not something to leave installed - it re-runs
+REM  its scans every launch. Uninstalling reuses the same cleanup the install
+REM  path already does, so "remove" and "replace" cannot drift apart.
+REM  Kept as labels rather than a parenthesised if-block: cmd will not parse a
+REM  block that contains both a nested for and a goto, and fails the whole
+REM  branch with "The syntax of the command is incorrect".
+if /i not "%PICK%"=="r" goto :resolve
+set "REMOVEONLY=1"
+echo.
+for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
+echo    [0]  cancel
+echo.
+set "PICK="
+set /p "PICK=Remove from which instance: "
+if not defined PICK goto :end
+if "!PICK!"=="0" goto :end
+
+:resolve
 set "CHOSEN=!MODS[%PICK%]!"
 if not defined CHOSEN (
   echo [warn] "%PICK%" is not one of the listed choices - skipped.
@@ -152,6 +173,14 @@ for %%O in ("!CHOSEN!\atlas*dumper*.jar") do (
     set /a REMOVED+=1
     echo    removed old  %%~nxO
   )
+)
+if defined REMOVEONLY (
+  if "!REMOVED!"=="0" (
+    echo Nothing to remove - no atlas-dumper jar was in !CHOSEN!
+  ) else (
+    echo Removed !REMOVED! atlas-dumper jar^(s^) from !CHOSEN!
+  )
+  goto :end
 )
 echo [ok]  old copies removed: !REMOVED!
 copy /y "%JARNAME%" "!CHOSEN!" >nul && echo Installed %JARNAME% into !CHOSEN!
