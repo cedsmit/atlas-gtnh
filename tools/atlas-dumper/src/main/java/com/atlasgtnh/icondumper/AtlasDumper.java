@@ -53,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.5.0";
+    public static final String VERSION = "1.5.1";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -1037,33 +1037,28 @@ public class AtlasDumper {
             }
 
             Class<?> nbtClass = Class.forName("net.minecraft.nbt.NBTTagCompound");
-            Method writeToNBT = null;
-            for (Method m : teClass.getMethods()) {
-                if (m.getParameterTypes().length == 1
-                        && m.getParameterTypes()[0] == nbtClass
-                        && m.getReturnType() == void.class
-                        && m.getName().length() <= 12) {
-                    // writeToNBT and readFromNBT have the same shape; the writer
-                    // is the one that leaves keys behind, so probe rather than
-                    // trust the name (it is obfuscated in a production run).
-                    Object probe = nbtClass.newInstance();
-                    try {
-                        Object inst = teClass.newInstance();
-                        m.invoke(inst, probe);
-                        if (!keysOf(probe).isEmpty()) { writeToNBT = m; break; }
-                    } catch (Throwable ignored) { /* try the next candidate */ }
-                }
-            }
-            if (writeToNBT == null) {
-                System.err.println("[AtlasDumper] Could not resolve writeToNBT; skipping rotation dump.");
-                return;
-            }
+            // Resolved from the first tile entity that will actually construct.
+            // It cannot be probed on TileEntity itself: that class is abstract,
+            // so newInstance() always throws and the probe never succeeds.
+            String writerName = null;
 
             for (Map.Entry<String, Class<?>> e : byName.entrySet()) {
+                Object inst;
                 try {
-                    Object inst = e.getValue().newInstance();
+                    inst = e.getValue().newInstance();
+                } catch (Throwable t) {
+                    failed.add(e.getKey() + ": " + t.getClass().getSimpleName());
+                    continue;
+                }
+                try {
+                    if (writerName == null) writerName = findWriter(inst, nbtClass);
+                    if (writerName == null) {
+                        failed.add(e.getKey() + ": no writer found");
+                        continue;
+                    }
+                    Method w = inst.getClass().getMethod(writerName, nbtClass);
                     Object tag = nbtClass.newInstance();
-                    writeToNBT.invoke(inst, tag);
+                    w.invoke(inst, tag);
                     Set<String> keys = keysOf(tag);
                     teKeys.put(e.getKey(), keys.toArray(new String[keys.size()]));
                 } catch (Throwable t) {
@@ -1110,6 +1105,28 @@ public class AtlasDumper {
         } catch (IOException e) {
             System.err.println("[AtlasDumper] Could not write rotation dump: " + e);
         }
+    }
+
+    /**
+     * Name of the (NBTTagCompound) -> void method that leaves keys behind.
+     *
+     * writeToNBT and readFromNBT have identical signatures and the name is
+     * obfuscated in a production run, so the writer is identified by what it
+     * does rather than what it is called. Probed on a real tile entity: doing it
+     * on TileEntity itself is impossible, the class being abstract.
+     */
+    private static String findWriter(Object te, Class<?> nbtClass) {
+        for (Method m : te.getClass().getMethods()) {
+            if (m.getParameterTypes().length != 1) continue;
+            if (m.getParameterTypes()[0] != nbtClass) continue;
+            if (m.getReturnType() != void.class) continue;
+            try {
+                Object tag = nbtClass.newInstance();
+                m.invoke(te, tag);
+                if (!keysOf(tag).isEmpty()) return m.getName();
+            } catch (Throwable ignored) { /* the reader, or it needs a world */ }
+        }
+        return null;
     }
 
     /** Key names of an NBTTagCompound, via whichever accessor this build exposes. */

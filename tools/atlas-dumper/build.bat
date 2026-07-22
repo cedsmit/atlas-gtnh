@@ -8,7 +8,7 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.5.0"
+set "VERSION=1.5.1"
 set "MCVER=1.7.10"
 
 REM ==== Manual override - ONLY if auto-detect below fails ====================
@@ -165,10 +165,12 @@ REM --- Remove any previously installed copies of this mod (all versions) -----
 REM   Matches atlas*dumper*.jar so old versions AND a same-version rebuild
 REM   are cleared out first, leaving exactly one jar after the copy below.
 set "REMOVED=0"
+set "STUCK=0"
 for %%O in ("!CHOSEN!\atlas*dumper*.jar") do (
   del /f /q "%%~fO" >nul 2>&1
   if exist "%%~fO" (
     echo [warn] could not remove %%~nxO ^(is the game running? close it and retry^)
+    set /a STUCK+=1
   ) else (
     set /a REMOVED+=1
     echo    removed old  %%~nxO
@@ -183,6 +185,16 @@ if defined REMOVEONLY (
   goto :end
 )
 echo [ok]  old copies removed: !REMOVED!
+REM  Refuse to add a second jar next to one we could not delete: two copies share
+REM  a mod id and FML will not start the pack. Warning and installing anyway left
+REM  the instance broken in a way that looks like the dumper being at fault.
+if not "!STUCK!"=="0" (
+  echo.
+  echo [ERROR] !STUCK! old jar^(s^) could not be removed, so installing now would
+  echo         leave two copies of the same mod and the pack would refuse to start.
+  echo         Close Minecraft and run this again.
+  goto :end
+)
 copy /y "%JARNAME%" "!CHOSEN!" >nul && echo Installed %JARNAME% into !CHOSEN!
 goto :end
 
