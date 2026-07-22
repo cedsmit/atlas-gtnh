@@ -200,7 +200,9 @@ fallbacks on the map.
 
 ## rotation_dump.json (v1.5.0)
 
-Written on world load, alongside the biome and ore-vein dumps.
+Written at the **main menu** — no world needs to be loaded. The tile-entity
+registry is filled during mod init, so the schemas are readable as soon as
+loading finishes, unlike the biome and ore-vein dumps which do need a world.
 
 Atlas re-faces machines when it rotates a pasted chunk selection, and facing
 lives in tile-entity NBT under a key each mod picks for itself — GregTech uses
@@ -224,6 +226,12 @@ Nothing is placed or changed in the world — the instances are throwaway. Class
 that will not construct or serialise in isolation are listed under `failed`
 rather than dropped, because from the Python side a missing entry and a machine
 that cannot be rotated look identical.
+
+Expect `failed` to have entries, and check it before assuming a mod is covered.
+A tile entity that only serialises correctly with a world, a parent block or a
+sub-object attached will throw when constructed bare — GregTech's machines hang
+their state off a meta-tile-entity object, so they are prime candidates. A
+machine missing from `tile_entity_keys` is not evidence it has no facing.
 
 Being a schema rather than a rule, it narrows the guess rather than removing it:
 it says *which* key holds the facing, not what its values mean. Encodings still

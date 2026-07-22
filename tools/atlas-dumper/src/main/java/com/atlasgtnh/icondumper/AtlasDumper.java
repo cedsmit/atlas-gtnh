@@ -95,7 +95,17 @@ public class AtlasDumper {
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (biomesDumped && oreVeinsDumped && rotationsDumped) return;
-        // Wait for a loaded world: the grass/foliage colormaps (biomes) and the
+
+        // Tile-entity schemas need no world — the registry is filled during mod
+        // init — so this runs at the main menu. Making people load a save to
+        // collect it would be a gate with nothing behind it.
+        if (!rotationsDumped) {
+            rotationsDumped = true;
+            System.out.println("[AtlasDumper] Starting rotation dump...");
+            dumpRotations(); // tile-entity NBT schemas, so a rotated paste can re-face machines
+        }
+
+        // The rest do need a world: the grass/foliage colormaps (biomes) and the
         // fully-baked GregTech OreMixes / Materials / ore-block icons (ore veins)
         // are only guaranteed once a world is in — not at texture-stitch time.
         if (getClientWorld() == null) return;
@@ -108,11 +118,6 @@ public class AtlasDumper {
             oreVeinsDumped = true;
             System.out.println("[AtlasDumper] World loaded — starting ore-vein dump...");
             dumpOreVeins(); // GregTech ore-vein registry (name + representative ore texture + colour)
-        }
-        if (!rotationsDumped) {
-            rotationsDumped = true;
-            System.out.println("[AtlasDumper] World loaded — starting rotation dump...");
-            dumpRotations(); // tile-entity NBT schemas, so a rotated paste can re-face machines
         }
     }
 
