@@ -13,8 +13,9 @@ import {
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 
+import { Dialog, DialogCancel, DialogConfirm } from '../../shared/Dialog'
 import type { ChunkOps, Destructive } from './useChunkOps'
 
 /**
@@ -304,96 +305,63 @@ function PasteDialog({
   onCancel: () => void
 }) {
   const { anchor, clipboard, turn, busy } = ops
+  // Focus starts on Cancel, so a stray Enter is harmless.
   const cancelRef = useRef<HTMLButtonElement>(null)
-
-  // Escape cancels, and focus starts on Cancel so a stray Enter is harmless.
-  useEffect(() => {
-    cancelRef.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !busy) onCancel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onCancel, busy])
 
   if (!clipboard || !anchor) return null
   const n = clipboard.chunks.length
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-      onClick={() => !busy && onCancel()}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="paste-confirm-title"
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-xl border border-zinc-700 bg-atlas-row shadow-2xl"
-      >
-        <div className="flex items-start gap-2.5 border-b border-zinc-800 px-4 py-3">
-          <TriangleAlert
-            className="mt-0.5 h-4 w-4 shrink-0 text-atlas-amber"
-            aria-hidden
-          />
-          <h2
-            id="paste-confirm-title"
-            className="text-[13.5px] font-semibold text-zinc-100"
-          >
-            Write {n} chunk{n === 1 ? '' : 's'} to this world?
-          </h2>
-        </div>
-
-        <div className="space-y-2.5 px-4 py-3">
-          <dl className="space-y-1 text-xs">
-            <Row label="Landing at">
-              <span className="font-mono">
-                {anchor.cx}, {anchor.cz}
-              </span>
-            </Row>
-            <Row label="Rotation">{turn ? `${turn}° clockwise` : 'none'}</Row>
-          </dl>
-
-          <p className="text-xs leading-relaxed text-zinc-400">
-            Anything already in those chunks is replaced.
-          </p>
-
-          <p className="rounded-md border border-atlas-amber-line bg-atlas-amber-bg px-2.5 py-2 text-[11px] leading-relaxed text-atlas-amber">
-            <strong>This cannot be undone from Atlas.</strong> A{' '}
-            <code>.bak</code> of each region is kept only from the{' '}
-            <em>first</em> time Atlas edited it — after that it is an older
-            state, not the one from just before this paste. Back up the world
-            yourself if it matters.
-            {turn
-              ? ' Machine and pipe facing is best-effort when rotated.'
-              : ''}
-          </p>
-        </div>
-
-        <div className="flex gap-1.5 border-t border-zinc-800 px-4 py-3">
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-atlas-accent px-3 py-2 text-xs font-semibold text-[#08140a] transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
+    <Dialog
+      title={`Write ${n} chunk${n === 1 ? '' : 's'} to this world?`}
+      icon={
+        <TriangleAlert
+          className="mt-0.5 h-4 w-4 shrink-0 text-atlas-amber"
+          aria-hidden
+        />
+      }
+      busy={busy}
+      onClose={onCancel}
+      initialFocusRef={cancelRef}
+      footer={
+        <>
+          <DialogConfirm onClick={onConfirm} disabled={busy}>
             {busy ? (
               <Spin />
             ) : (
               <ClipboardPaste className="h-3.5 w-3.5" aria-hidden />
             )}
             {busy ? 'Writing…' : 'Paste'}
-          </button>
-          <button
-            ref={cancelRef}
+          </DialogConfirm>
+          <DialogCancel
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-atlas-hover disabled:opacity-40"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+            buttonRef={cancelRef}
+          />
+        </>
+      }
+    >
+      <dl className="space-y-1 text-xs">
+        <Row label="Landing at">
+          <span className="font-mono">
+            {anchor.cx}, {anchor.cz}
+          </span>
+        </Row>
+        <Row label="Rotation">{turn ? `${turn}° clockwise` : 'none'}</Row>
+      </dl>
+
+      <p className="text-xs leading-relaxed text-zinc-400">
+        Anything already in those chunks is replaced.
+      </p>
+
+      <p className="rounded-md border border-atlas-amber-line bg-atlas-amber-bg px-2.5 py-2 text-[11px] leading-relaxed text-atlas-amber">
+        <strong>This cannot be undone from Atlas.</strong> A <code>.bak</code>{' '}
+        of each region is kept only from the <em>first</em> time Atlas edited it
+        — after that it is an older state, not the one from just before this
+        paste. Back up the world yourself if it matters.
+        {turn ? ' Machine and pipe facing is best-effort when rotated.' : ''}
+      </p>
+    </Dialog>
   )
 }
 
