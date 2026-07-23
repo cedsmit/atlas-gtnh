@@ -18,7 +18,7 @@ import {
   BUILT_IN_PRESETS,
 } from '../blocks/renderPresets'
 import { FilterPipelineInfo } from './FilterPipelineInfo'
-import { MapEngine, type MapContextInfo } from './mapEngine'
+import { MapEngine, type MapContextInfo, type MapPointInfo } from './mapEngine'
 import { loadLastView, saveLastView } from './lastView'
 import { loadHome } from './homeWaypoint'
 
@@ -41,6 +41,9 @@ interface Props {
   // When set, right-clicking the map calls this (App opens a context menu) instead
   // of the block inspector. Left unset, right-click keeps the classic inspector.
   onMapContextRef?: MutableRefObject<((info: MapContextInfo) => void) | null>
+  // When set, double-clicking the map calls this (App opens the go-to dialog).
+  // Left unset, double-click does nothing.
+  onMapDoubleClickRef?: MutableRefObject<((info: MapPointInfo) => void) | null>
 }
 
 export function WorldMap({
@@ -56,6 +59,7 @@ export function WorldMap({
   debugMode = false,
   engineRef: engineRefProp,
   onMapContextRef,
+  onMapDoubleClickRef,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const hudRef = useRef<HTMLDivElement>(null)
@@ -126,6 +130,7 @@ export function WorldMap({
       syncRegionsRef,
       fitCameraRef,
       onContextRef: onMapContextRef,
+      onDoubleClickRef: onMapDoubleClickRef,
       // Resume where the user left off in this dimension (null = fit instead).
       initialView: loadLastView(dimensionPath),
       // Restore the home-waypoint marker for this dimension, if one is set.
@@ -148,7 +153,7 @@ export function WorldMap({
     }
     // engineRef is a stable ref (App passes the same object); listed to satisfy
     // exhaustive-deps now that it's `prop ?? local` rather than a bare useRef.
-  }, [dimensionPath, engineRef, onMapContextRef])
+  }, [dimensionPath, engineRef, onMapContextRef, onMapDoubleClickRef])
 
   useEffect(() => {
     syncRegionsRef.current?.()

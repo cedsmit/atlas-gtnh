@@ -32,8 +32,10 @@ import type {
   ChunkCoord,
   MapContextInfo,
   MapEngine,
+  MapPointInfo,
 } from './features/map/mapEngine'
 import { MapContextMenu } from './features/map/MapContextMenu'
+import { GoToDialog } from './features/map/GoToDialog'
 import {
   clearHome,
   type HomePos,
@@ -175,6 +177,20 @@ export default function App() {
   const [mapContext, setMapContext] = useState<MapContextInfo | null>(null)
   const mapContextRef = useRef<((info: MapContextInfo) => void) | null>(null)
   mapContextRef.current = setMapContext
+
+  // Double-click opens the go-to dialog, seeded with the block clicked. Same
+  // arrangement as the context menu: the engine reports, App owns the chrome.
+  const [goTo, setGoTo] = useState<MapPointInfo | null>(null)
+  const goToRef = useRef<((info: MapPointInfo) => void) | null>(null)
+  goToRef.current = setGoTo
+
+  function flyTo(x: number, z: number) {
+    const engine = engineRef.current
+    if (!engine) return
+    // Keep the current zoom — you asked to move, not to zoom.
+    engine.animateCameraTo({ cx: x, cz: z, scale: engine.getViewport().scale })
+    setGoTo(null)
+  }
 
   function setHomeHere() {
     if (!dimensionPath || !mapContext) return
@@ -752,6 +768,7 @@ export default function App() {
               debugMode={debugOpen}
               engineRef={engineRef}
               onMapContextRef={mapContextRef}
+              onMapDoubleClickRef={goToRef}
             />
             {gridMode === 'labels' && <GridLabels engineRef={engineRef} />}
             {chunkOpsOpen && (
@@ -770,6 +787,13 @@ export default function App() {
                 </div>
               )}
             <DumpMismatchBanner worldPath={worldPath} />
+            {goTo && (
+              <GoToDialog
+                at={goTo}
+                onGo={flyTo}
+                onClose={() => setGoTo(null)}
+              />
+            )}
             {mapContext && (
               <MapContextMenu
                 x={mapContext.screenX}

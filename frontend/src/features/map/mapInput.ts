@@ -25,6 +25,9 @@ export interface MapInputDeps {
   minScale: number
   maxScale: number
   onContextMenu: (e: MouseEvent) => void
+  /** Report a double-click; the engine turns it into a world position. The
+   *  dialog it opens is React chrome, so it cannot be raised from here. */
+  onDoubleClick: (e: MouseEvent) => void
 }
 
 /** A drag that moved this far (px) was a pan, not a click. */
@@ -41,6 +44,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     minScale,
     maxScale,
     onContextMenu,
+    onDoubleClick,
   } = deps
 
   /** Where the button went down, kept past the release for the menu test. */
@@ -79,15 +83,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
   }
   function onDblClick(e: MouseEvent) {
     e.preventDefault()
-    const input = prompt('Go to coordinates — enter X, Z:')
-    if (!input) return
-    const parts = input.split(',').map((p) => parseFloat(p.trim()))
-    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      st.cam.cx = parts[0]
-      st.cam.cz = parts[1]
-      st.cam.scale = Math.max(st.cam.scale, minScale)
-      updateCam()
-    }
+    onDoubleClick(e)
   }
   function hideInspector() {
     inspector.style.display = 'none'

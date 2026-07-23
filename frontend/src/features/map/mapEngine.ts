@@ -64,6 +64,12 @@ export interface MapContextInfo {
   worldZ: number
 }
 
+/** The world block a double-click landed on, for the go-to dialog to start from. */
+export interface MapPointInfo {
+  worldX: number
+  worldZ: number
+}
+
 interface MapEngineDeps {
   container: HTMLDivElement
   hud: HTMLDivElement
@@ -84,6 +90,10 @@ interface MapEngineDeps {
   // the block inspector, handing over the click position + world block. When
   // absent (standalone WorldMap), right-click falls back to the inspector.
   onContextRef?: MutableRefObject<((info: MapContextInfo) => void) | null>
+  // Double-click handler: when set, the map reports the block double-clicked and
+  // App opens the go-to dialog. Absent (standalone WorldMap), double-click does
+  // nothing — the dialog is React chrome the engine cannot raise on its own.
+  onDoubleClickRef?: MutableRefObject<((info: MapPointInfo) => void) | null>
   // Last camera for this dimension: restored instead of fitting on first load.
   initialView?: SavedView | null
   // Home waypoint for this dimension: rendered as a marker on first load.
@@ -145,6 +155,7 @@ export class MapEngine {
       syncRegionsRef,
       fitCameraRef,
       onContextRef,
+      onDoubleClickRef,
       initialView,
       initialHome,
     } = deps
@@ -1478,6 +1489,19 @@ export class MapEngine {
     // the inspector at the point the menu was opened from.
     let lastContextEvent: MouseEvent | null = null
 
+    /** The block under a mouse event, in world coordinates. */
+    function blockAt(e: MouseEvent): MapPointInfo {
+      const rect = el.getBoundingClientRect()
+      return {
+        worldX: Math.floor(
+          st.cam.cx + (e.clientX - rect.left - W / 2) / st.cam.scale
+        ),
+        worldZ: Math.floor(
+          st.cam.cz + (e.clientY - rect.top - H / 2) / st.cam.scale
+        ),
+      }
+    }
+
     function onContextMenu(e: MouseEvent) {
       e.preventDefault()
       lastContextEvent = e
@@ -1486,12 +1510,11 @@ export class MapEngine {
         void showInspector(e) // standalone: keep the classic instant inspector
         return
       }
-      const rect = el.getBoundingClientRect()
-      const mx = e.clientX - rect.left
-      const my = e.clientY - rect.top
-      const worldX = Math.floor(st.cam.cx + (mx - W / 2) / st.cam.scale)
-      const worldZ = Math.floor(st.cam.cz + (my - H / 2) / st.cam.scale)
-      openMenu({ screenX: e.clientX, screenY: e.clientY, worldX, worldZ })
+      openMenu({ screenX: e.clientX, screenY: e.clientY, ...blockAt(e) })
+    }
+
+    function onDoubleClick(e: MouseEvent) {
+      onDoubleClickRef?.current?.(blockAt(e))
     }
 
     this.inspectAt = () => {
@@ -1518,6 +1541,7 @@ export class MapEngine {
       minScale: MIN_SCALE,
       maxScale: MAX_SCALE,
       onContextMenu,
+      onDoubleClick,
     })
 
     // Expose the bits the chunk-tools selection UI needs (screen↔world math and
