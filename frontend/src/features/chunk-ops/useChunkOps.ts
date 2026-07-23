@@ -1,5 +1,11 @@
 import { open } from '@tauri-apps/plugin-dialog'
-import { type RefObject, useCallback, useEffect, useState } from 'react'
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
 import {
@@ -9,14 +15,35 @@ import {
   deleteChunksExcept,
   type RotationReport,
 } from './api/chunkOps'
-import { setClipboard, useClipboard } from './chunkClipboard'
+import {
+  type ChunkClipboard,
+  setClipboard,
+  useClipboard,
+} from './chunkClipboard'
 
-export interface ChunkSelection {
+/** Shared empty selection, so "nothing selected" is one stable value. */
+const EMPTY: ChunkSet = new Set<string>()
+
+/** An inclusive chunk-coordinate box — a selection's extent, not its shape. */
+export interface ChunkBox {
   cx0: number
   cz0: number
   cx1: number
   cz1: number
 }
+
+/**
+ * The chosen chunks, as `"cx,cz"` keys.
+ *
+ * A set rather than a box because a selection is free-form: a box drag, a
+ * painted blob and a scattering of single chunks are all the same thing to
+ * everything downstream — the backend has always taken a chunk *list*, so
+ * nothing below this line had to learn a new shape.
+ */
+export type ChunkSet = ReadonlySet<string>
+
+/** How a gesture folds into the current selection. */
+export type BrushMode = 'replace' | 'add' | 'subtract'
 
 /** Drag a box to select, or click to place the paste anchor. */
 export type ChunkOpsMode = 'select' | 'paste'
@@ -47,17 +74,79 @@ export function rotationNote(report?: RotationReport): string {
   return ` ${parts.join(', ')}.`
 }
 
-export function selectionCount(s: ChunkSelection): number {
-  return (Math.abs(s.cx1 - s.cx0) + 1) * (Math.abs(s.cz1 - s.cz0) + 1)
+export const chunkKey = (cx: number, cz: number) => `${cx},${cz}`
+
+export function parseChunkKey(key: string): [number, number] {
+  const comma = key.indexOf(',')
+  return [Number(key.slice(0, comma)), Number(key.slice(comma + 1))]
 }
 
-export function normalise(s: ChunkSelection): ChunkSelection {
-  return {
-    cx0: Math.min(s.cx0, s.cx1),
-    cz0: Math.min(s.cz0, s.cz1),
-    cx1: Math.max(s.cx0, s.cx1),
-    cz1: Math.max(s.cz0, s.cz1),
+export function chunkList(sel: ChunkSet): [number, number][] {
+  return [...sel].map(parseChunkKey)
+}
+
+/** The box a selection spans — its extent, which a free-form shape need not fill. */
+export function boundsOf(sel: ChunkSet): ChunkBox | null {
+  let box: ChunkBox | null = null
+  for (const key of sel) {
+    const [cx, cz] = parseChunkKey(key)
+    if (!box) {
+      box = { cx0: cx, cz0: cz, cx1: cx, cz1: cz }
+      continue
+    }
+    if (cx < box.cx0) box.cx0 = cx
+    if (cx > box.cx1) box.cx1 = cx
+    if (cz < box.cz0) box.cz0 = cz
+    if (cz > box.cz1) box.cz1 = cz
   }
+  return box
+}
+
+/** Every chunk in the box between two corners, in either order. */
+export function boxChunks(a: [number, number], b: [number, number]) {
+  const out: [number, number][] = []
+  for (let z = Math.min(a[1], b[1]); z <= Math.max(a[1], b[1]); z++)
+    for (let x = Math.min(a[0], b[0]); x <= Math.max(a[0], b[0]); x++)
+      out.push([x, z])
+  return out
+}
+
+/**
+ * The chunks a brush stroke crosses going from *a* to *b*, excluding *a*.
+ *
+ * Mouse moves arrive a few chunks apart when the pointer is quick or the zoom
+ * is far out, so painting only the sampled chunk leaves a dotted line. Stepping
+ * along the longer axis fills the gap.
+ */
+export function chunkLine(
+  a: [number, number],
+  b: [number, number]
+): [number, number][] {
+  const dx = b[0] - a[0]
+  const dz = b[1] - a[1]
+  const steps = Math.max(Math.abs(dx), Math.abs(dz))
+  if (steps === 0) return []
+  const out: [number, number][] = []
+  for (let i = 1; i <= steps; i++)
+    out.push([
+      Math.round(a[0] + (dx * i) / steps),
+      Math.round(a[1] + (dz * i) / steps),
+    ])
+  return out
+}
+
+/** Fold *chunks* into *sel* — replacing, adding to or cutting out of it. */
+export function applyBrush(
+  sel: ChunkSet,
+  chunks: readonly [number, number][],
+  mode: BrushMode
+): ChunkSet {
+  const next = new Set(mode === 'replace' ? [] : sel)
+  for (const [cx, cz] of chunks) {
+    if (mode === 'subtract') next.delete(chunkKey(cx, cz))
+    else next.add(chunkKey(cx, cz))
+  }
+  return next
 }
 
 /**
@@ -88,12 +177,27 @@ export function rotateInBox(
   }
 }
 
-function expand(s: ChunkSelection): [number, number][] {
-  const n = normalise(s)
-  const out: [number, number][] = []
-  for (let z = n.cz0; z <= n.cz1; z++)
-    for (let x = n.cx0; x <= n.cx1; x++) out.push([x, z])
-  return out
+/**
+ * Where each clipboard chunk lands for a paste anchored at *anchor*, turned by
+ * *turn* degrees.
+ *
+ * One function for both the preview and the post-paste redraw, so what the map
+ * outlines is by construction the set of chunks the write touches.
+ */
+export function pasteTargets(
+  clipboard: ChunkClipboard,
+  anchor: { cx: number; cz: number },
+  turn: number
+): [number, number][] {
+  const b = clipboard.bounds
+  const w = b.cx1 - b.cx0 + 1
+  const h = b.cz1 - b.cz0 + 1
+  const dx = anchor.cx - b.cx0
+  const dz = anchor.cz - b.cz0
+  return clipboard.chunks.map(([cx, cz]) => {
+    const [i, j] = rotateInBox(cx - b.cx0, cz - b.cz0, turn, w, h)
+    return [b.cx0 + dx + i, b.cz0 + dz + j]
+  })
 }
 
 /**
@@ -112,7 +216,7 @@ export function useChunkOps(
 ) {
   const clipboard = useClipboard()
   const [mode, setMode] = useState<ChunkOpsMode>('select')
-  const [selection, setSelection] = useState<ChunkSelection | null>(null)
+  const [selection, setSelection] = useState<ChunkSet>(EMPTY)
   const [anchor, setAnchor] = useState<{ cx: number; cz: number } | null>(null)
   const [turn, setTurn] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -125,67 +229,56 @@ export function useChunkOps(
   }
 
   // Closing the panel must take the map decorations with it, or a selection
-  // rectangle outlives the tool that made it.
+  // outlives the tool that made it.
   useEffect(() => {
     if (open_) return
     setMode('select')
-    setSelection(null)
+    setSelection(EMPTY)
     setAnchor(null)
     setTurn(0)
     setResult(null)
-    engineRef.current?.setSelection(null)
-    engineRef.current?.setPreview(null)
-  }, [open_, engineRef])
+  }, [open_])
 
   // Selections are chunk coordinates, which mean nothing in another dimension.
   useEffect(() => {
-    setSelection(null)
+    setSelection(EMPTY)
     setAnchor(null)
-    engineRef.current?.setSelection(null)
-  }, [dimensionPath, engineRef])
+  }, [dimensionPath])
 
-  const selectBox = useCallback(
-    (s: ChunkSelection) => {
-      const n = normalise(s)
-      setSelection(n)
+  // One place where the map learns what is selected. The alternative — every
+  // action that changes the selection also telling the engine — is what lets
+  // the two drift apart.
+  useEffect(() => {
+    engineRef.current?.setSelection(chunkList(selection))
+  }, [selection, engineRef])
+
+  /** Fold a gesture's chunks into the selection. */
+  const paint = useCallback(
+    (chunks: readonly [number, number][], brush: BrushMode) => {
+      setSelection((sel) => applyBrush(sel, chunks, brush))
       setResult(null)
-      engineRef.current?.setSelection(n)
     },
-    [engineRef]
+    []
   )
 
-  const clearSelection = useCallback(() => {
-    setSelection(null)
-    engineRef.current?.setSelection(null)
-  }, [engineRef])
+  const clearSelection = useCallback(() => setSelection(EMPTY), [])
 
   // ── Paste preview ────────────────────────────────────────────────────
-  // A quarter turn swaps the footprint, so the preview has to swap with it —
-  // otherwise the outline stops matching what the paste will actually cover.
-  const quarter = turn === 90 || turn === 270
-  const raw = clipboard && {
-    w: clipboard.bounds.cx1 - clipboard.bounds.cx0 + 1,
-    h: clipboard.bounds.cz1 - clipboard.bounds.cz0 + 1,
-  }
-  const size = raw && {
-    w: quarter ? raw.h : raw.w,
-    h: quarter ? raw.w : raw.h,
-  }
+  // The outline covers exactly the chunks the paste will write — sparse and
+  // turned included — because both come out of the same pasteTargets().
+  const targets = useMemo(
+    () =>
+      clipboard && anchor && mode === 'paste'
+        ? pasteTargets(clipboard, anchor, turn)
+        : null,
+    [clipboard, anchor, turn, mode]
+  )
 
   useEffect(() => {
     const eng = engineRef.current
-    if (!eng || mode !== 'paste' || !anchor || !size) {
-      eng?.setPreview(null)
-      return
-    }
-    eng.setPreview({
-      cx0: anchor.cx,
-      cz0: anchor.cz,
-      cx1: anchor.cx + size.w - 1,
-      cz1: anchor.cz + size.h - 1,
-    })
+    eng?.setPreview(targets)
     return () => eng?.setPreview(null)
-  }, [mode, anchor, size?.w, size?.h, turn, engineRef]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [targets, engineRef])
 
   const placeAnchor = useCallback((cx: number, cz: number) => {
     setAnchor({ cx, cz })
@@ -203,14 +296,10 @@ export function useChunkOps(
 
   // ── Actions ──────────────────────────────────────────────────────────
   function copy() {
-    if (!selection) return
-    const chunks = expand(selection)
-    setClipboard({
-      srcDim: dimensionPath,
-      srcWorld: worldPath,
-      chunks,
-      bounds: normalise(selection),
-    })
+    const bounds = boundsOf(selection)
+    if (!bounds) return
+    const chunks = chunkList(selection)
+    setClipboard({ srcDim: dimensionPath, srcWorld: worldPath, chunks, bounds })
     say(`Copied ${chunks.length} chunk(s). Open any world, then Paste.`)
   }
 
@@ -243,8 +332,8 @@ export function useChunkOps(
   }
 
   async function runDestructive(kind: Destructive) {
-    if (!selection) return
-    const chunks = expand(selection)
+    if (selection.size === 0) return
+    const chunks = chunkList(selection)
     if (kind === 'delete') {
       await run(
         () => deleteChunks(dimensionPath, chunks),
@@ -276,9 +365,6 @@ export function useChunkOps(
     if (!clipboard || !anchor) return
     const dx = anchor.cx - clipboard.bounds.cx0
     const dz = anchor.cz - clipboard.bounds.cz0
-    const b = clipboard.bounds
-    const w = b.cx1 - b.cx0 + 1
-    const h = b.cz1 - b.cz0 + 1
     await run(
       () =>
         copyChunks(
@@ -290,12 +376,9 @@ export function useChunkOps(
         ),
       (r) => {
         // Redraw where the chunks actually landed — a turn moves them somewhere
-        // the plain offset would not predict.
+        // the plain offset would not predict. Same targets the preview drew.
         engineRef.current?.invalidateChunks(
-          clipboard.chunks.map(([cx, cz]) => {
-            const [i, j] = rotateInBox(cx - b.cx0, cz - b.cz0, turn, w, h)
-            return [b.cx0 + dx + i, b.cz0 + dz + j]
-          })
+          pasteTargets(clipboard, anchor, turn)
         )
         return (
           `Pasted ${r.copied ?? 0} chunk(s)` +
@@ -336,8 +419,9 @@ export function useChunkOps(
     busy,
     result,
     error,
-    count: selection ? selectionCount(selection) : 0,
-    selectBox,
+    count: selection.size,
+    bounds: boundsOf(selection),
+    paint,
     clearSelection,
     placeAnchor,
     nudge,

@@ -4,6 +4,9 @@
 
 export interface MapInputState {
   cam: { cx: number; cz: number; scale: number }
+  /** Cursor to return to when a drag ends. Tools override it (e.g. crosshair
+   *  while the chunk selector is up), so releasing must not hardcode 'grab'. */
+  baseCursor: string
   isDragging: boolean
   lastMouse: { x: number; y: number } | null
   mouseWorldX: number | null
@@ -24,6 +27,9 @@ export interface MapInputDeps {
   onContextMenu: (e: MouseEvent) => void
 }
 
+/** A drag that moved this far (px) was a pan, not a click. */
+const CLICK_SLOP = 4
+
 export function attachMapInput(deps: MapInputDeps): () => void {
   const {
     el,
@@ -37,9 +43,13 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     onContextMenu,
   } = deps
 
+  /** Where the button went down, kept past the release for the menu test. */
+  let pressAt: { x: number; y: number } | null = null
+
   function onMouseDown(e: MouseEvent) {
     st.isDragging = true
     st.lastMouse = { x: e.clientX, y: e.clientY }
+    pressAt = { x: e.clientX, y: e.clientY }
     el.style.cursor = 'grabbing'
   }
   function onMouseMove(e: MouseEvent) {
@@ -65,7 +75,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
   function onMouseUp() {
     st.isDragging = false
     st.lastMouse = null
-    el.style.cursor = 'grab'
+    el.style.cursor = st.baseCursor
   }
   function onDblClick(e: MouseEvent) {
     e.preventDefault()
@@ -81,6 +91,24 @@ export function attachMapInput(deps: MapInputDeps): () => void {
   }
   function hideInspector() {
     inspector.style.display = 'none'
+  }
+  /**
+   * The menu belongs to a right *click*, not to a right *drag*.
+   *
+   * Right-drag pans the map like every other button, but Windows fires
+   * `contextmenu` on the button's release — so without this the menu opened at
+   * the end of every pan, over wherever the drag happened to stop. The native
+   * menu stays suppressed either way.
+   */
+  function onContextMenuEvent(e: MouseEvent) {
+    const moved =
+      pressAt &&
+      Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > CLICK_SLOP
+    if (moved) {
+      e.preventDefault()
+      return
+    }
+    onContextMenu(e)
   }
   function onWheel(e: WheelEvent) {
     e.preventDefault()
@@ -126,7 +154,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
   el.addEventListener('mouseleave', onMouseLeave)
   el.addEventListener('wheel', onWheel, { passive: false })
   el.addEventListener('dblclick', onDblClick)
-  el.addEventListener('contextmenu', onContextMenu)
+  el.addEventListener('contextmenu', onContextMenuEvent)
   window.addEventListener('mousedown', hideInspector)
   window.addEventListener('keydown', onKeyDown)
 
@@ -137,7 +165,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     el.removeEventListener('mouseleave', onMouseLeave)
     el.removeEventListener('wheel', onWheel)
     el.removeEventListener('dblclick', onDblClick)
-    el.removeEventListener('contextmenu', onContextMenu)
+    el.removeEventListener('contextmenu', onContextMenuEvent)
     window.removeEventListener('mousedown', hideInspector)
     window.removeEventListener('keydown', onKeyDown)
   }

@@ -108,6 +108,8 @@ export class MapEngine {
     biomePulse: boolean
     biomeFillMat: THREE.MeshBasicMaterial | null
     biomeBorderMat: THREE.LineBasicMaterial | null
+    baseCursor: string
+    isDragging: boolean
   }
   private _mapScene!: MapScene
   private _getDims!: () => { w: number; h: number }
@@ -250,6 +252,7 @@ export class MapEngine {
       lastRegistryForSkip: null as BlockRenderRegistry | null,
       lastConfigForSkip: null as RenderConfig | null,
       regionSet: new Set<string>(),
+      baseCursor: 'grab', // what a released drag returns to; see setCursor
       isDragging: false,
       lastMouse: null as { x: number; y: number } | null,
       mouseWorldX: null as number | null,
@@ -1599,19 +1602,26 @@ export class MapEngine {
     }
   }
 
-  /** Highlight the selection rectangle (inclusive chunk coords), or clear with null. */
-  setSelection(
-    sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
-  ): void {
-    this._mapScene.setSelectionRect(chunkRect(sel))
+  /** Highlight the selected chunks, or clear with null/empty. */
+  setSelection(chunks: readonly [number, number][] | null): void {
+    this._mapScene.setSelectionChunks(chunks)
     this._st.forceFrame = true
   }
 
-  /** Highlight the paste-preview rectangle (inclusive chunk coords), or clear with null. */
-  setPreview(
-    sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
-  ): void {
-    this._mapScene.setPreviewRect(chunkRect(sel))
+  /**
+   * Set the map's resting cursor — a tool's affordance, e.g. a crosshair while
+   * the chunk selector is up. Null restores the default grab. Panning still
+   * shows the grabbing hand and returns here on release.
+   */
+  setCursor(cursor: string | null): void {
+    this._st.baseCursor = cursor ?? 'grab'
+    if (!this._st.isDragging)
+      this._mapScene.domElement.style.cursor = this._st.baseCursor
+  }
+
+  /** Highlight the chunks a paste would land on, or clear with null/empty. */
+  setPreview(chunks: readonly [number, number][] | null): void {
+    this._mapScene.setPreviewChunks(chunks)
     this._st.forceFrame = true
   }
 
@@ -1804,18 +1814,6 @@ export class MapEngine {
   setGrid(visible: boolean): void {
     this._mapScene.setGridVisible(visible)
     this._st.forceFrame = true
-  }
-}
-
-function chunkRect(
-  sel: { cx0: number; cz0: number; cx1: number; cz1: number } | null
-): { minX: number; minZ: number; maxX: number; maxZ: number } | null {
-  if (!sel) return null
-  return {
-    minX: Math.min(sel.cx0, sel.cx1) * 16,
-    minZ: Math.min(sel.cz0, sel.cz1) * 16,
-    maxX: (Math.max(sel.cx0, sel.cx1) + 1) * 16,
-    maxZ: (Math.max(sel.cz0, sel.cz1) + 1) * 16,
   }
 }
 

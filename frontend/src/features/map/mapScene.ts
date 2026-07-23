@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { ATLAS, threeColor } from '../../shared/theme'
+import { chunkFill, chunkOutline } from './chunkHighlight'
 
 interface CameraState {
   cx: number
@@ -16,10 +17,36 @@ const MAX_GV = 8000 // max grid vertices per layer
  */
 const HIGHLIGHT_ORDER = 1010
 
-/** A rectangular highlight: translucent fill plus its outline, moved as one. */
-interface RectHighlight {
+/**
+ * Highlight outline thickness, in CSS pixels. Held constant on screen — the
+ * geometry is rebuilt when the zoom changes — because a world-space thickness
+ * that reads well over a base is a hairline once you zoom out to find it.
+ */
+const OUTLINE_PX = 3.5
+
+/** How far the dark backing extends past the outline on each side, in CSS px. */
+const HALO_PX = 1.5
+
+/** Positions → a geometry. */
+function geometryOf(positions: number[]): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute(
+    'position',
+    new THREE.BufferAttribute(new Float32Array(positions), 3)
+  )
+  return g
+}
+
+/**
+ * A chunk-set highlight: translucent fill, a dark backing band, and the accent
+ * outline on top of it. The backing is what keeps the border legible over both
+ * dark forest and pale sand — accent-on-green alone nearly disappears.
+ */
+interface ChunkHighlight {
   fill: THREE.Mesh
-  line: THREE.LineLoop
+  halo: THREE.Mesh
+  line: THREE.Mesh
+  chunks: readonly [number, number][]
 }
 
 /**
@@ -58,9 +85,7 @@ export class MapScene {
     color: 0x1c1c2e,
   })
 
-  private readonly rectGeo = new THREE.BufferGeometry()
-  private readonly rectFillGeo = new THREE.BufferGeometry()
-  private readonly selectionMat = new THREE.LineBasicMaterial({
+  private readonly selectionMat = new THREE.MeshBasicMaterial({
     color: threeColor(ATLAS.accent),
     depthTest: false,
     transparent: true,
@@ -76,7 +101,7 @@ export class MapScene {
   // distinction and only put a colour on the map that appears nowhere else in
   // the app. The lighter fill is what separates a pending paste from a
   // committed selection.
-  private readonly previewMat = new THREE.LineBasicMaterial({
+  private readonly previewMat = new THREE.MeshBasicMaterial({
     color: threeColor(ATLAS.accent),
     depthTest: false,
     transparent: true,
@@ -87,10 +112,21 @@ export class MapScene {
     transparent: true,
     opacity: 0.12,
   })
+  // One backing for both: near-black, so the accent band has an edge against
+  // whatever terrain is under it. Shared because the two highlights are never
+  // on screen together.
+  private readonly haloMat = new THREE.MeshBasicMaterial({
+    color: threeColor(ATLAS.bg),
+    depthTest: false,
+    transparent: true,
+    opacity: 0.65,
+  })
   private regionGridLines!: THREE.LineSegments
   private chunkGridLines!: THREE.LineSegments
-  private selection!: RectHighlight
-  private preview!: RectHighlight
+  private selection!: ChunkHighlight
+  private preview!: ChunkHighlight
+  /** Last camera zoom, so the outlines can be rebuilt to keep their px width. */
+  private camScale = 1
 
   constructor(container: HTMLElement, w: number, h: number) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false })
@@ -138,19 +174,8 @@ export class MapScene {
     this.chunkGridLines.frustumCulled = false
     this.scene.add(this.chunkGridLines)
 
-    // Selection (accent) + paste-preview (cyan) highlights: a shared unit
-    // square — one outline, one fill — positioned/scaled per use.
-    const unit = [0, 0, 0, 1, 0, 0, 1, -1, 0, 0, -1, 0]
-    this.rectGeo.setAttribute(
-      'position',
-      new THREE.BufferAttribute(new Float32Array(unit), 3)
-    )
-    this.rectFillGeo.setAttribute(
-      'position',
-      new THREE.BufferAttribute(new Float32Array(unit), 3)
-    )
-    this.rectFillGeo.setIndex([0, 1, 2, 0, 2, 3])
-
+    // Selection + paste-preview highlights: a fill, a backing and an outline
+    // each, whose geometry is rebuilt from the chunks they cover.
     this.selection = this.addHighlight(
       this.selectionFillMat,
       this.selectionMat,
@@ -159,12 +184,12 @@ export class MapScene {
     this.preview = this.addHighlight(
       this.previewFillMat,
       this.previewMat,
-      HIGHLIGHT_ORDER + 2
+      HIGHLIGHT_ORDER + 3
     )
   }
 
   /**
-   * A rectangle highlight, drawn above every other overlay.
+   * A chunk highlight, drawn above every other overlay.
    *
    * The explicit render order is load-bearing, not a nicety: `depthTest: false`
    * alone puts these *behind* the map. Three sorts opaque draws by render order,
@@ -177,15 +202,19 @@ export class MapScene {
     fillMat: THREE.Material,
     lineMat: THREE.Material,
     renderOrder: number
-  ): RectHighlight {
-    const h: RectHighlight = {
-      fill: new THREE.Mesh(this.rectFillGeo, fillMat),
-      line: new THREE.LineLoop(this.rectGeo, lineMat),
+  ): ChunkHighlight {
+    const h: ChunkHighlight = {
+      fill: new THREE.Mesh(new THREE.BufferGeometry(), fillMat),
+      halo: new THREE.Mesh(new THREE.BufferGeometry(), this.haloMat),
+      line: new THREE.Mesh(new THREE.BufferGeometry(), lineMat),
+      chunks: [],
     }
     h.fill.renderOrder = renderOrder
-    // Both are transparent, so they share a queue and this ordering is real.
-    h.line.renderOrder = renderOrder + 1
-    for (const o of [h.fill, h.line]) {
+    // All three are transparent, so they share a queue and this ordering is
+    // real: fill, then the backing, then the outline on top of it.
+    h.halo.renderOrder = renderOrder + 1
+    h.line.renderOrder = renderOrder + 2
+    for (const o of [h.fill, h.halo, h.line]) {
       o.frustumCulled = false
       o.visible = false
       this.scene.add(o)
@@ -193,33 +222,32 @@ export class MapScene {
     return h
   }
 
-  private static place(
-    h: RectHighlight,
-    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
-  ): void {
-    for (const o of [h.fill, h.line]) {
-      if (!rect) {
-        o.visible = false
-        continue
-      }
-      o.position.set(rect.minX, -rect.minZ, 1)
-      o.scale.set(rect.maxX - rect.minX, rect.maxZ - rect.minZ, 1)
-      o.visible = true
-    }
+  /**
+   * Rebuild a highlight to cover exactly the chunks it holds, or hide it when
+   * empty. Outline width is derived from the zoom, so it stays the same on
+   * screen however far out the view is.
+   */
+  private rebuild(h: ChunkHighlight): void {
+    const width = OUTLINE_PX / this.camScale
+    const halo = width + (2 * HALO_PX) / this.camScale
+    for (const o of [h.fill, h.halo, h.line]) o.geometry.dispose()
+    h.fill.geometry = geometryOf(chunkFill(h.chunks))
+    h.halo.geometry = geometryOf(chunkOutline(h.chunks, halo))
+    h.line.geometry = geometryOf(chunkOutline(h.chunks, width))
+    const on = h.chunks.length > 0
+    h.fill.visible = h.halo.visible = h.line.visible = on
   }
 
-  /** Draw (or hide, when null) the selection highlight over a world-space area. */
-  setSelectionRect(
-    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
-  ): void {
-    MapScene.place(this.selection, rect)
+  /** Draw (or hide, when null/empty) the selection highlight over these chunks. */
+  setSelectionChunks(chunks: readonly [number, number][] | null): void {
+    this.selection.chunks = chunks ?? []
+    this.rebuild(this.selection)
   }
 
-  /** Draw (or hide, when null) the paste-preview highlight over a world-space area. */
-  setPreviewRect(
-    rect: { minX: number; minZ: number; maxX: number; maxZ: number } | null
-  ): void {
-    MapScene.place(this.preview, rect)
+  /** Draw (or hide, when null/empty) the paste-preview highlight over these chunks. */
+  setPreviewChunks(chunks: readonly [number, number][] | null): void {
+    this.preview.chunks = chunks ?? []
+    this.rebuild(this.preview)
   }
 
   /**
@@ -239,6 +267,13 @@ export class MapScene {
   /** Reproject the orthographic camera for the current centre/zoom + viewport. */
   updateCam(cam: CameraState, w: number, h: number): void {
     const { cx, cz, scale } = cam
+    // Panning leaves the highlights alone; only a zoom changes how thick their
+    // outlines have to be in world units to stay the same on screen.
+    if (scale !== this.camScale) {
+      this.camScale = scale
+      for (const highlight of [this.selection, this.preview])
+        if (highlight.chunks.length) this.rebuild(highlight)
+    }
     const halfW = w / (2 * scale),
       halfH = h / (2 * scale)
     this.cam.left = -halfW
@@ -329,8 +364,9 @@ export class MapScene {
     this.chunkGridGeo.dispose()
     this.regionGridMat.dispose()
     this.chunkGridMat.dispose()
-    this.rectGeo.dispose()
-    this.rectFillGeo.dispose()
+    for (const h of [this.selection, this.preview])
+      for (const o of [h.fill, h.halo, h.line]) o.geometry.dispose()
+    this.haloMat.dispose()
     this.selectionMat.dispose()
     this.selectionFillMat.dispose()
     this.previewMat.dispose()

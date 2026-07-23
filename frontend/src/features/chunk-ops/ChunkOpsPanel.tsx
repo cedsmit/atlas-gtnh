@@ -33,7 +33,8 @@ export function ChunkOpsPanel({
   onClose: () => void
 }) {
   const [confirming, setConfirming] = useState<Destructive | null>(null)
-  const { selection, count, clipboard, busy } = ops
+  const { bounds, count, clipboard, busy } = ops
+  const selected = count > 0
 
   return (
     <div className="flex h-full w-96 shrink-0 flex-col border-l border-zinc-800 bg-atlas-row">
@@ -69,13 +70,9 @@ export function ChunkOpsPanel({
         ) : (
           <>
             <Step n={1} label="Select">
-              {selection ? (
+              {bounds && (
                 <>
-                  <p className="font-mono text-xs text-zinc-300">
-                    ({selection.cx0}, {selection.cz0}) – ({selection.cx1},{' '}
-                    {selection.cz1})
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-300">
                     {count} chunk{count === 1 ? '' : 's'} ·{' '}
                     <button
                       onClick={ops.clearSelection}
@@ -85,22 +82,29 @@ export function ChunkOpsPanel({
                       clear
                     </button>
                   </p>
+                  <p className="mt-1 font-mono text-xs text-zinc-500">
+                    ({bounds.cx0}, {bounds.cz0}) – ({bounds.cx1}, {bounds.cz1})
+                  </p>
                 </>
-              ) : (
-                <p className="text-xs text-zinc-500">
-                  Drag a box on the map to choose chunks.
-                </p>
               )}
+              <p
+                className={`text-xs leading-relaxed text-zinc-500 ${bounds ? 'mt-2' : ''}`}
+              >
+                Drag a box on the map to choose chunks.{' '}
+                <kbd className="text-zinc-400">Shift</kbd>-drag paints extra
+                chunks in, <kbd className="text-zinc-400">Alt</kbd>-drag takes
+                them out — the selection does not have to be a rectangle.
+              </p>
             </Step>
 
-            <Step n={2} label="Act on the selection" dim={!selection}>
+            <Step n={2} label="Act on the selection" dim={!selected}>
               <div className="flex flex-col gap-1.5">
                 <Action
                   onClick={ops.copy}
-                  disabled={!selection || busy}
+                  disabled={!selected || busy}
                   icon={<ClipboardCopy />}
                 >
-                  Copy {selection ? `${count} chunk(s)` : ''}
+                  Copy {selected ? `${count} chunk(s)` : ''}
                 </Action>
 
                 {confirming ? (
@@ -118,7 +122,7 @@ export function ChunkOpsPanel({
                   <>
                     <Action
                       onClick={() => setConfirming('delete')}
-                      disabled={!selection || busy}
+                      disabled={!selected || busy}
                       icon={<Trash2 />}
                       danger
                     >
@@ -126,7 +130,7 @@ export function ChunkOpsPanel({
                     </Action>
                     <Action
                       onClick={() => setConfirming('deleteExcept')}
-                      disabled={!selection || busy}
+                      disabled={!selected || busy}
                       icon={<Trash2 />}
                       danger
                     >
