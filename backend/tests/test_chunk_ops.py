@@ -213,6 +213,28 @@ def test_copy_rotates_the_selection_footprint(tmp_path: Path) -> None:
     assert not _has_chunk(dst, 10 + 0, 10 + 1)  # nothing left in the old shape
 
 
+def test_a_turn_keeps_the_holes_in_a_sparse_selection(tmp_path: Path) -> None:
+    """A selection need not be a rectangle — the map lets you paint one chunk at
+    a time — so a turn has to move the chosen chunks about the selection's
+    bounding box and leave the gaps as gaps. Filling the box would write chunks
+    the user never selected, over whatever was already there.
+    """
+    src = tmp_path / "src"
+    picked = [(0, 0), (0, 1), (0, 2), (1, 0)]  # an L inside a 2x3 box
+    for cx, cz in picked:
+        _write_nbt_chunk(src, cx, cz)
+
+    result = copy_chunks(str(src), str(tmp_path / "dst"), picked, (10, 10), turn=90)
+
+    assert result["copied"] == 4
+    dst = tmp_path / "dst"
+    # cw90 on a 2x3 box gives 3x2: (i,j) -> (2-j, i).
+    for cx, cz in [(12, 10), (11, 10), (10, 10), (12, 11)]:
+        assert _has_chunk(dst, cx, cz), f"({cx}, {cz}) should have been written"
+    for cx, cz in [(10, 11), (11, 11)]:
+        assert not _has_chunk(dst, cx, cz), f"({cx}, {cz}) was never selected"
+
+
 def test_rotated_copy_reports_what_it_guessed(tmp_path: Path) -> None:
     """A turn returns a rotation report; a plain offset paste does not."""
     src = tmp_path / "src"
