@@ -8,7 +8,7 @@ REM ============================================================================
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-set "VERSION=1.4.4"
+set "VERSION=1.5.4"
 set "MCVER=1.7.10"
 
 REM ==== Manual override - ONLY if auto-detect below fails ====================
@@ -22,19 +22,46 @@ echo   Atlas Dumper  -  build v%VERSION%
 echo ============================================================
 echo.
 
-REM --- 1. Locate javac + jar (PATH first, then JAVA_HOME) --------------------
+REM --- 1. Locate javac + jar (PATH, then JAVA_HOME, then any installed JDK) --
+REM  Finding javac is not evidence the toolchain is reachable: Oracle's
+REM  javapath shim puts javac.exe on PATH but omits jar.exe, so the build got
+REM  all the way through compiling and then failed on packaging. Resolve jar
+REM  separately, and if it only turns up inside a full JDK take that JDK's
+REM  javac too, so both halves come from the same install.
 set "JAVAC="
 set "JARC="
 for /f "delims=" %%J in ('where javac 2^>nul') do if not defined JAVAC set "JAVAC=%%J"
 for /f "delims=" %%J in ('where jar 2^>nul')   do if not defined JARC  set "JARC=%%J"
 if not defined JAVAC if exist "%JAVA_HOME%\bin\javac.exe" set "JAVAC=%JAVA_HOME%\bin\javac.exe"
 if not defined JARC  if exist "%JAVA_HOME%\bin\jar.exe"   set "JARC=%JAVA_HOME%\bin\jar.exe"
+REM  jar sitting next to the javac we already found?
+if not defined JARC if defined JAVAC for %%D in ("%JAVAC%") do (
+  if exist "%%~dpDjar.exe" set "JARC=%%~dpDjar.exe"
+)
+
+REM  Still nothing - scan the usual JDK roots for a matched javac+jar pair.
+if not defined JARC for %%R in (
+  "%ProgramFiles%\Java" "%ProgramFiles%\Eclipse Adoptium"
+  "%ProgramFiles%\Microsoft" "%ProgramFiles%\Amazon Corretto"
+) do if exist "%%~R" for /f "delims=" %%J in ('dir /b /s "%%~R\jar.exe" 2^>nul') do (
+  if not defined JARC (
+    set "JARC=%%J"
+    for %%D in ("%%J") do if exist "%%~dpDjavac.exe" set "JAVAC=%%~dpDjavac.exe"
+  )
+)
+
 if not defined JAVAC (
   echo [ERROR] Could not find javac. Install a JDK 8+ or set JAVA_HOME.
   goto :fail
 )
-if not defined JARC set "JARC=jar"
+if not defined JARC (
+  echo [ERROR] Found javac but no jar.exe - PATH probably has Oracle's javapath
+  echo         shim, which omits it. Point JAVA_HOME at a full JDK and re-run:
+  echo             set "JAVA_HOME=C:\Program Files\Java\jdk-25.0.3"
+  goto :fail
+)
 echo [ok]  javac : %JAVAC%
+echo [ok]  jar   : %JARC%
 
 REM --- 2. Locate Forge universal + Minecraft client jars --------------------
 if not defined FORGE for /f "delims=" %%F in ('dir /b /s "%APPDATA%\PrismLauncher\libraries\net\minecraftforge\forge\*universal*.jar" 2^>nul') do set "FORGE=%%F"
@@ -98,11 +125,32 @@ if %N%==0 (
 echo Install into which instance's mods folder? (replaces any older atlas-dumper jars there)
 for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
 echo    [0]  skip
+echo    [r]  remove the dumper from an instance instead
 echo.
+set "REMOVEONLY="
 set "PICK="
 set /p "PICK=Enter a number: "
 if not defined PICK goto :end
 if "%PICK%"=="0" goto :end
+
+REM  The dumper is a diagnostic, not something to leave installed - it re-runs
+REM  its scans every launch. Uninstalling reuses the same cleanup the install
+REM  path already does, so "remove" and "replace" cannot drift apart.
+REM  Kept as labels rather than a parenthesised if-block: cmd will not parse a
+REM  block that contains both a nested for and a goto, and fails the whole
+REM  branch with "The syntax of the command is incorrect".
+if /i not "%PICK%"=="r" goto :resolve
+set "REMOVEONLY=1"
+echo.
+for /l %%K in (1,1,%N%) do echo    [%%K]  !NAME[%%K]!
+echo    [0]  cancel
+echo.
+set "PICK="
+set /p "PICK=Remove from which instance: "
+if not defined PICK goto :end
+if "!PICK!"=="0" goto :end
+
+:resolve
 set "CHOSEN=!MODS[%PICK%]!"
 if not defined CHOSEN (
   echo [warn] "%PICK%" is not one of the listed choices - skipped.
@@ -117,16 +165,36 @@ REM --- Remove any previously installed copies of this mod (all versions) -----
 REM   Matches atlas*dumper*.jar so old versions AND a same-version rebuild
 REM   are cleared out first, leaving exactly one jar after the copy below.
 set "REMOVED=0"
+set "STUCK=0"
 for %%O in ("!CHOSEN!\atlas*dumper*.jar") do (
   del /f /q "%%~fO" >nul 2>&1
   if exist "%%~fO" (
     echo [warn] could not remove %%~nxO ^(is the game running? close it and retry^)
+    set /a STUCK+=1
   ) else (
     set /a REMOVED+=1
     echo    removed old  %%~nxO
   )
 )
+if defined REMOVEONLY (
+  if "!REMOVED!"=="0" (
+    echo Nothing to remove - no atlas-dumper jar was in !CHOSEN!
+  ) else (
+    echo Removed !REMOVED! atlas-dumper jar^(s^) from !CHOSEN!
+  )
+  goto :end
+)
 echo [ok]  old copies removed: !REMOVED!
+REM  Refuse to add a second jar next to one we could not delete: two copies share
+REM  a mod id and FML will not start the pack. Warning and installing anyway left
+REM  the instance broken in a way that looks like the dumper being at fault.
+if not "!STUCK!"=="0" (
+  echo.
+  echo [ERROR] !STUCK! old jar^(s^) could not be removed, so installing now would
+  echo         leave two copies of the same mod and the pack would refuse to start.
+  echo         Close Minecraft and run this again.
+  goto :end
+)
 copy /y "%JARNAME%" "!CHOSEN!" >nul && echo Installed %JARNAME% into !CHOSEN!
 goto :end
 

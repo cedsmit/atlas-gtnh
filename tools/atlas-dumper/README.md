@@ -197,3 +197,57 @@ will not appear in the dump. These blocks render via raw OpenGL calls:
 
 These are already unresolvable by any static method and remain as gray
 fallbacks on the map.
+
+## rotation_dump.json (v1.5.0)
+
+Written at the **main menu** — no world needs to be loaded. The tile-entity
+registry is filled during mod init, so the schemas are readable as soon as
+loading finishes, unlike the biome and ore-vein dumps which do need a world.
+
+Atlas re-faces machines when it rotates a pasted chunk selection, and facing
+lives in tile-entity NBT under a key each mod picks for itself — GregTech uses
+`mFacing`, others use `facing`, `direction`, `orientation`. There is no registry
+of these, so without this dump the rotator can only pattern-match key names and
+hope, which means guessing inside somebody's save.
+
+This asks the game instead, the same way the icon dump does: every registered
+tile entity is constructed standalone and asked to serialise itself, and the
+keys it emits are its real storage schema.
+
+```json
+{
+  "format": "atlas-gtnh-rotation-dump-v1",
+  "tile_entity_keys": { "GT_TileEntity_...": ["mFacing", "mConnections", ...] },
+  "failed": ["SomeTE: NullPointerException"]
+}
+```
+
+Nothing is placed or changed in the world — the instances are throwaway. Classes
+that will not construct or serialise in isolation are listed under `failed`
+rather than dropped, because from the Python side a missing entry and a machine
+that cannot be rotated look identical.
+
+Build with `build.bat`, which compiles against the Forge and Minecraft jars in
+your PrismLauncher instance. It works on a current JDK — verified on 25 — so the
+Gradle wrapper here (2.14.1, from 2016) is not the path to use.
+
+`dumpRotations` additionally reaches Minecraft only through reflection, so it
+has no compile-time dependency on Forge and a plain JDK can check it alone:
+
+```bash
+javac -proc:none -d /tmp src/main/java/com/atlasgtnh/icondumper/AtlasDumper.java
+```
+
+Every error that comes back should then be a missing `net.minecraft` / `cpw.mods`
+symbol from the absent modding classpath. Anything else is a real fault.
+
+Expect `failed` to have entries, and check it before assuming a mod is covered.
+A tile entity that only serialises correctly with a world, a parent block or a
+sub-object attached will throw when constructed bare — GregTech's machines hang
+their state off a meta-tile-entity object, so they are prime candidates. A
+machine missing from `tile_entity_keys` is not evidence it has no facing.
+
+Being a schema rather than a rule, it narrows the guess rather than removing it:
+it says *which* key holds the facing, not what its values mean. Encodings still
+have to be confirmed per mod (ForgeDirection ordinals cover most of 1.7.10).
+

@@ -8,11 +8,12 @@ import {
   ClipboardPaste,
   FolderPlus,
   Loader2,
+  RotateCw,
   Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 
 import type { ChunkOps, Destructive } from './useChunkOps'
 
@@ -32,7 +33,8 @@ export function ChunkOpsPanel({
   onClose: () => void
 }) {
   const [confirming, setConfirming] = useState<Destructive | null>(null)
-  const { selection, count, clipboard, busy } = ops
+  const { bounds, count, clipboard, busy } = ops
+  const selected = count > 0
 
   return (
     <div className="flex h-full w-96 shrink-0 flex-col border-l border-zinc-800 bg-atlas-row">
@@ -57,7 +59,8 @@ export function ChunkOpsPanel({
         />
         <p className="text-[11px] leading-relaxed text-atlas-amber">
           These write to the save. Close the world in Minecraft first — writing
-          a loaded save can corrupt it. A <code>.bak</code> is kept.
+          a loaded save can corrupt it. A <code>.bak</code> is kept from the
+          first edit only, so it is not an undo.
         </p>
       </div>
 
@@ -67,13 +70,9 @@ export function ChunkOpsPanel({
         ) : (
           <>
             <Step n={1} label="Select">
-              {selection ? (
+              {bounds && (
                 <>
-                  <p className="font-mono text-xs text-zinc-300">
-                    ({selection.cx0}, {selection.cz0}) – ({selection.cx1},{' '}
-                    {selection.cz1})
-                  </p>
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-300">
                     {count} chunk{count === 1 ? '' : 's'} ·{' '}
                     <button
                       onClick={ops.clearSelection}
@@ -83,22 +82,29 @@ export function ChunkOpsPanel({
                       clear
                     </button>
                   </p>
+                  <p className="mt-1 font-mono text-xs text-zinc-500">
+                    ({bounds.cx0}, {bounds.cz0}) – ({bounds.cx1}, {bounds.cz1})
+                  </p>
                 </>
-              ) : (
-                <p className="text-xs text-zinc-500">
-                  Drag a box on the map to choose chunks.
-                </p>
               )}
+              <p
+                className={`text-xs leading-relaxed text-zinc-500 ${bounds ? 'mt-2' : ''}`}
+              >
+                Drag a box on the map to choose chunks.{' '}
+                <kbd className="text-zinc-400">Shift</kbd>-drag paints extra
+                chunks in, <kbd className="text-zinc-400">Alt</kbd>-drag takes
+                them out — the selection does not have to be a rectangle.
+              </p>
             </Step>
 
-            <Step n={2} label="Act on the selection" dim={!selection}>
+            <Step n={2} label="Act on the selection" dim={!selected}>
               <div className="flex flex-col gap-1.5">
                 <Action
                   onClick={ops.copy}
-                  disabled={!selection || busy}
+                  disabled={!selected || busy}
                   icon={<ClipboardCopy />}
                 >
-                  Copy {selection ? `${count} chunk(s)` : ''}
+                  Copy {selected ? `${count} chunk(s)` : ''}
                 </Action>
 
                 {confirming ? (
@@ -116,7 +122,7 @@ export function ChunkOpsPanel({
                   <>
                     <Action
                       onClick={() => setConfirming('delete')}
-                      disabled={!selection || busy}
+                      disabled={!selected || busy}
                       icon={<Trash2 />}
                       danger
                     >
@@ -124,7 +130,7 @@ export function ChunkOpsPanel({
                     </Action>
                     <Action
                       onClick={() => setConfirming('deleteExcept')}
-                      disabled={!selection || busy}
+                      disabled={!selected || busy}
                       icon={<Trash2 />}
                       danger
                     >
@@ -166,6 +172,7 @@ export function ChunkOpsPanel({
 }
 
 function PasteStep({ ops }: { ops: ChunkOps }) {
+  const [confirming, setConfirming] = useState(false)
   const { anchor, clipboard, busy } = ops
   if (!clipboard) return null
   return (
@@ -173,8 +180,44 @@ function PasteStep({ ops }: { ops: ChunkOps }) {
       <Step n={1} label="Place">
         <p className="text-xs text-zinc-500">
           Click the map to position the {clipboard.chunks.length}-chunk paste,
-          then nudge it.
+          then nudge or turn it.
         </p>
+
+        {/* Rotation is the one control here that can be wrong in a way the map
+            cannot show: blocks land correctly, but a machine's facing is only
+            as good as our rules for its mod. Say so where the choice is made,
+            not in a result message after the save has been written. */}
+        <div className="mt-2.5 rounded-lg border border-atlas-amber-line bg-atlas-amber-bg p-2.5">
+          <div className="flex items-center gap-2">
+            <RotateCw
+              className="h-3.5 w-3.5 shrink-0 text-atlas-amber"
+              aria-hidden
+            />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-atlas-amber">
+              Rotate
+            </span>
+            <span className="rounded border border-atlas-amber-line px-1.5 py-px text-[9px] uppercase tracking-wider text-atlas-amber">
+              WIP
+            </span>
+            <span className="ml-auto font-mono text-xs text-zinc-300">
+              {ops.turn}°
+            </span>
+          </div>
+
+          <div className="mt-2 flex gap-1.5">
+            <Action onClick={ops.rotate} disabled={busy} icon={<RotateCw />}>
+              Turn 90° clockwise
+            </Action>
+          </div>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-atlas-amber">
+            Blocks and terrain turn exactly. Machine and pipe facing is
+            best-effort — mods store it in their own way, so some may come out
+            pointing the wrong direction.{' '}
+            <strong>Back up the world first</strong>, and check your machines
+            after pasting.
+          </p>
+        </div>
         {anchor && (
           <div className="mt-2 flex items-center gap-2">
             <span className="font-mono text-xs text-zinc-300">
@@ -206,7 +249,7 @@ function PasteStep({ ops }: { ops: ChunkOps }) {
       <Step n={2} label="Paste">
         <div className="flex flex-col gap-1.5">
           <Action
-            onClick={() => void ops.pasteHere()}
+            onClick={() => setConfirming(true)}
             disabled={!anchor || busy}
             icon={busy ? <Spin /> : <ClipboardPaste />}
           >
@@ -224,7 +267,142 @@ function PasteStep({ ops }: { ops: ChunkOps }) {
           </Action>
         </div>
       </Step>
+
+      {confirming && anchor && (
+        <PasteDialog
+          ops={ops}
+          onCancel={() => setConfirming(false)}
+          onConfirm={async () => {
+            await ops.pasteHere()
+            setConfirming(false)
+          }}
+        />
+      )}
     </>
+  )
+}
+
+/**
+ * Last stop before the only irreversible thing this panel does.
+ *
+ * A modal rather than an inline confirm because the click that opens it is two
+ * lines below the click that would dismiss it — with the map still showing a
+ * preview, it is easy to keep clicking. This one has to be read.
+ *
+ * It restates the destination, because the anchor can be nudged out of view,
+ * and it is blunt about the backup: `backup_region` snapshots a region **once**
+ * and never overwrites that snapshot, so on any second operation the `.bak` is
+ * an older state, not the state from just before this paste.
+ */
+function PasteDialog({
+  ops,
+  onConfirm,
+  onCancel,
+}: {
+  ops: ChunkOps
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const { anchor, clipboard, turn, busy } = ops
+  const cancelRef = useRef<HTMLButtonElement>(null)
+
+  // Escape cancels, and focus starts on Cancel so a stray Enter is harmless.
+  useEffect(() => {
+    cancelRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !busy) onCancel()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onCancel, busy])
+
+  if (!clipboard || !anchor) return null
+  const n = clipboard.chunks.length
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={() => !busy && onCancel()}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="paste-confirm-title"
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-xl border border-zinc-700 bg-atlas-row shadow-2xl"
+      >
+        <div className="flex items-start gap-2.5 border-b border-zinc-800 px-4 py-3">
+          <TriangleAlert
+            className="mt-0.5 h-4 w-4 shrink-0 text-atlas-amber"
+            aria-hidden
+          />
+          <h2
+            id="paste-confirm-title"
+            className="text-[13.5px] font-semibold text-zinc-100"
+          >
+            Write {n} chunk{n === 1 ? '' : 's'} to this world?
+          </h2>
+        </div>
+
+        <div className="space-y-2.5 px-4 py-3">
+          <dl className="space-y-1 text-xs">
+            <Row label="Landing at">
+              <span className="font-mono">
+                {anchor.cx}, {anchor.cz}
+              </span>
+            </Row>
+            <Row label="Rotation">{turn ? `${turn}° clockwise` : 'none'}</Row>
+          </dl>
+
+          <p className="text-xs leading-relaxed text-zinc-400">
+            Anything already in those chunks is replaced.
+          </p>
+
+          <p className="rounded-md border border-atlas-amber-line bg-atlas-amber-bg px-2.5 py-2 text-[11px] leading-relaxed text-atlas-amber">
+            <strong>This cannot be undone from Atlas.</strong> A{' '}
+            <code>.bak</code> of each region is kept only from the{' '}
+            <em>first</em> time Atlas edited it — after that it is an older
+            state, not the one from just before this paste. Back up the world
+            yourself if it matters.
+            {turn
+              ? ' Machine and pipe facing is best-effort when rotated.'
+              : ''}
+          </p>
+        </div>
+
+        <div className="flex gap-1.5 border-t border-zinc-800 px-4 py-3">
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-atlas-accent px-3 py-2 text-xs font-semibold text-[#08140a] transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? (
+              <Spin />
+            ) : (
+              <ClipboardPaste className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {busy ? 'Writing…' : 'Paste'}
+          </button>
+          <button
+            ref={cancelRef}
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md border border-zinc-700 px-3 py-2 text-xs text-zinc-300 transition-colors hover:bg-atlas-hover disabled:opacity-40"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <dt className="text-zinc-500">{label}</dt>
+      <dd className="ml-auto text-zinc-200">{children}</dd>
+    </div>
   )
 }
 

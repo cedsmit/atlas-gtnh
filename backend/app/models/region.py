@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class ChunkMeta(BaseModel):
@@ -88,10 +88,19 @@ class DeleteExceptRequest(BaseModel):
 
 
 class CopyChunksRequest(BaseModel):
+    # Reject unknown fields. Pydantic ignores them by default, which on a write
+    # path is dangerous: an older server that predates "turn" silently dropped it
+    # and pasted unrotated, reporting success. A skewed client should get a 422,
+    # not a wrong world.
+    model_config = ConfigDict(extra="forbid")
+
     src_world: str  # source dimension path
     dst_world: str  # destination dimension path
     chunks: list[tuple[int, int]]  # source chunk coords
     offset: tuple[int, int] = (0, 0)  # (dx, dz) chunk offset applied at the destination
+    # Degrees clockwise seen from above; must be a multiple of 90. A quarter turn
+    # swaps the pasted footprint's width and height.
+    turn: int = 0
 
 
 class CreateWorldRequest(BaseModel):

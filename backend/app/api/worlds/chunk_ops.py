@@ -59,14 +59,14 @@ async def post_delete_chunks_except(req: DeleteExceptRequest) -> dict[str, objec
 
 @router.post("/chunks/copy")
 async def post_copy_chunks(req: CopyChunksRequest) -> dict[str, object]:
-    """Copy chunks from one save to another (same coords, or shifted by offset)."""
+    """Copy chunks from one save to another, optionally shifted and/or turned."""
     if len(req.chunks) > MAX_CHUNKS:
         raise HTTPException(
             status_code=400, detail=f"Too many chunks ({len(req.chunks)} > {MAX_CHUNKS})"
         )
     try:
         return await asyncio.to_thread(
-            copy_chunks, req.src_world, req.dst_world, req.chunks, req.offset
+            copy_chunks, req.src_world, req.dst_world, req.chunks, req.offset, req.turn
         )
     except (FileNotFoundError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

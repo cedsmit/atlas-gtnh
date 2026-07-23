@@ -187,3 +187,151 @@ def test_delete_missing_world_is_ok(tmp_path: Path) -> None:
     )
     assert r.status_code == 200
     assert r.json() == {"deleted": 0, "missing": 2, "regions": []}
+
+
+def test_copy_rotates_the_selection_footprint(tmp_path: Path) -> None:
+    """A quarter turn swaps the footprint: a 1x3 strip pastes as 3x1.
+
+    The chunk that was at the strip's far end must come back at the far end of
+    the turned strip, not simply offset — that is the difference between turning
+    a selection and shifting it.
+    """
+    src = tmp_path / "src"
+    for cz in range(3):
+        _write_nbt_chunk(src, 0, cz)  # a 1-wide, 3-tall strip
+
+    result = copy_chunks(
+        str(src), str(tmp_path / "dst"), [(0, 0), (0, 1), (0, 2)], (10, 10), turn=90
+    )
+
+    assert result["copied"] == 3
+    dst = tmp_path / "dst"
+    # cw90 on a 1x3 box gives a 3x1 box; (0,j) -> (height-1-j, 0).
+    assert _has_chunk(dst, 10 + 2, 10 + 0)  # j=0 -> far end
+    assert _has_chunk(dst, 10 + 1, 10 + 0)
+    assert _has_chunk(dst, 10 + 0, 10 + 0)  # j=2 -> near end
+    assert not _has_chunk(dst, 10 + 0, 10 + 1)  # nothing left in the old shape
+
+
+def test_a_turn_keeps_the_holes_in_a_sparse_selection(tmp_path: Path) -> None:
+    """A selection need not be a rectangle — the map lets you paint one chunk at
+    a time — so a turn has to move the chosen chunks about the selection's
+    bounding box and leave the gaps as gaps. Filling the box would write chunks
+    the user never selected, over whatever was already there.
+    """
+    src = tmp_path / "src"
+    picked = [(0, 0), (0, 1), (0, 2), (1, 0)]  # an L inside a 2x3 box
+    for cx, cz in picked:
+        _write_nbt_chunk(src, cx, cz)
+
+    result = copy_chunks(str(src), str(tmp_path / "dst"), picked, (10, 10), turn=90)
+
+    assert result["copied"] == 4
+    dst = tmp_path / "dst"
+    # cw90 on a 2x3 box gives 3x2: (i,j) -> (2-j, i).
+    for cx, cz in [(12, 10), (11, 10), (10, 10), (12, 11)]:
+        assert _has_chunk(dst, cx, cz), f"({cx}, {cz}) should have been written"
+    for cx, cz in [(10, 11), (11, 11)]:
+        assert not _has_chunk(dst, cx, cz), f"({cx}, {cz}) was never selected"
+
+
+def test_rotated_copy_reports_what_it_guessed(tmp_path: Path) -> None:
+    """A turn returns a rotation report; a plain offset paste does not."""
+    src = tmp_path / "src"
+    _write_nbt_chunk(src, 0, 0)
+
+    turned = copy_chunks(str(src), str(tmp_path / "a"), [(0, 0)], (5, 5), turn=180)
+    assert "rotation" in turned
+    assert turned["rotation"]["turn"] == 180  # type: ignore[index]
+
+    plain = copy_chunks(str(src), str(tmp_path / "b"), [(0, 0)], (5, 5))
+    assert "rotation" not in plain
+
+
+def test_same_world_rotation_in_place_is_allowed(tmp_path: Path) -> None:
+    """Turning a selection where it stands changes it, so it is not the no-op
+    that a zero-offset copy would be."""
+    src = tmp_path / "w"
+    _write_nbt_chunk(src, 0, 0)
+    _write_nbt_chunk(src, 1, 0)
+    copy_chunks(str(src), str(src), [(0, 0), (1, 0)], (0, 0), turn=90)  # must not raise
+
+
+def _blocks_chunk(cx: int, cz: int, marks: list[tuple[int, int]]) -> bytes:
+    """A chunk whose y=0 layer has stone at each (x, z) in *marks*."""
+    blocks = bytearray(4096)
+    for x, z in marks:
+        blocks[z * 16 + x] = 1  # y=0 => index is z*16 + x
+    level = Compound(
+        {
+            "xPos": Int(cx),
+            "zPos": Int(cz),
+            "Sections": List[Compound](
+                [
+                    Compound(
+                        {
+                            "Y": nbtlib.Byte(0),
+                            "Blocks": nbtlib.ByteArray([b - 256 if b > 127 else b for b in blocks]),
+                        }
+                    )
+                ]
+            ),
+            "TileEntities": List[Compound]([]),
+            "Entities": List[Compound]([]),
+        }
+    )
+    buf = io.BytesIO()
+    nbtlib.File({"Level": level}).write(buf, byteorder="big")
+    return buf.getvalue()
+
+
+def _blocks_at(dim: Path, cx: int, cz: int) -> list[tuple[int, int]]:
+    rec = read_region_records(dim / "region" / f"r.{cx >> 5}.{cz >> 5}.mca")[
+        local_index(cx % 32, cz % 32)
+    ][0]
+    length = struct.unpack_from(">I", rec, 0)[0]
+    level = nbtlib.File.parse(io.BytesIO(zlib.decompress(rec[5 : 4 + length])), byteorder="big")[
+        "Level"
+    ]
+    raw = level["Sections"][0]["Blocks"]
+    return sorted((x, z) for z in range(16) for x in range(16) if int(raw[z * 16 + x]) != 0)
+
+
+def test_rotated_copy_actually_turns_the_block_contents(tmp_path: Path) -> None:
+    """The blocks inside a chunk move, not just the chunk's place in the grid.
+
+    Everything else about rotation was covered — the footprint, the metadata,
+    the tile entities — but nothing asserted that a turned paste rewrites the
+    block array itself. That is the part a user sees, and it is the part that
+    silently did nothing when an older server ignored the "turn" field.
+    """
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    (src / "region").mkdir(parents=True)
+    (dst / "region").mkdir(parents=True)
+    # An L, so no symmetry can make a wrong turn look right.
+    marks = [(0, 0), (0, 1), (0, 2), (1, 0)]
+    _write_chunk(src, 0, 0, _blocks_chunk(0, 0, marks))
+
+    copy_chunks(str(src), str(dst), [(0, 0)], (0, 0), 90)
+
+    # A quarter turn clockwise sends (x, z) to (15 - z, x).
+    assert _blocks_at(dst, 0, 0) == sorted((15 - z, x) for x, z in marks)
+
+
+def test_copy_rejects_unknown_fields_rather_than_ignoring_them(tmp_path: Path) -> None:
+    """A client sending a field this server does not know must fail loudly.
+
+    Pydantic ignores extras by default, which is how a rotation request reached
+    a server that predated rotation, got dropped, and still reported success.
+    """
+    resp = client.post(
+        "/worlds/chunks/copy",
+        json={
+            "src_world": str(tmp_path),
+            "dst_world": str(tmp_path / "other"),
+            "chunks": [[0, 0]],
+            "offset": [1, 0],
+            "somethingThisServerDoesNotKnow": 90,
+        },
+    )
+    assert resp.status_code == 422

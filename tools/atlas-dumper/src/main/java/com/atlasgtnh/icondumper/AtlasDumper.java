@@ -40,7 +40,8 @@ import javax.imageio.ImageIO;
  * At runtime Forge's LaunchClassLoader deobfuscates vanilla classes to MCP names,
  * so reflection lookups by MCP name ("getIcon", "getIconName", etc.) succeed.
  *
- * Output: {gameDir}/config/atlas/icon_dump.json
+ * Output: {gameDir}/config/atlas/icon_dump.json, biome_dump.json,
+ *         ore_vein_dump.json, rotation_dump.json
  * Format: atlas-gtnh-icon-dump-v1
  */
 @Mod(
@@ -52,7 +53,7 @@ import javax.imageio.ImageIO;
 public class AtlasDumper {
 
     public static final String MOD_ID  = "atlas_dumper";
-    public static final String VERSION = "1.4.4";
+    public static final String VERSION = "1.5.4";
 
     private File gameDir;
     // Guard: TextureStitchEvent.Post fires twice (blocks atlas, then items atlas).
@@ -67,6 +68,8 @@ public class AtlasDumper {
     // after the (early) texture stitch, so dumping at stitch time throws an Error
     // from the enum's static init and silently fails — wait for a loaded world.
     private boolean oreVeinsDumped = false;
+    // Tile-entity NBT schemas, for re-facing machines in a rotated paste.
+    private boolean rotationsDumped = false;
 
     // Resolved once on first dump; cached for the life of the process.
     private Method getIconMethod     = null;  // Block.getIcon(int, int) → IIcon
@@ -91,8 +94,18 @@ public class AtlasDumper {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
-        if (biomesDumped && oreVeinsDumped) return;
-        // Wait for a loaded world: the grass/foliage colormaps (biomes) and the
+        if (biomesDumped && oreVeinsDumped && rotationsDumped) return;
+
+        // Tile-entity schemas need no world — the registry is filled during mod
+        // init — so this runs at the main menu. Making people load a save to
+        // collect it would be a gate with nothing behind it.
+        if (!rotationsDumped) {
+            rotationsDumped = true;
+            System.out.println("[AtlasDumper] Starting rotation dump...");
+            dumpRotations(); // tile-entity NBT schemas, so a rotated paste can re-face machines
+        }
+
+        // The rest do need a world: the grass/foliage colormaps (biomes) and the
         // fully-baked GregTech OreMixes / Materials / ore-block icons (ore veins)
         // are only guaranteed once a world is in — not at texture-stitch time.
         if (getClientWorld() == null) return;
@@ -141,6 +154,11 @@ public class AtlasDumper {
         int skippedNoName   = 0;   // registry entries with no resolvable name
         int errorCount      = 0;
         List<String> errorSamples = new ArrayList<>();
+        // Per-block tallies: a bare total cannot tell a thin spread across
+        // every block (normal - most blocks use two or three metas of the
+        // sixteen probed) from a handful of blocks failing every probe, which
+        // is the case worth looking at.
+        Map<String, Integer> errorsByBlock = new HashMap<>();
         List<String> noIconNames  = new ArrayList<>();  // named but zero icons (full list)
 
         // Raw registry — generics erased at runtime, elements are Block at runtime.
@@ -247,6 +265,8 @@ public class AtlasDumper {
                         }
                     } catch (Exception e) {
                         errorCount++;
+                        Integer prior = errorsByBlock.get(regName);
+                        errorsByBlock.put(regName, prior == null ? 1 : prior + 1);
                         if (errorSamples.size() < 50) {
                             Throwable cause = (e.getCause() != null) ? e.getCause() : e;
                             errorSamples.add(regName + " m=" + meta + " s=" + side
@@ -294,7 +314,7 @@ public class AtlasDumper {
 
         try (FileWriter w = new FileWriter(outFile)) {
             writeJson(w, blocksMap, totalBlocks, resolvedBlocks, skippedNoName,
-                      errorCount, errorSamples, noIconNames, modList,
+                      errorCount, errorSamples, errorsByBlock, noIconNames, modList,
                       iterCount, idScanMethod, idScanAdded);
             System.out.printf(
                 "[AtlasDumper] Done — %d/%d blocks (%d no-icon, %d unnamed), "
@@ -346,7 +366,8 @@ public class AtlasDumper {
         FileWriter w,
         Map<String, Map<String, Map<String, String>>> blocksMap,
         int total, int resolved, int skippedNoName, int errors,
-        List<String> errorSamples, List<String> noIconNames, List<String> modList,
+        List<String> errorSamples, Map<String, Integer> errorsByBlock,
+        List<String> noIconNames, List<String> modList,
         int iterCount, String idScanMethod, int idScanAdded
     ) throws IOException {
         String ts = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
@@ -371,6 +392,23 @@ public class AtlasDumper {
             w.write(jsonStr(errorSamples.get(i)));
         }
         w.write("],\n");
+        // Worst offenders only: the long tail is one or two misses per block and
+        // says nothing, while a block failing every probe is a real finding.
+        List<Map.Entry<String, Integer>> worst =
+            new ArrayList<Map.Entry<String, Integer>>(errorsByBlock.entrySet());
+        Collections.sort(worst, new Comparator<Map.Entry<String, Integer>>() {
+            public int compare(Map.Entry<String, Integer> a, Map.Entry<String, Integer> b) {
+                int d = b.getValue().intValue() - a.getValue().intValue();
+                return d != 0 ? d : a.getKey().compareTo(b.getKey());
+            }
+        });
+        w.write("    \"blocks_with_errors\": " + errorsByBlock.size() + ",\n");
+        w.write("    \"worst_error_blocks\": {");
+        for (int k = 0; k < worst.size() && k < 40; k++) {
+            if (k > 0) w.write(", ");
+            w.write(jsonStr(worst.get(k).getKey()) + ": " + worst.get(k).getValue());
+        }
+        w.write("},\n");
         w.write("    \"no_icon_blocks\": [");
         for (int i = 0; i < noIconNames.size(); i++) {
             if (i > 0) w.write(", ");
@@ -982,4 +1020,210 @@ public class AtlasDumper {
         }
         return sb.append('"').toString();
     }
+
+    // ── Rotation dump ────────────────────────────────────────────────────
+    // Which NBT keys each tile entity actually writes.
+    //
+    // Atlas has to re-face machines when it rotates a pasted selection, and
+    // facing lives in tile-entity NBT under a name each mod picks for itself
+    // (GregTech uses mFacing, others use facing/direction/orientation...).
+    // Without this list the rotator can only pattern-match key names and hope,
+    // which is a guess written into somebody's save.
+    //
+    // Read the same way the icon dump reads icons — by asking the game rather
+    // than by inferring from ids. Each tile entity is constructed and asked to
+    // serialise itself; the keys it emits are its real storage schema.
+    //
+    // Nothing is placed or modified in the world: instances are standalone and
+    // discarded. Classes that refuse to construct or serialise in isolation are
+    // recorded as failures rather than skipped silently, since a missing entry
+    // and an unrotatable machine look identical from the Python side.
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void dumpRotations() {
+        Map<String, String[]> teKeys = new TreeMap<String, String[]>();
+        List<String> failed = new ArrayList<String>();
+
+        try {
+            Class<?> teClass = Class.forName("net.minecraft.tileentity.TileEntity");
+            Map<String, Class<?>> byName = null;
+            StringBuilder seen = new StringBuilder();
+
+            // The registry is a private static map on TileEntity, under an
+            // obfuscated field name, so it is found by shape: String keys and
+            // Class values. GameRegistry.registerTileEntity writes into it, so
+            // it is populated by the time mod loading finishes.
+            //
+            // Both directions exist (name->class and class->name); either will
+            // do, since one is just the other inverted. Whatever is found gets
+            // logged, because "could not find it" with no detail is not a report
+            // anyone can act on.
+            for (Field f : teClass.getDeclaredFields()) {
+                if (!Map.class.isAssignableFrom(f.getType())) continue;
+                Map<?, ?> m;
+                try {
+                    f.setAccessible(true);
+                    m = (Map<?, ?>) f.get(null);
+                } catch (Throwable t) {
+                    seen.append(" [").append(f.getName()).append(": ")
+                        .append(t.getClass().getSimpleName()).append("]");
+                    continue;
+                }
+                if (m == null || m.isEmpty()) {
+                    seen.append(" [").append(f.getName()).append(": ")
+                        .append(m == null ? "null" : "empty").append("]");
+                    continue;
+                }
+                // Judge the map's shape by the first entry that HAS a shape. A
+                // HashMap permits one null key and iterates it first (null hashes
+                // to bucket zero), and at least one mod in the wild registers a
+                // tile entity under a null name - sampling only entry zero lets
+                // that single bad entry hide a registry of 1500 good ones.
+                Map.Entry<?, ?> e = null;
+                for (Map.Entry<?, ?> x : m.entrySet()) {
+                    if (x.getKey() != null && x.getValue() != null) { e = x; break; }
+                }
+                seen.append(" [").append(f.getName()).append(": ").append(m.size())
+                    .append(" ").append(e == null ? "all-null" : kindOf(e.getKey()))
+                    .append("->").append(e == null ? "" : kindOf(e.getValue())).append("]");
+                if (e == null) continue;
+
+                if (e.getKey() instanceof String && e.getValue() instanceof Class) {
+                    Map<String, Class<?>> clean = new TreeMap<String, Class<?>>();
+                    for (Map.Entry<?, ?> x : m.entrySet())
+                        if (x.getKey() instanceof String && x.getValue() instanceof Class)
+                            clean.put((String) x.getKey(), (Class<?>) x.getValue());
+                    byName = clean;
+                } else if (e.getKey() instanceof Class && e.getValue() instanceof String) {
+                    Map<String, Class<?>> flipped = new TreeMap<String, Class<?>>();
+                    for (Map.Entry<?, ?> x : m.entrySet())
+                        if (x.getKey() instanceof Class && x.getValue() instanceof String)
+                            flipped.put((String) x.getValue(), (Class<?>) x.getKey());
+                    byName = flipped;
+                }
+                if (byName != null) break;
+            }
+            if (byName == null) {
+                System.err.println("[AtlasDumper] No tile-entity registry on "
+                        + teClass.getName() + "; maps seen:"
+                        + (seen.length() == 0 ? " none" : seen)
+                        + " - skipping rotation dump.");
+                return;
+            }
+            System.out.println("[AtlasDumper] Tile-entity registry: " + byName.size() + " entries.");
+
+            Class<?> nbtClass = Class.forName("net.minecraft.nbt.NBTTagCompound");
+            // Resolved from the first tile entity that will actually construct.
+            // It cannot be probed on TileEntity itself: that class is abstract,
+            // so newInstance() always throws and the probe never succeeds.
+            String writerName = null;
+
+            for (Map.Entry<String, Class<?>> e : byName.entrySet()) {
+                Object inst;
+                try {
+                    inst = e.getValue().newInstance();
+                } catch (Throwable t) {
+                    failed.add(e.getKey() + ": " + t.getClass().getSimpleName());
+                    continue;
+                }
+                try {
+                    if (writerName == null) writerName = findWriter(inst, nbtClass);
+                    if (writerName == null) {
+                        failed.add(e.getKey() + ": no writer found");
+                        continue;
+                    }
+                    Method w = inst.getClass().getMethod(writerName, nbtClass);
+                    Object tag = nbtClass.newInstance();
+                    w.invoke(inst, tag);
+                    Set<String> keys = keysOf(tag);
+                    teKeys.put(e.getKey(), keys.toArray(new String[keys.size()]));
+                } catch (Throwable t) {
+                    failed.add(e.getKey() + ": " + t.getClass().getSimpleName());
+                }
+            }
+        } catch (Throwable t) {
+            System.err.println("[AtlasDumper] Rotation dump failed: " + t);
+            return;
+        }
+
+        File outDir = new File(gameDir, "config/atlas");
+        if (!outDir.exists() && !outDir.mkdirs()) {
+            System.err.println("[AtlasDumper] Could not create output directory: " + outDir);
+            return;
+        }
+        File outFile = new File(outDir, "rotation_dump.json");
+        try (FileWriter w = new FileWriter(outFile)) {
+            String ts = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date());
+            w.write("{\n");
+            w.write("  \"format\": \"atlas-gtnh-rotation-dump-v1\",\n");
+            w.write("  \"dumper_version\": " + jsonStr(VERSION) + ",\n");
+            w.write("  \"generated_at\": " + jsonStr(ts) + ",\n");
+            w.write("  \"tile_entity_keys\": {\n");
+            int i = 0;
+            for (Map.Entry<String, String[]> e : teKeys.entrySet()) {
+                w.write("    " + jsonStr(e.getKey()) + ": [");
+                for (int k = 0; k < e.getValue().length; k++) {
+                    if (k > 0) w.write(", ");
+                    w.write(jsonStr(e.getValue()[k]));
+                }
+                w.write("]");
+                w.write(++i < teKeys.size() ? ",\n" : "\n");
+            }
+            w.write("  },\n");
+            w.write("  \"failed\": [");
+            for (int k = 0; k < failed.size(); k++) {
+                if (k > 0) w.write(", ");
+                w.write(jsonStr(failed.get(k)));
+            }
+            w.write("]\n}\n");
+            System.out.println("[AtlasDumper] Wrote " + teKeys.size() + " tile-entity schemas ("
+                    + failed.size() + " failed) to " + outFile);
+        } catch (IOException e) {
+            System.err.println("[AtlasDumper] Could not write rotation dump: " + e);
+        }
+    }
+
+    /** Short description of a map key/value, for the registry-discovery log. */
+    private static String kindOf(Object o) {
+        if (o == null) return "null";
+        if (o instanceof String) return "String";
+        if (o instanceof Class) return "Class";
+        return o.getClass().getSimpleName();
+    }
+
+    /**
+     * Name of the (NBTTagCompound) -> void method that leaves keys behind.
+     *
+     * writeToNBT and readFromNBT have identical signatures and the name is
+     * obfuscated in a production run, so the writer is identified by what it
+     * does rather than what it is called. Probed on a real tile entity: doing it
+     * on TileEntity itself is impossible, the class being abstract.
+     */
+    private static String findWriter(Object te, Class<?> nbtClass) {
+        for (Method m : te.getClass().getMethods()) {
+            if (m.getParameterTypes().length != 1) continue;
+            if (m.getParameterTypes()[0] != nbtClass) continue;
+            if (m.getReturnType() != void.class) continue;
+            try {
+                Object tag = nbtClass.newInstance();
+                m.invoke(te, tag);
+                if (!keysOf(tag).isEmpty()) return m.getName();
+            } catch (Throwable ignored) { /* the reader, or it needs a world */ }
+        }
+        return null;
+    }
+
+    /** Key names of an NBTTagCompound, via whichever accessor this build exposes. */
+    @SuppressWarnings("unchecked")
+    private static Set<String> keysOf(Object tag) {
+        for (Method m : tag.getClass().getMethods()) {
+            if (m.getParameterTypes().length == 0 && Set.class.isAssignableFrom(m.getReturnType())) {
+                try {
+                    Set<String> s = (Set<String>) m.invoke(tag);
+                    if (s != null) return s;
+                } catch (Throwable ignored) { /* next */ }
+            }
+        }
+        return Collections.emptySet();
+    }
+
 }

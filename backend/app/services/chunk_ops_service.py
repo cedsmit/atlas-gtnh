@@ -16,6 +16,8 @@ import re
 import shutil
 from pathlib import Path
 
+from app.world.chunk_orient import OrientReport
+from app.world.chunk_rotate import normalise_turn, rotate_grid
 from app.world.chunk_transform import remap_chunk_record
 from app.world.region_writer import (
     backup_region,
@@ -124,21 +126,36 @@ def copy_chunks(
     dst_dim: str,
     chunks: list[tuple[int, int]],
     offset: tuple[int, int] = (0, 0),
+    turn: int = 0,
 ) -> dict[str, object]:
     """Copy *chunks* from *src_dim* to *dst_dim*, shifted by *offset* (dx, dz) chunks.
 
-    With no offset the compressed record is transplanted byte-exact (preserves
-    GTNH Blocks16/Data16, tile entities, etc.). With an offset the chunk NBT is
-    remapped (xPos/zPos + TileEntity/Entity/TileTick positions). Same-world paste
-    is allowed only when an offset is given. Missing source chunks are skipped.
+    With no offset and no turn the compressed record is transplanted byte-exact
+    (preserves GTNH Blocks16/Data16, tile entities, etc.). Otherwise the chunk
+    NBT is rewritten — see ``chunk_transform``. Same-world paste is allowed only
+    when it would actually move or turn something. Missing source chunks are
+    skipped.
+
+    *turn* is degrees clockwise seen from above, and rotates the selection about
+    its own bounding box: each chunk moves to its place in the turned grid *and*
+    has its contents turned to match. A quarter turn swaps the footprint's width
+    and height, so the pasted area covers different chunks than the selection did.
     """
+    turn = normalise_turn(turn)
     dx, dz = offset
     src_dir = Path(src_dim) / "region"
     dst_dir = Path(dst_dim) / "region"
     same_world = src_dir.resolve() == dst_dir.resolve()
-    if same_world and dx == 0 and dz == 0:
+    if same_world and dx == 0 and dz == 0 and turn == 0:
         raise ValueError("source and destination are the same location")
     _ensure_closed(dst_dim)  # only the destination is written
+
+    # The selection's own box is the pivot; a turn is meaningless without one.
+    cx0 = min(cx for cx, _ in chunks) if chunks else 0
+    cz0 = min(cz for _, cz in chunks) if chunks else 0
+    width = (max(cx for cx, _ in chunks) - cx0 + 1) if chunks else 0
+    height = (max(cz for _, cz in chunks) - cz0 + 1) if chunks else 0
+    report = OrientReport()
 
     # Pre-read every source region so a same-world offset paste reads the
     # originals, never chunks we've just written this call.
@@ -148,10 +165,13 @@ def copy_chunks(
         if rk not in src_cache:
             src_cache[rk] = read_region_records(src_dir / f"r.{rk[0]}.{rk[1]}.mca")
 
-    # Group the writes by destination region (dest coord = source + offset).
+    # Group the writes by destination region. Without a turn the destination is
+    # source + offset; with one it is the offset box corner plus the chunk's
+    # place in the turned grid.
     dst_groups: dict[tuple[int, int], list[tuple[int, int, int, int]]] = {}
     for cx, cz in chunks:
-        dcx, dcz = cx + dx, cz + dz
+        i, j = rotate_grid(cx, cz, turn, cx0, cz0, width, height)
+        dcx, dcz = cx0 + dx + i, cz0 + dz + j
         dst_groups.setdefault((dcx >> 5, dcz >> 5), []).append((cx, cz, dcx, dcz))
 
     dx_blocks, dz_blocks = dx * 16, dz * 16
@@ -168,8 +188,10 @@ def copy_chunks(
                 missing += 1
                 continue
             record, ts = entry
-            if dx or dz:
-                record = remap_chunk_record(record, dcx, dcz, dx_blocks, dz_blocks)
+            if dx or dz or turn:
+                record = remap_chunk_record(
+                    record, dcx, dcz, dx_blocks, dz_blocks, turn=turn, report=report
+                )
             dst_records[local_index(dcx % 32, dcz % 32)] = (record, ts)
             copied += 1
             changed = True
@@ -179,7 +201,10 @@ def copy_chunks(
             touched.append(dst_path.name)
             log.info("copy_chunks: wrote %d chunks into %s", len(items), dst_path.name)
 
-    return {"copied": copied, "missing": missing, "regions": touched}
+    result: dict[str, object] = {"copied": copied, "missing": missing, "regions": touched}
+    if turn:
+        result["rotation"] = {"turn": turn, **report.as_dict()}
+    return result
 
 
 def create_world(
