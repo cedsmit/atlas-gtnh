@@ -67,7 +67,9 @@ export function GoToDialog({
       initialFocusRef={firstField}
       footer={
         <>
-          <DialogConfirm onClick={submit} disabled={!valid}>
+          {/* Go stays enabled on bad input: clicking it is how a mouse user
+              asks what is wrong, and a greyed-out button answers nothing. */}
+          <DialogConfirm onClick={submit}>
             <Crosshair className="h-3.5 w-3.5" aria-hidden />
             Go
           </DialogConfirm>
