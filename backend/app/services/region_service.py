@@ -13,11 +13,13 @@ from app.models.region import (
     RegionSurfaceResponse,
 )
 from app.world.region_reader import (
+    RawChunkData,
     read_chunk_data,
     read_region,
     read_region_chunks,
     read_region_surface,
 )
+from app.world.section_codec import encode_chunk_batch
 
 _DIMS_FILE = Path(__file__).parent.parent / "data" / "dimensions.json"
 _KNOWN_DIMS: dict[str, str] = json.loads(_DIMS_FILE.read_text(encoding="utf-8"))
@@ -124,18 +126,28 @@ def get_chunk_data(world_path: str, cx: int, cz: int) -> ChunkData:
     return ChunkData(
         chunk_x=raw.chunk_x,
         chunk_z=raw.chunk_z,
-        sections=[ChunkSection(y=s.y, blocks=s.blocks, data=s.data) for s in raw.sections],
+        # The reader hands back uint16 arrays; this JSON endpoint is the one
+        # place that still needs them as lists.
+        sections=[
+            ChunkSection(y=s.y, blocks=s.blocks.tolist(), data=s.data.tolist())
+            for s in raw.sections
+        ],
         biomes=raw.biomes,
     )
 
 
-def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> list[ChunkData]:
+def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> bytes:
     """Read many chunks in one pass, reading each region file only once.
 
     Coords are grouped by region so a region's bytes are read (and cached) a
     single time regardless of how many of its chunks were requested.  Chunks
     that are absent or empty are simply omitted from the result; the caller
     diffs the request against the response to learn which came back empty.
+
+    Returns the encoded response body rather than models: the caller runs this
+    on a worker thread, and encoding here means the serialisation of several
+    million block ids happens there too, instead of on the event loop where it
+    blocked every other request for the length of a batch.
     """
     region_root = Path(world_path) / "region"
 
@@ -145,7 +157,7 @@ def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> list[Chu
         rx, rz = cx >> 5, cz >> 5
         by_region.setdefault((rx, rz), {})[(cx % 32, cz % 32)] = (cx, cz)
 
-    out: list[ChunkData] = []
+    out: list[RawChunkData] = []
     for (rx, rz), wanted in by_region.items():
         region_file = region_root / f"r.{rx}.{rz}.mca"
         if not region_file.exists():
@@ -154,18 +166,8 @@ def get_chunks_batch(world_path: str, coords: list[tuple[int, int]]) -> list[Chu
             chunks = read_region_chunks(region_file, set(wanted))
         except ValueError:
             continue
-        for raw in chunks.values():
-            out.append(
-                ChunkData(
-                    chunk_x=raw.chunk_x,
-                    chunk_z=raw.chunk_z,
-                    sections=[
-                        ChunkSection(y=s.y, blocks=s.blocks, data=s.data) for s in raw.sections
-                    ],
-                    biomes=raw.biomes,
-                )
-            )
-    return out
+        out.extend(chunks.values())
+    return encode_chunk_batch(out)
 
 
 def get_region_surface(

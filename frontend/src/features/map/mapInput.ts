@@ -13,6 +13,9 @@ export interface MapInputState {
   mouseWorldZ: number | null
   pending: { length: number }
   pendingSet: { clear(): void }
+  /** Region-tile fetch queue, dropped alongside the chunk one — see dropQueues. */
+  regionPending: { length: number }
+  regionPendingSet: { clear(): void }
 }
 
 export interface MapInputDeps {
@@ -32,6 +35,22 @@ export interface MapInputDeps {
 
 /** A drag that moved this far (px) was a pan, not a click. */
 const CLICK_SLOP = 4
+
+/**
+ * Forget what the previous camera position wanted loaded.
+ *
+ * Both queues hold work picked for a view that no longer exists. The chunk
+ * queue was already dropped on every pan and zoom; the region queue was not, so
+ * a fetch slot could still be spent on an overview tile that had scrolled off
+ * screen while the tiles now under the cursor waited behind it. Anything still
+ * visible is re-queued by the next frame's scan, nearest-first.
+ */
+function dropQueues(st: MapInputState): void {
+  st.pending.length = 0
+  st.pendingSet.clear()
+  st.regionPending.length = 0
+  st.regionPendingSet.clear()
+}
 
 export function attachMapInput(deps: MapInputDeps): () => void {
   const {
@@ -68,8 +87,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     st.cam.cx -= (e.clientX - st.lastMouse.x) / st.cam.scale
     st.cam.cz -= (e.clientY - st.lastMouse.y) / st.cam.scale
     st.lastMouse = { x: e.clientX, y: e.clientY }
-    st.pending.length = 0
-    st.pendingSet.clear()
+    dropQueues(st)
     updateCam()
   }
   function onMouseLeave() {
@@ -118,8 +136,7 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     st.cam.scale = Math.max(minScale, Math.min(maxScale, st.cam.scale * factor))
     st.cam.cx = worldX - (mx - W / 2) / st.cam.scale
     st.cam.cz = worldZ - (my - H / 2) / st.cam.scale
-    st.pending.length = 0
-    st.pendingSet.clear()
+    dropQueues(st)
     updateCam()
   }
   /** True while the user is typing — the shortcuts must not steal those keys. */

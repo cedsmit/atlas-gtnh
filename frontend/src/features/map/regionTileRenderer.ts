@@ -108,6 +108,152 @@ export function boxBlur(
   }
 }
 
+// ── Per-column colour resolution ──────────────────────────────────────────────
+// Which of the pixel loop's branches a column still has to run. Everything else
+// about its colour is settled once per (block, metadata) pair.
+export const FLAT = 0
+export const GRASS = 1
+export const FOLIAGE = 2
+export const WATER = 3
+
+export interface ColumnStyle {
+  kind: typeof FLAT | typeof GRASS | typeof FOLIAGE | typeof WATER
+  /** FLAT only: the finished colour, with saturation already folded in. */
+  r: number
+  g: number
+  b: number
+  /** GRASS/FOLIAGE: the texture average the blended tint multiplies. */
+  texAvg: readonly [number, number, number] | null
+}
+
+export interface ColumnStyleDeps {
+  colorMap: BlockColorMap | undefined
+  registry: BlockRenderRegistry
+  config: RenderConfig
+  textureKeys?: Record<number, string>
+  metaTextureKeys?: Record<string, string>
+  /** True when biome tints are blended, which is what makes grass grass. */
+  blendTints: boolean
+  /** Injected so tests can pin colours without a live texture store. */
+  texAvgOf?: (key: string) => readonly [number, number, number] | null
+}
+
+/**
+ * Memoised colour resolution for one tile, keyed by `(id << 8) | meta`.
+ *
+ * A column's colour comes from its block id and metadata — and, for grass,
+ * foliage and water, from where it sits. Everything else in the chain (registry
+ * lookup, texture key, texture average, metadata tint, colour map, the
+ * saturation pass) gives the same answer for every column sharing a pair, and a
+ * region holds a few dozen distinct pairs across its 262,144 columns.
+ *
+ * Doing it per pair rather than per pixel is the single biggest cost in this
+ * file: resolving the per-metadata texture key alone built a `${id}:${meta}`
+ * string for every column, a quarter of a million throwaway strings per tile,
+ * every tile.
+ *
+ * Deliberately per tile and never shared between them: `averageTextureColor`
+ * answers differently as textures finish loading, and tiles are re-rendered
+ * when they do. A cache outliving the render would pin the pre-load colour.
+ */
+export function columnStyleCache(
+  deps: ColumnStyleDeps
+): (id: number, meta: number) => ColumnStyle {
+  const {
+    colorMap,
+    registry,
+    config,
+    textureKeys,
+    metaTextureKeys,
+    blendTints,
+    texAvgOf = averageTextureColor,
+  } = deps
+  const sat = config.colorSaturation
+  const cache = new Map<number, ColumnStyle>()
+
+  return (id: number, meta: number): ColumnStyle => {
+    const key = (id << 8) | meta
+    const hit = cache.get(key)
+    if (hit !== undefined) return hit
+
+    const def = registry.lookup(id)
+    // Resolve the texture the detailed renderer would draw for this block, and
+    // its average colour — so the overview shows what a mip-collapsed detail
+    // tile shows (the texture, for opaque blocks) instead of a generic per-id
+    // colour that ignores per-metadata textures. Keeps the LOD swap seamless
+    // and, for modded blocks absent from the colour map, avoids the arbitrary
+    // hashed fallback colour.
+    const texKey =
+      metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null
+    const texAvg = texKey ? texAvgOf(texKey) : null
+
+    let style: ColumnStyle
+    if (def.tint === 'grass' && blendTints) {
+      style = { kind: GRASS, r: 0, g: 0, b: 0, texAvg }
+    } else if (def.tint === 'foliage' && blendTints) {
+      style = { kind: FOLIAGE, r: 0, g: 0, b: 0, texAvg }
+    } else if (def.category === 'fluid' && def.tint === 'water') {
+      style = { kind: WATER, r: 0, g: 0, b: 0, texAvg }
+    } else {
+      let r: number, g: number, b: number
+      if (def.textureTint === 'metadata16' || def.textureTint === 'custom') {
+        // Per-metadata tinted blocks: keep the dye/tint colour (the detailed
+        // renderer's flat/tinted paths show this, not the raw base texture).
+        ;[r, g, b] = resolveMetadataTint(meta, def.textureTintColors)
+      } else if (texAvg) {
+        // Opaque block: the detailed renderer draws the texture source-over the
+        // fill, so the visible colour is the texture's average.
+        ;[r, g, b] = texAvg
+      } else {
+        const metaColor = metaBlockColorRGB(id, meta)
+        if (metaColor) {
+          r = metaColor[0]
+          g = metaColor[1]
+          b = metaColor[2]
+        } else {
+          const mapped = colorMap?.[id]
+          if (mapped) {
+            r = mapped[0]
+            g = mapped[1]
+            b = mapped[2]
+            const maxCh = Math.max(r, g, b)
+            if (maxCh === 0) {
+              r = g = b = 130
+            } else if (maxCh < 80) {
+              const boost = 80 / maxCh
+              r = Math.min(255, Math.round(r * boost))
+              g = Math.min(255, Math.round(g * boost))
+              b = Math.min(255, Math.round(b * boost))
+            }
+          } else {
+            // No scanned colour: a hardcoded colour if we have one, else a
+            // neutral 'unknown' grey instead of a random hash (matches the
+            // chunk renderer; the overview can't scan down for a textured
+            // block below).
+            const raw = hardcodedBlockColor(id) ?? UNKNOWN_COLOR
+            r = raw[0]
+            g = raw[1]
+            b = raw[2]
+          }
+        }
+      }
+      // Desaturation folds in here rather than per pixel: these inputs are
+      // integers fixed by the pair, so the result is too. The position-
+      // dependent kinds above blend per column and still desaturate in the loop.
+      if (sat < 1.0) {
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b
+        r = Math.round(lum + (r - lum) * sat)
+        g = Math.round(lum + (g - lum) * sat)
+        b = Math.round(lum + (b - lum) * sat)
+      }
+      style = { kind: FLAT, r, g, b, texAvg }
+    }
+
+    cache.set(key, style)
+    return style
+  }
+}
+
 export function renderRegionTile(
   surface: RegionSurface,
   colorMap: BlockColorMap | undefined,
@@ -191,6 +337,29 @@ export function renderRegionTile(
   const sat = config.colorSaturation
   const contourMode = config.contourMode
 
+  const styleOf = columnStyleCache({
+    colorMap,
+    registry,
+    config,
+    textureKeys,
+    metaTextureKeys,
+    blendTints: sc !== null,
+  })
+
+  // Seabed colours belong to the floor block, not the column above it, so they
+  // memoise the same way — a lake bottom is a handful of block ids.
+  const floorColors = new Map<number, readonly [number, number, number]>()
+  const floorColorOf = (fid: number): readonly [number, number, number] => {
+    let c = floorColors.get(fid)
+    if (c === undefined) {
+      const fKey = textureKeys?.[fid] ?? null
+      const fAvg = fKey ? averageTextureColor(fKey) : null
+      c = fAvg ?? colorMap?.[fid] ?? hardcodedBlockColor(fid) ?? UNKNOWN_COLOR
+      floorColors.set(fid, c)
+    }
+    return c
+  }
+
   for (let idx = 0; idx < N * N; idx++) {
     const o = idx * 4
     const id = idMap[idx]
@@ -203,25 +372,15 @@ export function renderRegionTile(
       continue
     }
 
-    const meta = metaMap[idx]
-    const def = registry.lookup(id)
+    const style = styleOf(id, metaMap[idx])
+    const texAvg = style.texAvg
     let r: number, g: number, b: number
 
-    // Resolve the texture the detailed renderer would draw for this block, and
-    // its average colour — so the overview shows what a mip-collapsed detail tile
-    // shows (the texture, for opaque blocks) instead of a generic per-id colour
-    // that ignores per-metadata textures. Keeps the LOD swap seamless and, for
-    // modded blocks absent from the colour map, avoids the arbitrary hashed
-    // fallback colour.
-    const texKey =
-      metaTextureKeys?.[`${id}:${meta}`] ?? textureKeys?.[id] ?? null
-    const texAvg = texKey ? averageTextureColor(texKey) : null
-
-    if (def.tint === 'grass' && sc) {
+    if (style.kind === GRASS) {
       // Blended biome grass tint (sc is populated whenever biomeTint is on).
-      const gr = sc.grR[idx]
-      const gg = sc.grG[idx]
-      const gb = sc.grB[idx]
+      const gr = sc!.grR[idx]
+      const gg = sc!.grG[idx]
+      const gb = sc!.grB[idx]
       // The detailed renderer fills the biome tint then MULTIPLIES the grass
       // texture over it. Replicate so overview grass isn't the raw (too-bright)
       // tint but the darker tinted-texture colour.
@@ -234,10 +393,10 @@ export function renderRegionTile(
         g = gg
         b = gb
       }
-    } else if (def.tint === 'foliage' && sc) {
-      const fr = sc.fR[idx]
-      const fg = sc.fG[idx]
-      const fb = sc.fB[idx]
+    } else if (style.kind === FOLIAGE) {
+      const fr = sc!.fR[idx]
+      const fg = sc!.fG[idx]
+      const fb = sc!.fB[idx]
       if (texAvg) {
         r = (fr * texAvg[0]) / 255
         g = (fg * texAvg[1]) / 255
@@ -247,17 +406,14 @@ export function renderRegionTile(
         g = fg
         b = fb
       }
-    } else if (def.category === 'fluid' && def.tint === 'water') {
+    } else if (style.kind === WATER) {
       // Translucent water: show the seabed blended toward deep-water blue by
       // depth, so shallow water reveals the floor (sand/dirt/gravel) and deep
       // water reads as ocean. Falls back to plain deep water with no floor data.
       const fid = floorMap[idx]
       const depth = depthMap[idx]
       if (fid && depth) {
-        const fKey = textureKeys?.[fid] ?? null
-        const fAvg = fKey ? averageTextureColor(fKey) : null
-        const fc =
-          fAvg ?? colorMap?.[fid] ?? hardcodedBlockColor(fid) ?? UNKNOWN_COLOR
+        const fc = floorColorOf(fid)
         const t = waterBlend(depth)
         r = fc[0] * (1 - t) + WATER_DEEP[0] * t
         g = fc[1] * (1 - t) + WATER_DEEP[1] * t
@@ -267,51 +423,14 @@ export function renderRegionTile(
         g = WATER_DEEP[1]
         b = WATER_DEEP[2]
       }
-    } else if (
-      def.textureTint === 'metadata16' ||
-      def.textureTint === 'custom'
-    ) {
-      // Per-metadata tinted blocks: keep the dye/tint colour (the detailed
-      // renderer's flat/tinted paths show this, not the raw base texture).
-      ;[r, g, b] = resolveMetadataTint(meta, def.textureTintColors)
-    } else if (texAvg) {
-      // Opaque block: the detailed renderer draws the texture source-over the
-      // fill, so the visible colour is the texture's average.
-      ;[r, g, b] = texAvg
     } else {
-      const metaColor = metaBlockColorRGB(id, meta)
-      if (metaColor) {
-        r = metaColor[0]
-        g = metaColor[1]
-        b = metaColor[2]
-      } else {
-        const mapped = colorMap?.[id]
-        if (mapped) {
-          r = mapped[0]
-          g = mapped[1]
-          b = mapped[2]
-          const maxCh = Math.max(r, g, b)
-          if (maxCh === 0) {
-            r = g = b = 130
-          } else if (maxCh < 80) {
-            const boost = 80 / maxCh
-            r = Math.min(255, Math.round(r * boost))
-            g = Math.min(255, Math.round(g * boost))
-            b = Math.min(255, Math.round(b * boost))
-          }
-        } else {
-          // No scanned colour: a hardcoded colour if we have one, else a neutral
-          // 'unknown' grey instead of a random hash (matches the chunk renderer;
-          // the overview can't scan down for a textured block below).
-          const raw = hardcodedBlockColor(id) ?? UNKNOWN_COLOR
-          r = raw[0]
-          g = raw[1]
-          b = raw[2]
-        }
-      }
+      r = style.r
+      g = style.g
+      b = style.b
     }
 
-    if (sat < 1.0) {
+    // FLAT columns already carry it, folded in when the pair was resolved.
+    if (style.kind !== FLAT && sat < 1.0) {
       const lum = 0.299 * r + 0.587 * g + 0.114 * b
       r = Math.round(lum + (r - lum) * sat)
       g = Math.round(lum + (g - lum) * sat)

@@ -733,16 +733,15 @@ export class MapEngine {
       }
     }
 
-    // Render queued chunks until the per-frame time budget is spent (at least
+    // Render queued chunks until the frame's shared deadline is spent (at least
     // one, so progress is always made even if a single render is expensive).
     /** Tile-work budget for this frame — tightened while the camera is flying. */
     function renderBudget(): number {
       return st.camAnim ? ANIM_RENDER_BUDGET_MS : RENDER_BUDGET_MS
     }
 
-    function drainRenderQueue() {
+    function drainRenderQueue(deadline: number) {
       if (st.renderQueue.length === 0) return
-      const deadline = performance.now() + renderBudget()
       do {
         const item = st.renderQueue.shift()!
         if (!st.renderSet.has(item.key)) {
@@ -930,9 +929,8 @@ export class MapEngine {
       st.regionTiled.add(key)
     }
 
-    function drainRegionRenderQueue() {
+    function drainRegionRenderQueue(deadline: number) {
       if (st.regionRenderQueue.length === 0) return
-      const deadline = performance.now() + renderBudget()
       do {
         const item = st.regionRenderQueue.shift()!
         if (st.regionRenderSet.has(item.key)) {
@@ -1232,6 +1230,12 @@ export class MapEngine {
         return
       }
 
+      // One deadline for every piece of tile work this frame. The stale pass and
+      // the two drains each used to start their own budget, so a frame that did
+      // all three could spend three times it — and a frame is 16.7ms whatever
+      // the budget says. They now share this one and stop where it stops.
+      const frameDeadline = performance.now() + renderBudget()
+
       // A texVersion bump makes every drawn tile stale at once, so collect the
       // affected keys once per bump. Deriving them by scanning the whole cache
       // each frame — as this used to — cost an instanceof + two map lookups per
@@ -1272,8 +1276,12 @@ export class MapEngine {
             (st.texVersionAtRender.get(key) ?? 0) >= st.texVersion
           const chunkData = st.dataCache.get(key)
           if (chunkData) {
-            // Budget spent — leave the rest marked for the next frame.
-            if (rerendered >= 4) continue
+            // Budget spent — leave the rest marked for the next frame. Was a
+            // flat four per frame, which on a slow machine is four full chunk
+            // re-renders past the point the frame was already lost; the clock
+            // adapts where a count cannot. Always at least one, so a backlog
+            // still drains.
+            if (rerendered > 0 && performance.now() >= frameDeadline) continue
             const [rmxs, rmzs] = key.split(',')
             const { canvas: newImg, stats: reStats } = renderChunkImage(
               chunkData,
@@ -1337,8 +1345,8 @@ export class MapEngine {
       }
 
       // Render freshly-fetched chunks and region tiles, time-sliced, for a smooth UI.
-      drainRenderQueue()
-      drainRegionRenderQueue()
+      drainRenderQueue(frameDeadline)
+      drainRegionRenderQueue(frameDeadline)
       drainRegionRestale()
 
       const chunkActive = scale >= CHUNK_LOD_SCALE
@@ -1447,7 +1455,11 @@ export class MapEngine {
         }
       }
 
-      updateGrid()
+      // The grid only depends on the camera and the viewport, so a frame that
+      // ran purely to place a streamed-in tile rebuilds two line buffers and
+      // re-uploads them for a picture that cannot have changed. Resize and the
+      // grid toggle both raise forceFrame, so those still get through.
+      if (camMoved || st.forceFrame) updateGrid()
       mapScene.render()
 
       st.lastCam.cx = cx

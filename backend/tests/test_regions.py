@@ -1,4 +1,5 @@
 import io
+import json
 import struct
 import zlib
 from pathlib import Path
@@ -7,6 +8,7 @@ import nbtlib
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.world.section_codec import decode_chunk_batch
 
 client = TestClient(app)
 
@@ -220,19 +222,47 @@ def test_get_chunks_batch(tmp_path: Path) -> None:
         json={"world_path": str(world), "coords": [[0, 0], [1, 0]]},
     )
     assert response.status_code == 200
-    chunks = response.json()["chunks"]
+    assert response.headers["content-type"] == "application/octet-stream"
+    chunks = decode_chunk_batch(response.content)
     # (0,0) has terrain; (1,0) is absent and is therefore omitted.
     assert len(chunks) == 1
     assert chunks[0]["chunk_x"] == 0
     assert chunks[0]["chunk_z"] == 0
     assert len(chunks[0]["sections"][0]["blocks"]) == 4096
+    assert chunks[0]["sections"][0]["blocks"][0] == 1  # stone
+    assert len(chunks[0]["sections"][0]["data"]) == 4096
+
+
+def test_chunks_batch_body_is_the_documented_layout(tmp_path: Path) -> None:
+    """Pin the wire format itself — the frontend decoder is written to this.
+
+    A change here that the TypeScript side does not learn about shows up as a
+    map that renders garbage, so the bytes are asserted rather than just the
+    round-trip through our own decoder.
+    """
+    world = _make_world(tmp_path, _make_region_file_with_sections())
+    body = client.post(
+        "/worlds/chunks/batch",
+        json={"world_path": str(world), "coords": [[0, 0]]},
+    ).content
+
+    assert body[:4] == b"ATL1"
+    (hdr_len,) = struct.unpack_from("<I", body, 4)
+    # The payload must start 4-byte aligned or a Uint16Array view over it fails.
+    assert (8 + hdr_len) % 4 == 0
+    header = json.loads(body[8 : 8 + hdr_len])
+    assert header["chunks"][0]["x"] == 0
+    assert header["chunks"][0]["ys"] == [0]
+    # One section: 4096 blocks + 4096 data, uint16 each. Biomes only when stored.
+    biome_bytes = 512 if header["chunks"][0]["biomes"] else 0
+    assert len(body) == 8 + hdr_len + biome_bytes + 4096 * 2 * 2
 
 
 def test_get_chunks_batch_empty_coords(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.post("/worlds/chunks/batch", json={"world_path": str(world), "coords": []})
     assert response.status_code == 200
-    assert response.json()["chunks"] == []
+    assert decode_chunk_batch(response.content) == []
 
 
 def test_get_region_surface(tmp_path: Path) -> None:
