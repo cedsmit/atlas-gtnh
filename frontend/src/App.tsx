@@ -1,5 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Home, Loader2, Search, Trash2 } from 'lucide-react'
+
+import { isUnreachable } from './shared/api'
+import { ErrorScreen } from './shared/ErrorScreen'
+import { useStickyError } from './shared/useStickyError'
+import { MapNotice } from './features/map/MapNotice'
 
 import { useBlockColors } from './features/blocks/api/blockColors'
 import { useBiomeColors } from './features/blocks/api/biomeColors'
@@ -218,19 +224,44 @@ export default function App() {
   }
 
   // ── Data fetching ──────────────────────────────────────────────────────
-  const {
-    data: blockColors,
-    isLoading: isScanning,
-    isError: worldError,
-  } = useBlockColors(worldPath)
+  // The three queries the load path can fail on keep their whole result: each
+  // needs its error and its in-flight state, not just the data.
+  const worldQuery = useBlockColors(worldPath)
+  const { data: blockColors, isLoading: isScanning } = worldQuery
   const { data: blockNames } = useBlockNames(worldPath)
   const { data: biomeNames } = useBiomeNames(worldPath)
   const { data: biomeColors } = useBiomeColors(worldPath)
   const { data: textureKeys } = useTextureKeys(worldPath)
   const { data: metaTextureKeys } = useMetaTextureKeys(worldPath)
-  const { data: dimensions } = useDimensions(worldPath)
-  const { data: regionData } = useRegions(dimensionPath ?? '')
+  const dimensionsQuery = useDimensions(worldPath)
+  const { data: dimensions } = dimensionsQuery
+  const regionsQuery = useRegions(dimensionPath ?? '')
+  const { data: regionData } = regionsQuery
   const { data: renderOverrides } = useRenderOverrides()
+
+  const worldFailure = useStickyError(worldQuery, worldPath)
+  const dimensionsFailure = useStickyError(dimensionsQuery, worldPath)
+  const regionsFailure = useStickyError(regionsQuery, dimensionPath)
+
+  // Block-colors is the load gate's verdict on the whole world, so its failure
+  // has to be read twice: is this world unopenable, or is the backend simply
+  // not answering? Only the first is the world's fault.
+  const backendDown = !!worldFailure && isUnreachable(worldFailure)
+
+  // Why the last world was dropped, kept just long enough to say so on the
+  // picker it drops back to.
+  const [evictedWorld, setEvictedWorld] = useState<{
+    path: string
+    reason: string
+  } | null>(null)
+
+  const queryClient = useQueryClient()
+  // Every world query failed together when the backend was down, so retry the
+  // lot. Reviving block-colors alone would only move the wait to the next
+  // stage, where a stale error sits under a spinner that never resolves.
+  const retryBackend = useCallback(() => {
+    void queryClient.refetchQueries()
+  }, [queryClient])
 
   // ── Render registry ────────────────────────────────────────────────────
   // Rebuilt when blockNames changes (new world = new FML ID mapping) or when the
@@ -350,19 +381,32 @@ export default function App() {
   }, [tex.done]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Clear saved world if it fails to load ─────────────────────────────
+  // Only when the backend actually answered about it. A 404 or a refusal means
+  // the save moved, was deleted, or is not a world, and would fail the same way
+  // every launch — so it goes, but the picker says why rather than just
+  // appearing. A backend that never answered has said nothing about the world,
+  // and starting Atlas a second before the API is up must not cost you it: the
+  // path stays, and the screen below offers Retry instead.
   useEffect(() => {
-    if (worldError) {
-      localStorage.removeItem(LAST_WORLD_KEY)
-      textureDebugStore.clear()
-      clearTextures()
-      clearTextureAverages()
-      setWorldPath(null)
-      setDimensionPath(null)
-    }
-  }, [worldError])
+    if (!worldFailure || backendDown) return
+    setEvictedWorld({
+      path: worldPath ?? '',
+      reason: worldFailure.message,
+    })
+    localStorage.removeItem(LAST_WORLD_KEY)
+    textureDebugStore.clear()
+    clearTextures()
+    clearTextureAverages()
+    setWorldPath(null)
+    setDimensionPath(null)
+    // worldPath is read for the message only — re-running once the world is
+    // already gone would just evict nothing, loudly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [worldFailure, backendDown])
 
   // ── World picker handlers ──────────────────────────────────────────────
   function handleWorldSelected(path: string) {
+    setEvictedWorld(null)
     localStorage.setItem(LAST_WORLD_KEY, path)
     textureDebugStore.clear()
     clearTextures()
@@ -726,7 +770,37 @@ export default function App() {
             launching the game.
           </p>
           <WorldPicker onWorldSelected={handleWorldSelected} />
+          {/* Why the world that was open a moment ago is not open now. Without
+              it, a save that moved on disk just lands you back here looking as
+              though the app forgot which world you were in. */}
+          {evictedWorld && (
+            <div className="mt-5 max-w-md text-center" role="status">
+              <p className="text-sm text-atlas-danger">
+                Couldn’t open the last world — {evictedWorld.reason}
+              </p>
+              <p className="mt-1 truncate font-mono text-xs text-zinc-600">
+                {evictedWorld.path}
+              </p>
+            </div>
+          )}
         </div>
+      ) : backendDown ? (
+        /* ── The world is fine; the backend is not answering ── */
+        <ErrorScreen
+          title="Can’t reach the Atlas backend"
+          detail={worldFailure?.message}
+          hint={
+            <>
+              Nothing can be read from the save until the API on{' '}
+              <code className="text-zinc-400">localhost:8000</code> answers. It
+              normally starts with the app — if you launched the frontend on its
+              own, start it too, then retry. Your world is still selected.
+            </>
+          }
+          retrying={worldQuery.isFetching}
+          onRetry={retryBackend}
+          secondary={{ label: 'Close world', onClick: handleCloseWorld }}
+        />
       ) : loadingStage !== null ? (
         /* ── Loading in progress ── */
         <LoadingScreen
@@ -747,6 +821,17 @@ export default function App() {
             dimensions={dimensions}
             onSelect={handleSelectDimension}
             onCancel={handleCloseWorld}
+          />
+        ) : dimensionsFailure ? (
+          /* Without this the failure showed as "Preparing Map" — a stage that
+             had not started, on a progress bar that would never move again. */
+          <ErrorScreen
+            title="Couldn’t list this world’s dimensions"
+            detail={dimensionsFailure.message}
+            hint="Usually the save has moved or been deleted since it was last opened: block colours come from the mod JARs, so this is the first step that reads the world folder itself."
+            retrying={dimensionsQuery.isFetching}
+            onRetry={() => void dimensionsQuery.refetch()}
+            secondary={{ label: 'Close world', onClick: handleCloseWorld }}
           />
         ) : (
           <LoadingScreen stage="tiles" />
@@ -780,12 +865,39 @@ export default function App() {
             {oreVeinsOn &&
               oreVeins.data &&
               oreVeins.data.veins.length === 0 && (
-                <div className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-lg border border-zinc-800 bg-atlas-bar/90 px-3 py-2 text-xs text-zinc-300 backdrop-blur">
+                <MapNotice>
                   {oreVeins.data.available
                     ? 'No ore veins cached here yet — explore/prospect in-game, or run Visual Prospecting’s vein cache.'
                     : 'No Visual Prospecting data for this world.'}
-                </div>
+                </MapNotice>
               )}
+            {/* The map draws whatever regions it was handed, so a failed list
+                and an unexplored dimension both arrive here as a blank grid.
+                Say which one this is. */}
+            {regionsFailure ? (
+              <MapNotice
+                tone="error"
+                action={{
+                  label: 'Retry',
+                  onClick: () => void regionsQuery.refetch(),
+                  busy: regionsQuery.isFetching,
+                }}
+              >
+                Couldn’t load this dimension’s region list —{' '}
+                {regionsFailure.message}. The map has nothing to draw until it
+                does.
+              </MapNotice>
+            ) : regionData?.regions.length === 0 ? (
+              <MapNotice
+                action={{
+                  label: 'Pick another dimension',
+                  onClick: () => setDimensionPath(null),
+                }}
+              >
+                Nothing has been generated in this dimension yet — it has no
+                region files.
+              </MapNotice>
+            ) : null}
             <DumpMismatchBanner worldPath={worldPath} />
             {goTo && (
               <GoToDialog

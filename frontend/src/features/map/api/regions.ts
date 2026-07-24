@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { API_BASE } from '../../../shared/api'
+import { API_BASE, apiFetch } from '../../../shared/api'
 
 export interface RegionSummary {
   region_x: number
@@ -77,10 +77,9 @@ export async function fetchRegionSurface(
 }
 
 async function fetchRegions(worldPath: string): Promise<RegionListResponse> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/worlds/regions?world_path=${encodeURIComponent(worldPath)}`
   )
-  if (!res.ok) throw new Error(`Failed to load regions: ${res.statusText}`)
   return res.json() as Promise<RegionListResponse>
 }
 
@@ -101,6 +100,11 @@ export function useRegions(worldPath: string) {
   return useQuery({
     queryKey: ['regions', worldPath],
     queryFn: () => fetchRegions(worldPath),
+    // Callers pass the *dimension* path and have none before one is picked.
+    // Without this the app opens by asking the backend for the regions of '',
+    // which can only ever fail — and now that the failure is on screen, it
+    // would be a load error the user never caused.
+    enabled: !!worldPath,
   })
 }
 
