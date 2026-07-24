@@ -140,6 +140,10 @@ export function attachMapInput(deps: MapInputDeps): () => void {
     // search box flies the camera home mid-word. Modifier combos are the app's
     // or the OS's, not ours.
     if (isTypingTarget(e.target)) return
+    // A modal owns the keyboard while it is up. Its buttons are not typing
+    // targets, so an 'f' with Go focused would otherwise fly the camera behind
+    // a dialog the user is still looking at.
+    if (document.querySelector('[role="dialog"]')) return
     if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key === 'f' || e.key === 'F' || e.key === 'Home') fitCamera()
   }
