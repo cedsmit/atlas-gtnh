@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { API_BASE } from '../../../shared/api'
+import { API_BASE, apiFetch } from '../../../shared/api'
 
 export interface DimensionInfo {
   id: string
@@ -10,10 +10,9 @@ export interface DimensionInfo {
 }
 
 async function fetchDimensions(worldPath: string): Promise<DimensionInfo[]> {
-  const res = await fetch(
+  const res = await apiFetch(
     `${API_BASE}/worlds/dimensions?world_path=${encodeURIComponent(worldPath)}`
   )
-  if (!res.ok) throw new Error(`Failed to load dimensions: ${res.statusText}`)
   return res.json() as Promise<DimensionInfo[]>
 }
 
