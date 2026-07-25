@@ -73,10 +73,6 @@ class ChunkBatchRequest(BaseModel):
     coords: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...]
 
 
-class ChunkBatchResponse(BaseModel):
-    chunks: list[ChunkData]
-
-
 class DeleteChunksRequest(BaseModel):
     world_path: str  # dimension path (its region/ holds the .mca files)
     chunks: list[tuple[int, int]]  # [(chunk_x, chunk_z), ...] to delete for regen

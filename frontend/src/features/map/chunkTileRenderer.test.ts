@@ -9,8 +9,9 @@ import { computeEdgeHeights, computeHillshade } from './chunkTileRenderer'
 function makeChunk(
   fill: (x: number, z: number, y: number) => number
 ): ChunkData {
-  const blocks = new Array(4096).fill(0)
-  const data = new Array(4096).fill(0)
+  // Typed, like the wire format hands them over.
+  const blocks = new Uint16Array(4096)
+  const data = new Uint16Array(4096)
   for (let y = 0; y < 16; y++)
     for (let z = 0; z < 16; z++)
       for (let x = 0; x < 16; x++)

@@ -2,11 +2,10 @@
 
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
 from app.models.region import (
     ChunkBatchRequest,
-    ChunkBatchResponse,
     ChunkData,
     DimensionInfo,
     RegionDetail,
@@ -86,22 +85,29 @@ async def get_world_region_surface(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@router.post("/chunks/batch", response_model=ChunkBatchResponse)
-async def get_world_chunks_batch(req: ChunkBatchRequest) -> ChunkBatchResponse:
+@router.post("/chunks/batch")
+async def get_world_chunks_batch(req: ChunkBatchRequest) -> Response:
     """Read many chunks in one request.
 
     Coords are grouped by region so each region file is read once.  Absent or
     empty chunks are omitted; the caller diffs request vs. response to mark
     them empty.  Parsing runs off the event loop so concurrent requests don't
     serialize on the single async thread.
+
+    The body is the binary section format (see ``world/section_codec.py``), not
+    JSON: a batch is millions of block ids, and rendering them as text cost
+    hundreds of milliseconds here and roughly as much again in the browser's
+    ``JSON.parse`` — on the main thread, stalling the frame loop the data is
+    for. Encoding happens inside the worker thread with the parsing, so the
+    finished bytes are all that comes back to the loop.
     """
     if len(req.coords) > MAX_BATCH_CHUNKS:
         raise HTTPException(
             status_code=400,
             detail=f"Too many chunks requested ({len(req.coords)} > {MAX_BATCH_CHUNKS})",
         )
-    chunks = await asyncio.to_thread(get_chunks_batch, req.world_path, req.coords)
-    return ChunkBatchResponse(chunks=chunks)
+    body = await asyncio.to_thread(get_chunks_batch, req.world_path, req.coords)
+    return Response(content=body, media_type="application/octet-stream")
 
 
 @router.get("/chunks/{cx}/{cz}", response_model=ChunkData)

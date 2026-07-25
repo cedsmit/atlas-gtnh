@@ -68,8 +68,13 @@ class RawChunk:
 @dataclass
 class ChunkSection:
     y: int
-    blocks: list[int]  # 4096 unsigned block IDs (0-4095)
-    data: list[int]  # 4096 metadata nibbles (0-15)
+    # Kept as the uint16 arrays the decode produced, length 4096 each. They used
+    # to be materialised into Python lists here, which cost 8192 boxed ints per
+    # section before anything had asked for one — the batch path now ships the
+    # array's bytes straight out (see world/section_codec.py), and the JSON
+    # single-chunk endpoint converts where it needs to.
+    blocks: _NDArr  # 4096 unsigned block IDs (0-4095)
+    data: _NDArr  # 4096 metadata values (nibbles, or 16-bit on Data16 worlds)
 
 
 @dataclass
@@ -368,7 +373,7 @@ def _parse_chunk_full(raw_nbt: bytes) -> RawChunkData:
         if arrays is None:
             continue
         blocks, data = arrays
-        sections.append(ChunkSection(y=sec.get("Y", 0), blocks=blocks.tolist(), data=data.tolist()))
+        sections.append(ChunkSection(y=sec.get("Y", 0), blocks=blocks, data=data))
 
     return RawChunkData(
         chunk_x=xpos,
