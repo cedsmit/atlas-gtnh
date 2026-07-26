@@ -14,23 +14,6 @@ export interface RegionListResponse {
   regions: RegionSummary[]
 }
 
-export interface ChunkMeta {
-  chunk_x: number
-  chunk_z: number
-  last_update: number
-  inhabited_time: number
-  populated: boolean
-}
-
-export interface RegionDetail {
-  region_x: number
-  region_z: number
-  file_name: string
-  chunk_count: number
-  skipped_chunks: number
-  chunks: ChunkMeta[]
-}
-
 export interface ChunkSurface {
   chunk_x: number
   chunk_z: number
@@ -83,19 +66,6 @@ async function fetchRegions(worldPath: string): Promise<RegionListResponse> {
   return res.json() as Promise<RegionListResponse>
 }
 
-async function fetchRegionDetail(
-  worldPath: string,
-  rx: number,
-  rz: number
-): Promise<RegionDetail> {
-  const res = await fetch(
-    `${API_BASE}/worlds/regions/${rx}/${rz}?world_path=${encodeURIComponent(worldPath)}`
-  )
-  if (!res.ok)
-    throw new Error(`Failed to load region r.${rx}.${rz}: ${res.statusText}`)
-  return res.json() as Promise<RegionDetail>
-}
-
 export function useRegions(worldPath: string) {
   return useQuery({
     queryKey: ['regions', worldPath],
@@ -105,12 +75,5 @@ export function useRegions(worldPath: string) {
     // which can only ever fail — and now that the failure is on screen, it
     // would be a load error the user never caused.
     enabled: !!worldPath,
-  })
-}
-
-export function useRegionDetail(worldPath: string, rx: number, rz: number) {
-  return useQuery({
-    queryKey: ['region', worldPath, rx, rz],
-    queryFn: () => fetchRegionDetail(worldPath, rx, rz),
   })
 }
