@@ -8,7 +8,6 @@ from app.models.region import (
     ChunkBatchRequest,
     ChunkData,
     DimensionInfo,
-    RegionDetail,
     RegionListResponse,
     RegionSurfaceRequest,
     RegionSurfaceResponse,
@@ -20,7 +19,6 @@ from app.models.world import (
 from app.services.region_service import (
     get_chunk_data,
     get_chunks_batch,
-    get_region_detail,
     get_region_surface,
     list_dimensions,
     list_regions,
@@ -43,7 +41,7 @@ async def validate_world(request: WorldValidateRequest) -> WorldValidateResponse
 @router.get("/dimensions", response_model=list[DimensionInfo])
 async def get_world_dimensions(world_path: str = Query(...)) -> list[DimensionInfo]:
     try:
-        return list_dimensions(world_path)
+        return await asyncio.to_thread(list_dimensions, world_path)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -51,19 +49,9 @@ async def get_world_dimensions(world_path: str = Query(...)) -> list[DimensionIn
 @router.get("/regions", response_model=RegionListResponse)
 async def list_world_regions(world_path: str = Query(...)) -> RegionListResponse:
     try:
-        return list_regions(world_path)
+        return await asyncio.to_thread(list_regions, world_path)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
-
-
-@router.get("/regions/{rx}/{rz}", response_model=RegionDetail)
-async def get_world_region(rx: int, rz: int, world_path: str = Query(...)) -> RegionDetail:
-    try:
-        return get_region_detail(world_path, rx, rz)
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/regions/{rx}/{rz}/surface", response_model=RegionSurfaceResponse)

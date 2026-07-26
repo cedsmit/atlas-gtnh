@@ -3,11 +3,9 @@ from pathlib import Path
 
 from app.models.region import (
     ChunkData,
-    ChunkMeta,
     ChunkSection,
     ChunkSurface,
     DimensionInfo,
-    RegionDetail,
     RegionListResponse,
     RegionSummary,
     RegionSurfaceResponse,
@@ -15,7 +13,6 @@ from app.models.region import (
 from app.world.region_reader import (
     RawChunkData,
     read_chunk_data,
-    read_region,
     read_region_chunks,
     read_region_surface,
 )
@@ -199,31 +196,5 @@ def get_region_surface(
                 water_depth=s.water_depth,
             )
             for s in surfaces
-        ],
-    )
-
-
-def get_region_detail(world_path: str, rx: int, rz: int) -> RegionDetail:
-    region_file = Path(world_path) / "region" / f"r.{rx}.{rz}.mca"
-    if not region_file.exists():
-        raise FileNotFoundError(f"Region file not found: r.{rx}.{rz}.mca")
-
-    raw_chunks, skipped = read_region(region_file)
-
-    return RegionDetail(
-        region_x=rx,
-        region_z=rz,
-        file_name=region_file.name,
-        chunk_count=len(raw_chunks),
-        skipped_chunks=skipped,
-        chunks=[
-            ChunkMeta(
-                chunk_x=c.chunk_x,
-                chunk_z=c.chunk_z,
-                last_update=c.last_update,
-                inhabited_time=c.inhabited_time,
-                populated=c.populated,
-            )
-            for c in raw_chunks
         ],
     )

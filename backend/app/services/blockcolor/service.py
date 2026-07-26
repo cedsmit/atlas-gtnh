@@ -34,10 +34,19 @@ class BlockColorService:
     def __init__(self, world_path: str) -> None:
         self.world_path = world_path
         self._lock = threading.RLock()
+        self._block_id_map: dict[int, str] | None = None
         self._asset_db: AssetDatabase | None = None
         self._color_map: dict[int, list[int]] | None = None
         self._texture_key_map: dict[int, str] | None = None
         self._meta_texture_key_map: dict[str, str] | None = None
+
+    def block_id_map(self) -> dict[int, str]:
+        """The world's numeric block registry, parsed from level.dat once."""
+        if self._block_id_map is None:
+            with self._lock:
+                if self._block_id_map is None:
+                    self._block_id_map = read_block_id_map(Path(self.world_path))
+        return self._block_id_map
 
     def asset_db(self) -> AssetDatabase:
         """The world's scanned AssetDatabase (built once; dump loaded with it)."""
@@ -53,7 +62,7 @@ class BlockColorService:
             return self._color_map
         with self._lock:
             if self._color_map is None:
-                id_map = read_block_id_map(Path(self.world_path))
+                id_map = self.block_id_map()
                 if not id_map:
                     self._color_map = {}
                 else:
@@ -71,7 +80,7 @@ class BlockColorService:
             return self._texture_key_map
         with self._lock:
             if self._texture_key_map is None:
-                id_map = read_block_id_map(Path(self.world_path))
+                id_map = self.block_id_map()
                 if not id_map:
                     self._texture_key_map = {}
                 else:
@@ -95,7 +104,7 @@ class BlockColorService:
             return self._meta_texture_key_map
         with self._lock:
             if self._meta_texture_key_map is None:
-                id_map = read_block_id_map(Path(self.world_path))
+                id_map = self.block_id_map()
                 if not id_map:
                     self._meta_texture_key_map = {}
                 else:

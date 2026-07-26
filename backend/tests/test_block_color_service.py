@@ -6,6 +6,8 @@ between tests — which is the point of moving the per-world caches into an obje
 
 from pathlib import Path
 
+import pytest
+
 from app.services.blockcolor import service as bcs
 
 
@@ -49,6 +51,33 @@ def test_maps_are_built_once_and_memoized(tmp_path: Path) -> None:
 
     db = svc.asset_db()
     assert svc.asset_db() is db  # asset DB built once
+
+
+def test_all_maps_share_one_level_dat_parse(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    reads = 0
+    id_map = {1: "minecraft:stone"}
+
+    def read_once(_path: Path) -> dict[int, str]:
+        nonlocal reads
+        reads += 1
+        return id_map
+
+    svc = bcs.BlockColorService(str(tmp_path))
+    monkeypatch.setattr(bcs, "read_block_id_map", read_once)
+    monkeypatch.setattr(svc, "asset_db", lambda: object())
+    monkeypatch.setattr(bcs, "_build_color_map", lambda ids, _db: {next(iter(ids)): [1, 2, 3]})
+    monkeypatch.setattr(bcs, "_build_texture_key_map", lambda ids, _db: {next(iter(ids)): "x"})
+    monkeypatch.setattr(bcs, "_build_meta_texture_map_for_world", lambda _ids: {})
+    monkeypatch.setattr(bcs, "_augment_meta_map_from_dump", lambda _ids, _db, _out: None)
+
+    assert svc.block_id_map() is id_map
+    svc.block_color_map()
+    svc.block_texture_map()
+    svc.block_meta_texture_map()
+
+    assert reads == 1
 
 
 def test_shims_delegate_to_the_default_registry(tmp_path: Path) -> None:

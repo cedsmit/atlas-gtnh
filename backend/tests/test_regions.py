@@ -5,9 +5,11 @@ import zlib
 from pathlib import Path
 
 import nbtlib
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.world.region_reader import read_region
 from app.world.section_codec import decode_chunk_batch
 
 client = TestClient(app)
@@ -144,59 +146,44 @@ def test_list_regions_missing_world(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
-def test_get_region_detail(tmp_path: Path) -> None:
+def test_region_detail_endpoint_is_not_exposed(tmp_path: Path) -> None:
     world = _make_world(tmp_path)
     response = client.get("/worlds/regions/0/0", params={"world_path": str(world)})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["region_x"] == 0
-    assert data["region_z"] == 0
-    assert data["chunk_count"] == 1
-    assert data["skipped_chunks"] == 0
-    chunk = data["chunks"][0]
-    assert chunk["chunk_x"] == 0
-    assert chunk["chunk_z"] == 0
-    assert chunk["populated"] is True
-
-
-def test_get_region_detail_missing(tmp_path: Path) -> None:
-    world = _make_world(tmp_path)
-    response = client.get("/worlds/regions/1/1", params={"world_path": str(world)})
     assert response.status_code == 404
 
 
-def test_get_region_handles_corrupt_chunk(tmp_path: Path) -> None:
-    world = tmp_path / "corrupt_world"
-    world.mkdir()
-    (world / "level.dat").touch()
-    region_dir = world / "region"
-    region_dir.mkdir()
-    # Write a region file with valid header pointing to corrupt chunk data
+def test_read_region_metadata(tmp_path: Path) -> None:
+    world = _make_world(tmp_path)
+    chunks, skipped = read_region(world / "region" / "r.0.0.mca")
+    assert skipped == 0
+    assert len(chunks) == 1
+    assert chunks[0].chunk_x == 0
+    assert chunks[0].chunk_z == 0
+    assert chunks[0].populated is True
+
+
+def test_read_region_skips_corrupt_chunk(tmp_path: Path) -> None:
+    region_file = tmp_path / "r.0.0.mca"
+    # Valid header pointing to a corrupt zlib payload.
     location_table = bytearray(SECTOR_SIZE)
     location_table[0:4] = struct.pack(">I", (2 << 8) | 1)
     corrupt_chunk = bytearray(SECTOR_SIZE)
     corrupt_chunk[0:4] = struct.pack(">I", 10)
     corrupt_chunk[4] = 2
-    corrupt_chunk[5:15] = b"\xff" * 10  # invalid zlib data
-    (region_dir / "r.0.0.mca").write_bytes(
-        bytes(location_table) + bytes(SECTOR_SIZE) + bytes(corrupt_chunk)
-    )
-    response = client.get("/worlds/regions/0/0", params={"world_path": str(world)})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["skipped_chunks"] == 1
-    assert data["chunk_count"] == 0
+    corrupt_chunk[5:15] = b"\xff" * 10
+    region_file.write_bytes(bytes(location_table) + bytes(SECTOR_SIZE) + bytes(corrupt_chunk))
+
+    chunks, skipped = read_region(region_file)
+    assert chunks == []
+    assert skipped == 1
 
 
-def test_get_region_invalid_file_too_small(tmp_path: Path) -> None:
-    world = tmp_path / "small_world"
-    world.mkdir()
-    (world / "level.dat").touch()
-    region_dir = world / "region"
-    region_dir.mkdir()
-    (region_dir / "r.0.0.mca").write_bytes(b"\x00" * 100)
-    response = client.get("/worlds/regions/0/0", params={"world_path": str(world)})
-    assert response.status_code == 400
+def test_read_region_rejects_file_too_small(tmp_path: Path) -> None:
+    region_file = tmp_path / "r.0.0.mca"
+    region_file.write_bytes(b"\x00" * 100)
+
+    with pytest.raises(ValueError):
+        read_region(region_file)
 
 
 def test_get_chunk_data(tmp_path: Path) -> None:

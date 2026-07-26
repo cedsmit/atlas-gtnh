@@ -138,6 +138,38 @@ def get_texture_source_jar(texture_key: str) -> str | None:
         return None
 
 
+def get_texture_source_jars(texture_keys: list[str]) -> dict[str, str]:
+    """Return one source JAR per cached texture key using one connection.
+
+    A texture may occur in several scanned instances. Keep the single-key
+    lookup's deterministic primary-key order by selecting the lexicographically
+    first source path for each registry name.
+    """
+    if not texture_keys:
+        return {}
+
+    unique_keys = list(dict.fromkeys(texture_keys))
+    result: dict[str, str] = {}
+    try:
+        with closing(_connect()) as conn:
+            # Stay below SQLite builds whose host-parameter limit is 999.
+            for start in range(0, len(unique_keys), 900):
+                batch = unique_keys[start : start + 900]
+                placeholders = ",".join("?" for _ in batch)
+                rows = conn.execute(
+                    "SELECT registry_name, source_jar FROM texture_colors "
+                    f"WHERE registry_name IN ({placeholders}) "
+                    "ORDER BY registry_name, source_jar",
+                    batch,
+                ).fetchall()
+                for registry_name, source_jar in rows:
+                    result.setdefault(registry_name, source_jar)
+    except Exception:
+        log.warning("color cache: failed to batch-look up source jars", exc_info=True)
+        return {}
+    return result
+
+
 def save_jar_colors(
     jar_path: Path,
     colors: dict[str, tuple[tuple[int, int, int], tuple[int, int, int] | None]],

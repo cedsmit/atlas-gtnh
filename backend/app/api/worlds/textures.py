@@ -2,7 +2,6 @@
 
 import asyncio
 import base64
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
@@ -13,6 +12,7 @@ from app.services.blockcolor.service import (
     build_block_color_map,
     build_block_meta_texture_map,
     build_block_texture_map,
+    get_block_color_service,
 )
 from app.services.texture_service import get_textures_batch
 
@@ -39,9 +39,8 @@ async def get_scan_progress(world_path: str = Query(...)) -> dict[str, object]:
 
 @router.get("/block-names")
 async def get_block_names(world_path: str = Query(...)) -> dict[int, str]:
-    from app.world.block_registry import read_block_id_map
-
-    return read_block_id_map(Path(world_path))
+    service = get_block_color_service(world_path)
+    return await asyncio.to_thread(service.block_id_map)
 
 
 @router.get("/block-colors")

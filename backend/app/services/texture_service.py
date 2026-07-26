@@ -9,7 +9,7 @@ import threading
 import zipfile
 from pathlib import Path
 
-from app.services.color_cache import get_texture_source_jar
+from app.services.color_cache import get_texture_source_jar, get_texture_source_jars
 
 # In-process cache: texture_key → PNG bytes (None = confirmed missing).
 # _cache_lock serialises the miss path so a key isn't read from disk twice.
@@ -45,12 +45,14 @@ def get_textures_batch(keys: list[str]) -> dict[str, bytes | None]:
     """
     result: dict[str, bytes | None] = {}
     misses_by_jar: dict[str, list[str]] = {}
+    misses = [key for key in keys if key not in _cache]
+    source_jars = get_texture_source_jars(misses)
 
     for key in keys:
         if key in _cache:
             result[key] = _cache[key]
             continue
-        source_jar = get_texture_source_jar(key)
+        source_jar = source_jars.get(key)
         if not source_jar or ":" not in key or not Path(source_jar).exists():
             with _cache_lock:
                 _cache.setdefault(key, None)
