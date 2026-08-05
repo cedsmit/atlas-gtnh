@@ -540,24 +540,26 @@ def read_region_surface(
     return out
 
 
-def scan_region_all_blocks(
+def scan_region_search_data(
     path: Path,
-) -> list[tuple[int, int, int, int, int, int, int]]:
-    """Index rows for every non-air block in a region — one per (chunk, block id).
-
-    Returns (chunk_x, chunk_z, block_id, count, sx, sy, sz): the per-chunk count of
-    each block id plus the world coords of its first occurrence. One numpy pass per
-    section (unique + first-index + counts). Feeds the persistent search index.
-    """
+) -> tuple[
+    list[tuple[int, int, int, int, int, int, int]],
+    list[tuple[int, int, int, int, int, int]],
+]:
+    """Build block and biome index rows while decompressing each chunk once."""
     data = _read_region_bytes(path)
     if len(data) < 2 * SECTOR_SIZE:
-        return []
-    out: list[tuple[int, int, int, int, int, int, int]] = []
+        return [], []
+    block_out: list[tuple[int, int, int, int, int, int, int]] = []
+    biome_out: list[tuple[int, int, int, int, int, int]] = []
     for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
         try:
-            xpos, zpos, _biomes, raw_sections = _fast_parse_chunk(_decompress_chunk(data, offset))
+            xpos, zpos, biomes_bytes, raw_sections = _fast_parse_chunk(
+                _decompress_chunk(data, offset)
+            )
         except Exception:
             continue
+
         counts: dict[int, int] = {}
         sample: dict[int, tuple[int, int, int]] = {}
         for sec in raw_sections:
@@ -581,8 +583,33 @@ def scan_region_all_blocks(
                     )
         for bid, cnt in counts.items():
             sx, sy, sz = sample[bid]
-            out.append((xpos, zpos, bid, cnt, sx, sy, sz))
-    return out
+            block_out.append((xpos, zpos, bid, cnt, sx, sy, sz))
+
+        biomes = _decode_biomes(biomes_bytes, xpos, zpos)
+        biome_counts: dict[int, int] = {}
+        biome_sample: dict[int, tuple[int, int]] = {}
+        for idx, bid in enumerate(biomes):
+            if bid in (255, 65535):
+                continue
+            biome_counts[bid] = biome_counts.get(bid, 0) + 1
+            if bid not in biome_sample:
+                biome_sample[bid] = (xpos * 16 + (idx & 0xF), zpos * 16 + (idx >> 4))
+        for bid, cnt in biome_counts.items():
+            sx, sz = biome_sample[bid]
+            biome_out.append((xpos, zpos, bid, cnt, sx, sz))
+    return block_out, biome_out
+
+
+def scan_region_all_blocks(
+    path: Path,
+) -> list[tuple[int, int, int, int, int, int, int]]:
+    """Index rows for every non-air block in a region — one per (chunk, block id).
+
+    Returns (chunk_x, chunk_z, block_id, count, sx, sy, sz): the per-chunk count of
+    each block id plus the world coords of its first occurrence. One numpy pass per
+    section (unique + first-index + counts). Feeds the persistent search index.
+    """
+    return scan_region_search_data(path)[0]
 
 
 def scan_region_all_biomes(
@@ -596,28 +623,4 @@ def scan_region_all_biomes(
     the cheap ``Biomes`` array is read (sections are skipped). Feeds the biome
     search index. Biome id 255 (the "uncalculated" marker) is skipped.
     """
-    data = _read_region_bytes(path)
-    if len(data) < 2 * SECTOR_SIZE:
-        return []
-    out: list[tuple[int, int, int, int, int, int]] = []
-    for _local_x, _local_z, offset, _timestamp in _parse_location_table(data):
-        try:
-            xpos, zpos, biomes_bytes, _sections = _fast_parse_chunk(_decompress_chunk(data, offset))
-        except Exception:
-            continue
-        biomes = _decode_biomes(biomes_bytes, xpos, zpos)
-        if not biomes:
-            continue
-        counts: dict[int, int] = {}
-        sample: dict[int, tuple[int, int]] = {}
-        for idx, bid in enumerate(biomes):
-            # 'uncalculated' markers: 255 (vanilla -1 byte), 65535 (16-bit -1).
-            if bid == 255 or bid == 65535:
-                continue
-            counts[bid] = counts.get(bid, 0) + 1
-            if bid not in sample:
-                sample[bid] = (xpos * 16 + (idx & 0xF), zpos * 16 + (idx >> 4))
-        for bid, cnt in counts.items():
-            sx, sz = sample[bid]
-            out.append((xpos, zpos, bid, cnt, sx, sz))
-    return out
+    return scan_region_search_data(path)[1]

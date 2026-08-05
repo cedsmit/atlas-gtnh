@@ -76,7 +76,10 @@ export function ViewMenu({
               <SectionLabel>Layers</SectionLabel>
               {LAYER_TAGS.map(({ tag, label }) => {
                 const visible =
-                  layerOverrides?.[tag] ?? presetShowsTag(activePreset, tag)
+                  layerOverrides?.[tag] ??
+                  (tag === 'chunk-borders'
+                    ? false
+                    : presetShowsTag(activePreset, tag))
                 return (
                   <Item
                     key={tag}

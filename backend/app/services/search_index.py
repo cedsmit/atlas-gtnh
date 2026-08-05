@@ -13,11 +13,16 @@ import logging
 import sqlite3
 import statistics
 import threading
+from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 
 from app.models.search import BiomePresence, SearchBlocksResponse, SearchHit
-from app.world.region_reader import scan_region_all_biomes, scan_region_all_blocks
+from app.world.region_reader import (
+    scan_region_all_biomes,
+    scan_region_all_blocks,
+    scan_region_search_data,
+)
 
 log = logging.getLogger(__name__)
 
@@ -26,7 +31,15 @@ _DB_PATH = Path.home() / ".atlas_gtnh" / "search_index.db"
 # Bumped when the index schema/content changes so existing DBs rebuild. v2 added
 # the chunk_biomes table (biome search); v3 fixed biome extraction for the modded
 # 16-bit Biomes16v2 format (v2 indexed 0 biomes on those worlds).
-_INDEX_VERSION = "v3"
+_INDEX_VERSION = "v4"
+
+
+class IndexBuildCancelled(Exception):
+    """Raised cooperatively between region scans."""
+
+
+ProgressCallback = Callable[[int, int], None]
+CancelCallback = Callable[[], bool]
 
 _init_lock = threading.Lock()
 _initialized = False
@@ -57,6 +70,10 @@ CREATE TABLE IF NOT EXISTS chunk_biomes (
 );
 CREATE INDEX IF NOT EXISTS idx_dim_biome ON chunk_biomes (dim, biome_id);
 CREATE TABLE IF NOT EXISTS dim_meta (dim TEXT PRIMARY KEY, signature TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS region_meta (
+    dim TEXT NOT NULL, region TEXT NOT NULL, signature TEXT NOT NULL,
+    PRIMARY KEY (dim, region)
+);
 """
 
 
@@ -73,6 +90,16 @@ def _connect() -> sqlite3.Connection:
                     s = stmt.strip()
                     if s:
                         conn.execute(s)
+                for table in ("chunk_blocks", "chunk_biomes"):
+                    columns = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+                    if "region" not in columns:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN region TEXT")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_blocks_dim_region ON chunk_blocks (dim, region)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_biomes_dim_region ON chunk_biomes (dim, region)"
+                )
                 conn.commit()
                 _initialized = True
     return conn
@@ -111,7 +138,7 @@ def _is_fresh(conn: sqlite3.Connection, dim: str, sig: str) -> bool:
     return bool(row) and row[0] == sig
 
 
-def build_index(dimension_path: str) -> None:
+def _legacy_build_index(dimension_path: str) -> None:
     """(Re)build the index for a dimension. Expensive — scans every chunk once."""
     region_dir = _region_dir(dimension_path)
     if not region_dir.is_dir():
@@ -156,13 +183,140 @@ def build_index(dimension_path: str) -> None:
             )
 
 
-def ensure_index(dimension_path: str) -> None:
+def _legacy_ensure_index(dimension_path: str) -> None:
     """Build the index if missing or stale; a no-op when already fresh (instant)."""
     sig = _dim_signature(dimension_path)
     with closing(_connect()) as conn:
         if _is_fresh(conn, dimension_path, sig):
             return
-    build_index(dimension_path)
+    _legacy_build_index(dimension_path)
+
+
+def _region_signatures(dimension_path: str) -> dict[str, str]:
+    region_dir = _region_dir(dimension_path)
+    if not region_dir.is_dir():
+        return {}
+    result: dict[str, str] = {}
+    for path in sorted(region_dir.glob("*.mca")):
+        stat = path.stat()
+        result[path.name] = f"{_INDEX_VERSION}:{stat.st_mtime_ns}:{stat.st_size}"
+    return result
+
+
+def build_index(
+    dimension_path: str,
+    progress: ProgressCallback | None = None,
+    cancelled: CancelCallback | None = None,
+) -> None:
+    """Update changed regions atomically, retaining the old index on cancellation."""
+    region_dir = _region_dir(dimension_path)
+    if not region_dir.is_dir():
+        raise FileNotFoundError(f"No region directory under {dimension_path}")
+    with _build_lock_for(dimension_path):
+        current = _region_signatures(dimension_path)
+        with closing(_connect()) as conn:
+            stored = dict(
+                conn.execute(
+                    "SELECT region, signature FROM region_meta WHERE dim = ?", (dimension_path,)
+                )
+            )
+        # A database created before per-region metadata was introduced has no
+        # rows in ``region_meta``.  Treat it as legacy even for an empty region
+        # directory so stale rows are removed when a world is deleted/cleared.
+        legacy = not stored
+        changed = (
+            sorted(current)
+            if legacy
+            else sorted(name for name, sig in current.items() if stored.get(name) != sig)
+        )
+        removed = sorted(set(stored) - set(current))
+        total = len(changed) + len(removed)
+        if legacy and not current:
+            with closing(_connect()) as conn:
+                conn.execute("DELETE FROM chunk_blocks WHERE dim = ?", (dimension_path,))
+                conn.execute("DELETE FROM chunk_biomes WHERE dim = ?", (dimension_path,))
+                conn.execute("DELETE FROM dim_meta WHERE dim = ?", (dimension_path,))
+                conn.commit()
+            if progress:
+                progress(0, 0)
+            return
+        if total == 0:
+            if progress:
+                progress(0, 0)
+            return
+
+        done = 0
+        with closing(_connect()) as conn:
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                if legacy:
+                    conn.execute("DELETE FROM chunk_blocks WHERE dim = ?", (dimension_path,))
+                    conn.execute("DELETE FROM chunk_biomes WHERE dim = ?", (dimension_path,))
+                for region in removed:
+                    if cancelled and cancelled():
+                        raise IndexBuildCancelled
+                    conn.execute(
+                        "DELETE FROM chunk_blocks WHERE dim = ? AND region = ?",
+                        (dimension_path, region),
+                    )
+                    conn.execute(
+                        "DELETE FROM chunk_biomes WHERE dim = ? AND region = ?",
+                        (dimension_path, region),
+                    )
+                    conn.execute(
+                        "DELETE FROM region_meta WHERE dim = ? AND region = ?",
+                        (dimension_path, region),
+                    )
+                    done += 1
+                    if progress:
+                        progress(done, total)
+                for region in changed:
+                    if cancelled and cancelled():
+                        raise IndexBuildCancelled
+                    blocks, biomes = scan_region_search_data(region_dir / region)
+                    if cancelled and cancelled():
+                        raise IndexBuildCancelled
+                    conn.execute(
+                        "DELETE FROM chunk_blocks WHERE dim = ? AND region = ?",
+                        (dimension_path, region),
+                    )
+                    conn.execute(
+                        "DELETE FROM chunk_biomes WHERE dim = ? AND region = ?",
+                        (dimension_path, region),
+                    )
+                    conn.executemany(
+                        "INSERT INTO chunk_blocks "
+                        "(dim, region, cx, cz, block_id, cnt, sx, sy, sz) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        ((dimension_path, region, *row) for row in blocks),
+                    )
+                    conn.executemany(
+                        "INSERT INTO chunk_biomes "
+                        "(dim, region, cx, cz, biome_id, cnt, sx, sz) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        ((dimension_path, region, *row) for row in biomes),
+                    )
+                    conn.execute(
+                        "INSERT OR REPLACE INTO region_meta (dim, region, signature) "
+                        "VALUES (?, ?, ?)",
+                        (dimension_path, region, current[region]),
+                    )
+                    done += 1
+                    if progress:
+                        progress(done, total)
+                conn.execute("DELETE FROM dim_meta WHERE dim = ?", (dimension_path,))
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+
+def ensure_index(
+    dimension_path: str,
+    progress: ProgressCallback | None = None,
+    cancelled: CancelCallback | None = None,
+) -> None:
+    build_index(dimension_path, progress, cancelled)
 
 
 def query_index(
