@@ -75,6 +75,18 @@ export interface NeighborPipes {
   e?: Uint8Array | null
 }
 
+/** Biome grids of the eight adjacent chunks, used for JourneyMap-style 3x3 tint blending. */
+export interface NeighborBiomes {
+  n?: readonly number[] | null
+  s?: readonly number[] | null
+  w?: readonly number[] | null
+  e?: readonly number[] | null
+  nw?: readonly number[] | null
+  ne?: readonly number[] | null
+  sw?: readonly number[] | null
+  se?: readonly number[] | null
+}
+
 /** True when a block carries the pipe or cable tag (Infrastructure View). */
 function isPipeOrCable(def: Pick<ResolvedDefinition, 'blockTags'>): boolean {
   const tags = def.blockTags
@@ -293,7 +305,8 @@ export function renderChunkImage(
   debugMode: boolean, // controls textureDebugStore recording
   blockNames: Record<number, string> | undefined,
   neighbors?: NeighborHeights,
-  neighborPipes?: NeighborPipes
+  neighborPipes?: NeighborPipes,
+  neighborBiomes?: NeighborBiomes
 ): { canvas: HTMLCanvasElement; stats: ChunkRenderStats } {
   let drawImage = 0,
     fillRect = 0,
@@ -397,6 +410,7 @@ export function renderChunkImage(
               // for a renderable block to show beneath it instead of dropping to
               // a flat fallback colour.
               if (isUnknownBlock(id, section.data[idx], def)) {
+                if (config.hiddenTags.has('unknown')) continue
                 if (unkY[i] < 0) {
                   unkY[i] = absY
                   unkId[i] = id
@@ -453,14 +467,64 @@ export function renderChunkImage(
   const ctx = offscreen.getContext('2d')!
   ctx.imageSmoothingEnabled = false
 
-  // Pre-compute biome tints per column
+  // Pre-compute JourneyMap-style 3x3 biome tints per column. Samples outside
+  // this chunk come from cached neighbors; until they arrive, clamp to this
+  // chunk's edge so loading order cannot create a dark seam.
   const grassTints: Array<readonly [number, number, number]> = new Array(256)
   const foliageTints: Array<readonly [number, number, number]> = new Array(256)
-  for (let i = 0; i < 256; i++) {
-    const biomeId = data.biomes.length === 256 ? data.biomes[i] : 1
-    const t = biomeTints(biomeId)
-    grassTints[i] = t.grass
-    foliageTints[i] = t.foliage
+  const ownBiomes = data.biomes.length === 256 ? data.biomes : null
+  const sampleBiome = (x: number, z: number): number => {
+    if (x >= 0 && x < 16 && z >= 0 && z < 16)
+      return ownBiomes?.[z * 16 + x] ?? 1
+    const side =
+      z < 0
+        ? x < 0
+          ? neighborBiomes?.nw
+          : x > 15
+            ? neighborBiomes?.ne
+            : neighborBiomes?.n
+        : z > 15
+          ? x < 0
+            ? neighborBiomes?.sw
+            : x > 15
+              ? neighborBiomes?.se
+              : neighborBiomes?.s
+          : x < 0
+            ? neighborBiomes?.w
+            : neighborBiomes?.e
+    const sx = (x + 16) & 15
+    const sz = (z + 16) & 15
+    return side?.length === 256
+      ? side[sz * 16 + sx]
+      : (ownBiomes?.[
+          Math.max(0, Math.min(15, z)) * 16 + Math.max(0, Math.min(15, x))
+        ] ?? 1)
+  }
+  for (let z = 0; z < 16; z++) {
+    for (let x = 0; x < 16; x++) {
+      const grass = [0, 0, 0]
+      const foliage = [0, 0, 0]
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const tint = biomeTints(sampleBiome(x + dx, z + dz))
+          for (let c = 0; c < 3; c++) {
+            grass[c] += tint.grass[c]
+            foliage[c] += tint.foliage[c]
+          }
+        }
+      }
+      const i = z * 16 + x
+      grassTints[i] = grass.map((v) => Math.round(v / 9)) as [
+        number,
+        number,
+        number,
+      ]
+      foliageTints[i] = foliage.map((v) => Math.round(v / 9)) as [
+        number,
+        number,
+        number,
+      ]
+    }
   }
 
   // Reusable 16×16 scratch canvas for compositing biome-tinted overlay sprites.

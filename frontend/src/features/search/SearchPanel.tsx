@@ -196,6 +196,12 @@ function SearchResults({
       <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center text-xs text-zinc-500">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
         Searching…
+        {state.progress && state.progress.total > 0 && (
+          <span className="font-mono text-zinc-400">
+            {state.progress.done}/{state.progress.total} regions (
+            {Math.round((state.progress.done / state.progress.total) * 100)}%)
+          </span>
+        )}
         <span className="text-[11px] text-zinc-600">
           The first search of a world builds an index; later ones are instant.
         </span>

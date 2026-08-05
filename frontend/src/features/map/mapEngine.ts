@@ -30,6 +30,7 @@ import {
   renderChunkImage,
   upscaleCanvas,
   type NeighborHeights,
+  type NeighborBiomes,
   type NeighborPipes,
 } from './chunkTileRenderer'
 import { ChunkOutlineOverlay, type ChunkOutlineState } from './chunkOutline'
@@ -214,6 +215,7 @@ export class MapEngine {
       lastBcCount: 0,
       lastConfig: null as RenderConfig | null,
       lastDebugMode: false,
+      lastChunkBorders: false,
       chunkPixels: new Map<string, number>(),
       resolving: new Set<string>(),
       pendingSet: new Set<string>(),
@@ -448,6 +450,21 @@ export class MapEngine {
       }
     }
 
+    function neighborBiomesFor(mcx: number, mcz: number): NeighborBiomes {
+      const biomes = (dx: number, dz: number) =>
+        st.dataCache.get(`${mcx + dx},${mcz + dz}`)?.biomes ?? null
+      return {
+        n: biomes(0, -1),
+        s: biomes(0, 1),
+        w: biomes(-1, 0),
+        e: biomes(1, 0),
+        nw: biomes(-1, -1),
+        ne: biomes(1, -1),
+        sw: biomes(-1, 1),
+        se: biomes(1, 1),
+      }
+    }
+
     // Mark already-rendered neighbors of a freshly-arrived chunk for a shading
     // re-render (their shared edge was drawn without this chunk's heights).
     // Only neighbors with cached block data are marked — bitmap-restored tiles
@@ -458,6 +475,10 @@ export class MapEngine {
         [0, 1],
         [-1, 0],
         [1, 0],
+        [-1, -1],
+        [1, -1],
+        [-1, 1],
+        [1, 1],
       ] as const) {
         const nk = `${mcx + dx},${mcz + dz}`
         if (
@@ -515,7 +536,8 @@ export class MapEngine {
         debugModeRef.current,
         blockNamesRef.current,
         neighborHeightsFor(mcx, mcz),
-        configRef.current.infraView ? neighborPipesFor(mcx, mcz) : undefined
+        configRef.current.infraView ? neighborPipesFor(mcx, mcz) : undefined,
+        neighborBiomesFor(mcx, mcz)
       )
       textureDebugStore.addChunkStats(stats)
 
@@ -575,7 +597,15 @@ export class MapEngine {
             ` tex=${chunkTex.uuid}` +
             ` → outline=${outlineState}`
         )
-        outlines.set(key, mcx, mcz, outlineState, debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          outlineState,
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
       }
 
       st.cache.set(key, mesh)
@@ -630,7 +660,15 @@ export class MapEngine {
       st.texVersionAtRender.set(key, st.texVersion)
       st.liveChunks++
       if (debugModeRef.current)
-        outlines.set(key, mcx, mcz, 'loaded', debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          'loaded',
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
     }
 
     // Drop a live chunk mesh without caching it (used for stale restored tiles
@@ -765,7 +803,15 @@ export class MapEngine {
       if (dbg) {
         console.log(`[atlas:chunk] fetching  batch ×${items.length}`)
         for (const [mcx, mcz, key] of items)
-          outlines.set(key, mcx, mcz, 'rendering', debugModeRef.current)
+          outlines.set(
+            key,
+            mcx,
+            mcz,
+            'rendering',
+            debugModeRef.current ||
+              !configRef.current.hiddenTags.has('chunk-borders'),
+            !debugModeRef.current
+          )
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
@@ -797,7 +843,8 @@ export class MapEngine {
           if (returned.has(key)) continue
           st.resolving.delete(key)
           st.cache.set(key, 'empty')
-          if (dbg) outlines.set(key, mcx, mcz, 'empty', debugModeRef.current)
+          if (dbg || !configRef.current.hiddenTags.has('chunk-borders'))
+            outlines.set(key, mcx, mcz, 'empty', true, !dbg)
         }
       } catch (err) {
         // A teardown abort is not a chunk failure — don't paint dead state.
@@ -805,7 +852,8 @@ export class MapEngine {
         for (const [mcx, mcz, key] of items) {
           st.resolving.delete(key)
           st.cache.set(key, 'error')
-          if (dbg) outlines.set(key, mcx, mcz, 'error', debugModeRef.current)
+          if (dbg || !configRef.current.hiddenTags.has('chunk-borders'))
+            outlines.set(key, mcx, mcz, 'error', true, !dbg)
         }
         if (dbg) console.error('[atlas:chunk] batch exception', err)
       } finally {
@@ -862,7 +910,15 @@ export class MapEngine {
       st.pending.push([mcx, mcz, key])
       if (debugModeRef.current) {
         console.log(`[atlas:chunk] queued   ${mcx},${mcz}`)
-        outlines.set(key, mcx, mcz, 'queued', debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          'queued',
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
       }
       drainQueue()
       return true
@@ -1181,10 +1237,12 @@ export class MapEngine {
 
       // Detect debug mode toggle — add/remove outlines for existing chunks
       const dbgNow = debugModeRef.current
-      if (dbgNow !== st.lastDebugMode) {
+      const bordersNow = !configRef.current.hiddenTags.has('chunk-borders')
+      if (dbgNow !== st.lastDebugMode || bordersNow !== st.lastChunkBorders) {
         st.lastDebugMode = dbgNow
+        st.lastChunkBorders = bordersNow
         st.forceFrame = true
-        if (dbgNow) {
+        if (dbgNow || bordersNow) {
           for (const [key, entry] of st.cache) {
             const [mxs, mzs] = key.split(',')
             const mcx = parseInt(mxs),
@@ -1193,9 +1251,25 @@ export class MapEngine {
               const px = st.chunkPixels.get(key) ?? -2
               const s: ChunkOutlineState =
                 px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
-              outlines.set(key, mcx, mcz, s, debugModeRef.current)
+              outlines.set(
+                key,
+                mcx,
+                mcz,
+                s,
+                debugModeRef.current ||
+                  !configRef.current.hiddenTags.has('chunk-borders'),
+                !debugModeRef.current
+              )
             } else if (entry === 'error') {
-              outlines.set(key, mcx, mcz, 'error', debugModeRef.current)
+              outlines.set(
+                key,
+                mcx,
+                mcz,
+                'error',
+                debugModeRef.current ||
+                  !configRef.current.hiddenTags.has('chunk-borders'),
+                !debugModeRef.current
+              )
             }
           }
         } else {
@@ -1296,10 +1370,14 @@ export class MapEngine {
               neighborHeightsFor(parseInt(rmxs), parseInt(rmzs)),
               configRef.current.infraView
                 ? neighborPipesFor(parseInt(rmxs), parseInt(rmzs))
-                : undefined
+                : undefined,
+              neighborBiomesFor(parseInt(rmxs), parseInt(rmzs))
             )
             textureDebugStore.addChunkStats(reStats)
-            if (debugModeRef.current) {
+            if (
+              debugModeRef.current ||
+              !configRef.current.hiddenTags.has('chunk-borders')
+            ) {
               const px = canvasDiagnostics(newImg)
               st.chunkPixels.set(key, px)
               const [mxs, mzs] = key.split(',')
@@ -1310,7 +1388,8 @@ export class MapEngine {
                 parseInt(mxs),
                 parseInt(mzs),
                 s,
-                debugModeRef.current
+                true,
+                !debugModeRef.current
               )
             }
             const mat = entry.material as THREE.MeshBasicMaterial

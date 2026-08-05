@@ -192,6 +192,8 @@ export type LayerTag =
   | 'pipe'
   | 'cable'
   | 'fire'
+  | 'unknown'
+  | 'chunk-borders'
 
 export type LayerOverrides = Partial<Record<LayerTag, boolean>>
 
@@ -204,6 +206,8 @@ export const LAYER_TAGS: readonly { tag: LayerTag; label: string }[] = [
   { tag: 'tallgrass', label: 'Tall grass / ferns' },
   { tag: 'torch', label: 'Torches / lights' },
   { tag: 'fire', label: 'Fire' },
+  { tag: 'unknown', label: 'Unknown blocks' },
+  { tag: 'chunk-borders', label: 'Chunk borders' },
 ]
 
 /** Apply user show/hide overrides on top of the preset's hidden-tag set. */

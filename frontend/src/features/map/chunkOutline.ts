@@ -28,6 +28,12 @@ const _mats: Record<ChunkOutlineState, THREE.LineBasicMaterial> = {
   tainted: new THREE.LineBasicMaterial({ color: 0xcc44ff, depthTest: false }),
   error: new THREE.LineBasicMaterial({ color: 0xff3333, depthTest: false }),
 }
+const _neutralMat = new THREE.LineBasicMaterial({
+  color: 0x6b7280,
+  depthTest: false,
+  transparent: true,
+  opacity: 0.7,
+})
 
 export class ChunkOutlineOverlay {
   private readonly lines = new Map<string, THREE.LineLoop>()
@@ -40,7 +46,8 @@ export class ChunkOutlineOverlay {
     mcx: number,
     mcz: number,
     state: ChunkOutlineState,
-    enabled: boolean
+    enabled: boolean,
+    neutral = false
   ): void {
     const old = this.lines.get(key)
     if (old) this.scene.remove(old)
@@ -48,7 +55,10 @@ export class ChunkOutlineOverlay {
       this.lines.delete(key)
       return
     }
-    const line = new THREE.LineLoop(_unitGeo, _mats[state])
+    const line = new THREE.LineLoop(
+      _unitGeo,
+      neutral ? _neutralMat : _mats[state]
+    )
     line.position.set(mcx * 16, -(mcz * 16), 1)
     line.scale.set(16, 16, 1)
     this.scene.add(line)
