@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.worlds import (
+    bedrock_fluids,
     chunk_ops,
     debug,
     dump,
@@ -22,3 +23,4 @@ router.include_router(chunk_ops.router)
 router.include_router(overrides.router)
 router.include_router(search.router)
 router.include_router(ore_veins.router)
+router.include_router(bedrock_fluids.router)

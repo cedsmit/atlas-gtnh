@@ -33,6 +33,19 @@ import {
 } from './features/ore-veins/OreVeinLabels'
 import { veinDisplay } from './features/ore-veins/oreVeinRegistry'
 import { OreVeinSearchPanel } from './features/ore-veins/OreVeinSearchPanel'
+import { BedrockFluidOverlay } from './features/bedrock-fluids/BedrockFluidOverlay'
+import { BedrockFluidSearchPanel } from './features/bedrock-fluids/BedrockFluidSearchPanel'
+import { useBedrockFluids } from './features/bedrock-fluids/api/bedrockFluids'
+import {
+  EMPTY_FLUID_GROUP,
+  fluidGroupKey,
+} from './features/bedrock-fluids/fluidGroups'
+import {
+  calculateRigRecommendations,
+  OIL_DRILLING_RIGS,
+  type OilDrillingRigTier,
+  type RigRecommendation,
+} from './features/bedrock-fluids/rigPlanner'
 import type {
   BlockColumn,
   ChunkCoord,
@@ -95,6 +108,7 @@ type PanelId =
   | 'lootGames'
   | 'biomeSearch'
   | 'oreVeinSearch'
+  | 'bedrockFluidSearch'
   | 'chunkOps'
 
 export default function App() {
@@ -112,6 +126,7 @@ export default function App() {
   const lootGamesOpen = activePanel === 'lootGames'
   const biomeSearchOpen = activePanel === 'biomeSearch'
   const oreVeinSearchOpen = activePanel === 'oreVeinSearch'
+  const bedrockFluidSearchOpen = activePanel === 'bedrockFluidSearch'
   const chunkOpsOpen = activePanel === 'chunkOps'
   const closePanel = useCallback(() => setActivePanel(null), [])
   const togglePanel = (id: PanelId) =>
@@ -122,9 +137,13 @@ export default function App() {
   // resting state, 'labels' brightens it and adds coordinates, 'off' hides it.
   const [gridMode, setGridMode] = useState<'grid' | 'labels' | 'off'>('grid')
   const [oreVeinsOn, setOreVeinsOn] = useState(false)
+  const [bedrockFluidsOn, setBedrockFluidsOn] = useState(false)
   // The ore the map overlay is narrowed to (null = every vein), driven by the
   // ore-vein search panel drilling into one ore.
   const [selectedVeinKind, setSelectedVeinKind] = useState<string | null>(null)
+  const [selectedFluidKey, setSelectedFluidKey] = useState<string | null>(null)
+  const [oilRigTier, setOilRigTier] = useState<OilDrillingRigTier>('IV')
+  const [selectedRigKey, setSelectedRigKey] = useState<string | null>(null)
   const [infraViewOn, setInfraViewOn] = useState(false)
   // Texture diagnostics: magenta-flag blocks whose texture never resolved, and
   // reveal debug-only blocks. Used to ride on the `debug` render preset; now an
@@ -494,6 +513,10 @@ export default function App() {
   // is toggled on, or the search panel opens to browse the veins with the overlay
   // still off. The effect below pushes the dots into the engine once data arrives.
   const oreVeins = useOreVeins(dimensionPath, oreVeinsOn || oreVeinSearchOpen)
+  const bedrockFluids = useBedrockFluids(
+    dimensionPath,
+    bedrockFluidsOn || bedrockFluidSearchOpen
+  )
   const oreVeinViews = useMemo<OreVeinView[]>(() => {
     if (!oreVeins.data) return []
     return oreVeins.data.veins.map((v) => {
@@ -516,6 +539,29 @@ export default function App() {
         ? oreVeinViews.filter((v) => v.kind === selectedVeinKind)
         : oreVeinViews,
     [oreVeinViews, selectedVeinKind]
+  )
+  const visibleFluidFields = useMemo(() => {
+    const fields = bedrockFluids.data?.fields ?? []
+    return selectedFluidKey
+      ? fields.filter((field) => fluidGroupKey(field) === selectedFluidKey)
+      : fields
+  }, [bedrockFluids.data?.fields, selectedFluidKey])
+  const oilRig = OIL_DRILLING_RIGS.find((rig) => rig.tier === oilRigTier)!
+  const rigRecommendations = useMemo(
+    () =>
+      selectedFluidKey && selectedFluidKey !== EMPTY_FLUID_GROUP
+        ? calculateRigRecommendations(visibleFluidFields, oilRig.range)
+        : [],
+    [oilRig.range, selectedFluidKey, visibleFluidFields]
+  )
+  const selectedRigPlacement = useMemo(
+    () =>
+      rigRecommendations.find(
+        (recommendation) => recommendation.key === selectedRigKey
+      ) ??
+      rigRecommendations[0] ??
+      null,
+    [rigRecommendations, selectedRigKey]
   )
   // Ore-overlay sprites (base64 PNG → data URL), keyed by the vein `texture`; the
   // engine tints each by the vein colour. Empty on an old (pre-sprite) dump.
@@ -559,10 +605,36 @@ export default function App() {
     if (kind) setOreVeinsOn(true)
   }, [])
 
+  const handleSelectFluidKey = useCallback((key: string | null) => {
+    setSelectedFluidKey(key)
+    setSelectedRigKey(null)
+    if (key) setBedrockFluidsOn(true)
+  }, [])
+
+  const handleRigTierChange = useCallback((tier: OilDrillingRigTier) => {
+    setOilRigTier(tier)
+    setSelectedRigKey(null)
+  }, [])
+
+  const handleSelectRig = useCallback((recommendation: RigRecommendation) => {
+    setSelectedRigKey(recommendation.key)
+    setBedrockFluidsOn(true)
+    engineRef.current?.animateCameraTo({
+      cx: recommendation.areaChunkX * 16 + recommendation.range * 8,
+      cz: recommendation.areaChunkZ * 16 + recommendation.range * 8,
+      scale: Math.min(
+        VIEWER_CONFIG.maxScale,
+        Math.max(VIEWER_CONFIG.minScale, 320 / (recommendation.range * 16))
+      ),
+    })
+  }, [])
+
   // Map coords are per-dimension, so a filter pinned to one dimension's ore has no
   // meaning in the next — and WorldMap rebuilds the engine on the change anyway.
   useEffect(() => {
     setSelectedVeinKind(null)
+    setSelectedFluidKey(null)
+    setSelectedRigKey(null)
   }, [dimensionPath])
 
   // Infrastructure View (Stage 5): draw pipe/cable runs as a connected network.
@@ -660,6 +732,14 @@ export default function App() {
                     loading: oreVeins.isFetching,
                     onToggle: () => setOreVeinsOn((o) => !o),
                   },
+                  bedrockFluids: {
+                    on: bedrockFluidsOn,
+                    loading: bedrockFluids.isFetching,
+                    hint: bedrockFluids.data
+                      ? `${bedrockFluids.data.predicted_count} predicted · ${bedrockFluids.data.prospected_count} current`
+                      : undefined,
+                    onToggle: () => setBedrockFluidsOn((on) => !on),
+                  },
                   heatmap: {
                     on: heatmapOn,
                     loading: chunkStats.isPending,
@@ -695,6 +775,10 @@ export default function App() {
                 oreVeinSearch: {
                   open: oreVeinSearchOpen,
                   onSelect: () => togglePanel('oreVeinSearch'),
+                },
+                bedrockFluidSearch: {
+                  open: bedrockFluidSearchOpen,
+                  onSelect: () => togglePanel('bedrockFluidSearch'),
                 },
               }
             : undefined
@@ -862,6 +946,25 @@ export default function App() {
             {oreVeinsOn && (
               <OreVeinLabels engineRef={engineRef} veins={visibleVeins} />
             )}
+            {bedrockFluidsOn && bedrockFluids.data && (
+              <BedrockFluidOverlay
+                engineRef={engineRef}
+                fields={visibleFluidFields}
+                rigPlacement={selectedRigPlacement}
+                rigLabel={`Rig ${oilRig.tier}`}
+              />
+            )}
+            {bedrockFluidsOn &&
+              bedrockFluids.data &&
+              bedrockFluids.data.fields.length === 0 && (
+                <MapNotice>
+                  {bedrockFluids.data.available
+                    ? bedrockFluids.data.prediction_available
+                      ? 'No bedrock-fluid fields overlap generated chunks in this dimension.'
+                      : 'No bedrock-fluid fields have been prospected in this dimension yet.'
+                    : 'No Visual Prospecting data or UndergroundFluids.cfg found for this world.'}
+                </MapNotice>
+              )}
             {oreVeinsOn &&
               oreVeins.data &&
               oreVeins.data.veins.length === 0 && (
@@ -1032,6 +1135,36 @@ export default function App() {
               onToggleOverlay={() => setOreVeinsOn((o) => !o)}
               selectedKind={selectedVeinKind}
               onSelectKind={handleSelectVeinKind}
+              home={homePos}
+              onJump={(x, z) =>
+                engineRef.current?.animateCameraTo({
+                  cx: x,
+                  cz: z,
+                  scale: VIEWER_CONFIG.maxScale,
+                })
+              }
+              onClose={closePanel}
+            />
+          )}
+
+          {/* Bedrock fluid search panel */}
+          {bedrockFluidSearchOpen && dimensionPath && (
+            <BedrockFluidSearchPanel
+              fields={bedrockFluids.data?.fields ?? []}
+              loading={bedrockFluids.isPending}
+              available={bedrockFluids.data?.available ?? false}
+              predictionAvailable={
+                bedrockFluids.data?.prediction_available ?? false
+              }
+              overlayOn={bedrockFluidsOn}
+              onToggleOverlay={() => setBedrockFluidsOn((on) => !on)}
+              selectedKey={selectedFluidKey}
+              onSelectKey={handleSelectFluidKey}
+              rigTier={oilRigTier}
+              onRigTierChange={handleRigTierChange}
+              rigRecommendations={rigRecommendations}
+              selectedRigKey={selectedRigPlacement?.key ?? null}
+              onSelectRig={handleSelectRig}
               home={homePos}
               onJump={(x, z) =>
                 engineRef.current?.animateCameraTo({

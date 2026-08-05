@@ -1,4 +1,11 @@
-import { Gem, Puzzle, Search, Trees, type LucideIcon } from 'lucide-react'
+import {
+  Droplets,
+  Gem,
+  Puzzle,
+  Search,
+  Trees,
+  type LucideIcon,
+} from 'lucide-react'
 
 import { Dropdown, Item, MenuButton } from './primitives'
 import { type MenuProps } from './types'
@@ -31,6 +38,12 @@ const SEARCH_DEFS = [
     label: 'Ore veins',
     Icon: Gem,
     desc: 'Find Visual Prospecting veins, grouped by ore and sorted by distance from home',
+  },
+  {
+    id: 'bedrockFluidSearch',
+    label: 'Bedrock fluids',
+    Icon: Droplets,
+    desc: 'Find predicted and prospected underground-fluid fields, sorted by distance from home',
   },
 ] as const satisfies readonly {
   id: string
@@ -68,7 +81,7 @@ export function SearchMenu({
         icon={<Search />}
         caret
         active={anyOpen}
-        title="Search the world — blocks, LootGames, biomes, ore veins"
+        title="Search the world — blocks, LootGames, biomes, ore veins, bedrock fluids"
       >
         Search
       </MenuButton>

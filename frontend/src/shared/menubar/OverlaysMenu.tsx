@@ -1,4 +1,5 @@
 import {
+  Droplets,
   Flame,
   Gem,
   Grid3x3,
@@ -40,6 +41,12 @@ const OVERLAY_DEFS = [
     label: 'Ore veins',
     Icon: Gem,
     desc: 'Ore veins recorded by Visual Prospecting',
+  },
+  {
+    id: 'bedrockFluids',
+    label: 'Bedrock fluids',
+    Icon: Droplets,
+    desc: 'All seed-predicted fields, with current Visual Prospecting values where available',
   },
   {
     id: 'heatmap',
