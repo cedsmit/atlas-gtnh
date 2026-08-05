@@ -55,7 +55,10 @@ export class ChunkOutlineOverlay {
       this.lines.delete(key)
       return
     }
-    const line = new THREE.LineLoop(_unitGeo, neutral ? _neutralMat : _mats[state])
+    const line = new THREE.LineLoop(
+      _unitGeo,
+      neutral ? _neutralMat : _mats[state]
+    )
     line.position.set(mcx * 16, -(mcz * 16), 1)
     line.scale.set(16, 16, 1)
     this.scene.add(line)

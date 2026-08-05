@@ -496,7 +496,9 @@ export function renderChunkImage(
     const sz = (z + 16) & 15
     return side?.length === 256
       ? side[sz * 16 + sx]
-      : (ownBiomes?.[Math.max(0, Math.min(15, z)) * 16 + Math.max(0, Math.min(15, x))] ?? 1)
+      : (ownBiomes?.[
+          Math.max(0, Math.min(15, z)) * 16 + Math.max(0, Math.min(15, x))
+        ] ?? 1)
   }
   for (let z = 0; z < 16; z++) {
     for (let x = 0; x < 16; x++) {
@@ -512,8 +514,16 @@ export function renderChunkImage(
         }
       }
       const i = z * 16 + x
-      grassTints[i] = grass.map((v) => Math.round(v / 9)) as [number, number, number]
-      foliageTints[i] = foliage.map((v) => Math.round(v / 9)) as [number, number, number]
+      grassTints[i] = grass.map((v) => Math.round(v / 9)) as [
+        number,
+        number,
+        number,
+      ]
+      foliageTints[i] = foliage.map((v) => Math.round(v / 9)) as [
+        number,
+        number,
+        number,
+      ]
     }
   }
 

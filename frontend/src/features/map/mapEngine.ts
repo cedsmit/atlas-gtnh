@@ -597,7 +597,15 @@ export class MapEngine {
             ` tex=${chunkTex.uuid}` +
             ` → outline=${outlineState}`
         )
-        outlines.set(key, mcx, mcz, outlineState, debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          outlineState,
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
       }
 
       st.cache.set(key, mesh)
@@ -652,7 +660,15 @@ export class MapEngine {
       st.texVersionAtRender.set(key, st.texVersion)
       st.liveChunks++
       if (debugModeRef.current)
-        outlines.set(key, mcx, mcz, 'loaded', debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          'loaded',
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
     }
 
     // Drop a live chunk mesh without caching it (used for stale restored tiles
@@ -787,7 +803,15 @@ export class MapEngine {
       if (dbg) {
         console.log(`[atlas:chunk] fetching  batch ×${items.length}`)
         for (const [mcx, mcz, key] of items)
-          outlines.set(key, mcx, mcz, 'rendering', debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+          outlines.set(
+            key,
+            mcx,
+            mcz,
+            'rendering',
+            debugModeRef.current ||
+              !configRef.current.hiddenTags.has('chunk-borders'),
+            !debugModeRef.current
+          )
       }
       try {
         const coords = items.map(([mcx, mcz]) => [mcx, mcz] as [number, number])
@@ -819,7 +843,8 @@ export class MapEngine {
           if (returned.has(key)) continue
           st.resolving.delete(key)
           st.cache.set(key, 'empty')
-          if (dbg || !configRef.current.hiddenTags.has('chunk-borders')) outlines.set(key, mcx, mcz, 'empty', true, !dbg)
+          if (dbg || !configRef.current.hiddenTags.has('chunk-borders'))
+            outlines.set(key, mcx, mcz, 'empty', true, !dbg)
         }
       } catch (err) {
         // A teardown abort is not a chunk failure — don't paint dead state.
@@ -827,7 +852,8 @@ export class MapEngine {
         for (const [mcx, mcz, key] of items) {
           st.resolving.delete(key)
           st.cache.set(key, 'error')
-          if (dbg || !configRef.current.hiddenTags.has('chunk-borders')) outlines.set(key, mcx, mcz, 'error', true, !dbg)
+          if (dbg || !configRef.current.hiddenTags.has('chunk-borders'))
+            outlines.set(key, mcx, mcz, 'error', true, !dbg)
         }
         if (dbg) console.error('[atlas:chunk] batch exception', err)
       } finally {
@@ -884,7 +910,15 @@ export class MapEngine {
       st.pending.push([mcx, mcz, key])
       if (debugModeRef.current) {
         console.log(`[atlas:chunk] queued   ${mcx},${mcz}`)
-        outlines.set(key, mcx, mcz, 'queued', debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+        outlines.set(
+          key,
+          mcx,
+          mcz,
+          'queued',
+          debugModeRef.current ||
+            !configRef.current.hiddenTags.has('chunk-borders'),
+          !debugModeRef.current
+        )
       }
       drainQueue()
       return true
@@ -1217,9 +1251,25 @@ export class MapEngine {
               const px = st.chunkPixels.get(key) ?? -2
               const s: ChunkOutlineState =
                 px === -1 ? 'tainted' : px === 0 ? 'empty' : 'loaded'
-              outlines.set(key, mcx, mcz, s, debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+              outlines.set(
+                key,
+                mcx,
+                mcz,
+                s,
+                debugModeRef.current ||
+                  !configRef.current.hiddenTags.has('chunk-borders'),
+                !debugModeRef.current
+              )
             } else if (entry === 'error') {
-              outlines.set(key, mcx, mcz, 'error', debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders'), !debugModeRef.current)
+              outlines.set(
+                key,
+                mcx,
+                mcz,
+                'error',
+                debugModeRef.current ||
+                  !configRef.current.hiddenTags.has('chunk-borders'),
+                !debugModeRef.current
+              )
             }
           }
         } else {
@@ -1324,7 +1374,10 @@ export class MapEngine {
               neighborBiomesFor(parseInt(rmxs), parseInt(rmzs))
             )
             textureDebugStore.addChunkStats(reStats)
-            if (debugModeRef.current || !configRef.current.hiddenTags.has('chunk-borders')) {
+            if (
+              debugModeRef.current ||
+              !configRef.current.hiddenTags.has('chunk-borders')
+            ) {
               const px = canvasDiagnostics(newImg)
               st.chunkPixels.set(key, px)
               const [mxs, mzs] = key.split(',')
