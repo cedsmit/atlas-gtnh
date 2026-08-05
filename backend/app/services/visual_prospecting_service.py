@@ -77,17 +77,49 @@ def _read_world_id(world_root: Path) -> str | None:
         return None
 
 
-def _find_dim_file(world_root: Path, wid: str, dim: int) -> Path | None:
-    """Locate DIM<n>.dat across the server/singleplayer VP layouts (first hit wins)."""
+def _find_dim_files(world_root: Path, wid: str, dim: int) -> list[Path]:
+    """Every matching DIM<n>.dat across local and launcher VP layouts."""
     name = f"DIM{dim}.dat"
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        if path.is_file() and path not in seen:
+            seen.add(path)
+            found.append(path)
+
     for base in [world_root, *world_root.parents][:4]:
         vp = base / "visualprospecting"
         if not vp.is_dir():
             continue
-        for cand in (vp / "server" / wid / name, vp / wid / name, vp / "client" / wid / name):
-            if cand.is_file():
-                return cand
-    return None
+        candidates = [
+            vp / "server" / wid / name,
+            vp / wid / name,
+            vp / "client" / wid / name,
+            # Multiplayer client caches are namespaced by a stable server id:
+            # visualprospecting/client/<server-id>/<world-id>/DIM<n>.dat
+            *sorted((vp / "client").glob(f"*/{wid}/{name}")),
+        ]
+        for cand in candidates:
+            add(cand)
+
+    # A dedicated-server backup may live far away from the client instance that
+    # actually contains the player's prospected fluids. World ids make this a
+    # precise lookup despite crossing launcher instances.
+    roaming = Path.home() / "AppData" / "Roaming"
+    for launcher in ("PrismLauncher", "MultiMC"):
+        instances = roaming / launcher / "instances"
+        if not instances.is_dir():
+            continue
+        for cand in instances.glob(f"*/.minecraft/visualprospecting/client/*/{wid}/{name}"):
+            add(cand)
+    return found
+
+
+def _find_dim_file(world_root: Path, wid: str, dim: int) -> Path | None:
+    """Locate DIM<n>.dat across the server/singleplayer VP layouts (first hit wins)."""
+    files = _find_dim_files(world_root, wid, dim)
+    return files[0] if files else None
 
 
 def _parse_veins(path: Path, registry: OreVeinRegistry) -> list[OreVein]:

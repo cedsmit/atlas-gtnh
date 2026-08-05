@@ -1,4 +1,5 @@
 import {
+  Droplets,
   Flame,
   Gem,
   Grid3x3,
@@ -40,6 +41,12 @@ const OVERLAY_DEFS = [
     label: 'Ore veins',
     Icon: Gem,
     desc: 'Ore veins recorded by Visual Prospecting',
+  },
+  {
+    id: 'fluidsProspecting',
+    label: 'Fluids prospecting',
+    Icon: Droplets,
+    desc: 'Fluid fields in this world',
   },
   {
     id: 'heatmap',

@@ -1,4 +1,12 @@
-import { Boxes, Gem, Grid3x3, Hash, TriangleAlert, X } from 'lucide-react'
+import {
+  Boxes,
+  Droplets,
+  Gem,
+  Grid3x3,
+  Hash,
+  TriangleAlert,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { DebugMenu, type DebugConfig } from './menubar/DebugMenu'
@@ -72,6 +80,7 @@ export function MenuBar({
   // read straight off that config so they cannot drift out of sync with it.
   const grid = overlays?.items.grid
   const veins = overlays?.items.oreVeins
+  const fluids = overlays?.items.fluidsProspecting
 
   const showTools =
     !!worldPath && !!(view || overlays || search || saved || chunkOps || debug)
@@ -203,8 +212,17 @@ export function MenuBar({
                 title="Ore veins from Visual Prospecting"
               />
             )}
+            {fluids && (
+              <IconButton
+                on={!!fluids.on}
+                onClick={fluids.onToggle}
+                icon={fluids.loading ? <Spinner /> : <Droplets />}
+                label="Fluids prospecting"
+                title="Fluid fields in this world"
+              />
+            )}
 
-            {(grid || veins) && (saved || debug) && (
+            {(grid || veins || fluids) && (saved || debug) && (
               <span className="mx-1 h-4 w-px bg-zinc-800" />
             )}
 
