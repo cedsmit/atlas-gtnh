@@ -1,31 +1,47 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Droplets, Loader2, MapPin, X } from 'lucide-react'
+import {
+  ArrowLeft,
+  Droplets,
+  Loader2,
+  MapPin,
+  Minus,
+  Plus,
+  X,
+} from 'lucide-react'
 
 import {
   type HomePos,
   homeDistance,
   sortByDistanceFromHome,
 } from '../map/homeWaypoint'
-import type { BedrockFluidField } from './api/bedrockFluids'
-import { type FluidGroup, groupFieldsByFluid } from './fluidGroups'
+import type { FluidsProspectingField } from './api/fluidsProspecting'
 import {
+  applyMinimumFluidYield,
+  fluidFieldYieldStats,
+  type FluidGroup,
+  groupFieldsByFluid,
+} from './fluidGroups'
+import {
+  calculateRigRecommendations,
   OIL_DRILLING_RIGS,
   type OilDrillingRigTier,
   type RigRecommendation,
 } from './rigPlanner'
 
+const MINIMUM_YIELD_STEP = 50
+
 interface Props {
-  fields: BedrockFluidField[]
+  fields: FluidsProspectingField[]
   loading: boolean
   available: boolean
-  predictionAvailable: boolean
   overlayOn: boolean
   onToggleOverlay: () => void
   selectedKey: string | null
   onSelectKey: (key: string | null) => void
   rigTier: OilDrillingRigTier
   onRigTierChange: (tier: OilDrillingRigTier) => void
-  rigRecommendations: RigRecommendation[]
+  minimumYield: number
+  onMinimumYieldChange: (minimum: number) => void
   selectedRigKey: string | null
   onSelectRig: (recommendation: RigRecommendation) => void
   home: HomePos | null
@@ -33,19 +49,19 @@ interface Props {
   onClose: () => void
 }
 
-/** Browse fluid types, then jump to a predicted or prospected field. */
-export function BedrockFluidSearchPanel({
+/** Browse fluid types, then jump to a field. */
+export function FluidsProspectingPanel({
   fields,
   loading,
   available,
-  predictionAvailable,
   overlayOn,
   onToggleOverlay,
   selectedKey,
   onSelectKey,
   rigTier,
   onRigTierChange,
-  rigRecommendations,
+  minimumYield,
+  onMinimumYieldChange,
   selectedRigKey,
   onSelectRig,
   home,
@@ -75,12 +91,12 @@ export function BedrockFluidSearchPanel({
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2">
         <Droplets className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
         <span className="text-sm font-medium text-zinc-200">
-          Search bedrock fluids
+          Fluids prospecting
         </span>
         <button
           onClick={onClose}
           className="ml-auto text-zinc-500 hover:text-zinc-200"
-          aria-label="Close bedrock fluid search"
+          aria-label="Close fluids prospecting"
         >
           <X className="h-4 w-4" aria-hidden />
         </button>
@@ -95,7 +111,7 @@ export function BedrockFluidSearchPanel({
       {loading ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center text-xs text-zinc-500">
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          Reading and predicting fluid fields…
+          Reading fluid fields…
         </div>
       ) : !available ? (
         <p className="px-3 py-2 text-xs leading-snug text-zinc-500">
@@ -104,9 +120,7 @@ export function BedrockFluidSearchPanel({
         </p>
       ) : groups.length === 0 ? (
         <p className="px-3 py-2 text-xs leading-snug text-zinc-500">
-          {predictionAvailable
-            ? 'No fluid fields overlap generated chunks in this dimension.'
-            : 'No bedrock-fluid fields have been prospected in this dimension yet.'}
+          No fluid fields overlap generated chunks in this dimension.
         </p>
       ) : !selected ? (
         <>
@@ -161,7 +175,8 @@ export function BedrockFluidSearchPanel({
             group={selected}
             rigTier={rigTier}
             onRigTierChange={onRigTierChange}
-            rigRecommendations={rigRecommendations}
+            minimumYield={minimumYield}
+            onMinimumYieldChange={onMinimumYieldChange}
             selectedRigKey={selectedRigKey}
             onSelectRig={onSelectRig}
             home={home}
@@ -227,14 +242,6 @@ function FluidRow({
         aria-hidden
       />
       <span className="flex-1 truncate">{group.name}</span>
-      {group.prospected > 0 && (
-        <span
-          className="shrink-0 text-emerald-500/70"
-          title={`${group.prospected} prospected/current`}
-        >
-          {group.prospected} cur
-        </span>
-      )}
       <span className="shrink-0 text-zinc-500">
         {group.fields.length.toLocaleString()} field
         {group.fields.length === 1 ? '' : 's'}
@@ -247,7 +254,8 @@ function FluidResults({
   group,
   rigTier,
   onRigTierChange,
-  rigRecommendations,
+  minimumYield,
+  onMinimumYieldChange,
   selectedRigKey,
   onSelectRig,
   home,
@@ -256,26 +264,47 @@ function FluidResults({
   group: FluidGroup
   rigTier: OilDrillingRigTier
   onRigTierChange: (tier: OilDrillingRigTier) => void
-  rigRecommendations: RigRecommendation[]
+  minimumYield: number
+  onMinimumYieldChange: (minimum: number) => void
   selectedRigKey: string | null
   onSelectRig: (recommendation: RigRecommendation) => void
   home: HomePos | null
   onJump: (x: number, z: number) => void
 }) {
+  const matchingFields = useMemo(
+    () =>
+      group.empty
+        ? group.fields
+        : group.fields.filter(
+            (field) => fluidFieldYieldStats(field, minimumYield) !== null
+          ),
+    [group.empty, group.fields, minimumYield]
+  )
   const sorted = useMemo(
-    () => sortByDistanceFromHome(group.fields, home),
-    [group.fields, home]
+    () => sortByDistanceFromHome(matchingFields, home),
+    [home, matchingFields]
   )
 
   const rig = OIL_DRILLING_RIGS.find((item) => item.tier === rigTier)!
-  const shownRecommendations = rigRecommendations.slice(0, 20)
+  const recommendationsByField = useMemo(() => {
+    const byField = new Map<string, RigRecommendation>()
+    for (const field of group.fields) {
+      const [filteredField] = applyMinimumFluidYield([field], minimumYield)
+      const recommendation = filteredField
+        ? calculateRigRecommendations([filteredField], rig.range)[0]
+        : undefined
+      if (recommendation) {
+        byField.set(`${field.chunk_x},${field.chunk_z}`, recommendation)
+      }
+    }
+    return byField
+  }, [group.fields, minimumYield, rig.range])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <p className="px-3 py-1.5 text-[11px] text-zinc-500">
         {sorted.length.toLocaleString()} field
-        {sorted.length === 1 ? '' : 's'} · {group.predicted.toLocaleString()}{' '}
-        predicted · {group.prospected.toLocaleString()} current
+        {sorted.length === 1 ? '' : 's'}
         {home && ' · nearest first'}
       </p>
       {!home && (
@@ -307,122 +336,136 @@ function FluidResults({
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
-              GTNH sums every matching-fluid chunk in the snapped {rig.range}×
-              {rig.range} area. Σ L/op is the combined displayed chunk flow; L/s
-              includes the minimum-tier {rig.voltage} speed and 8-tick cycle.
-            </p>
-
-            <div className="mt-3 flex items-baseline justify-between">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                Best locations
-              </span>
-              <span className="text-[10px] text-zinc-600">
-                showing {shownRecommendations.length}
+            <label
+              htmlFor="minimum-fluid-yield"
+              className="mb-1.5 mt-3 block text-[11px] font-medium uppercase tracking-wide text-zinc-500"
+            >
+              Minimum yield
+            </label>
+            <div className="flex overflow-hidden rounded-md border border-zinc-700 bg-atlas-input focus-within:border-atlas-accent-line">
+              <button
+                type="button"
+                onClick={() =>
+                  onMinimumYieldChange(
+                    Math.max(0, minimumYield - MINIMUM_YIELD_STEP)
+                  )
+                }
+                disabled={minimumYield === 0}
+                className="flex w-9 shrink-0 items-center justify-center border-r border-zinc-700 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-700 disabled:hover:bg-transparent"
+                aria-label={`Decrease minimum yield by ${MINIMUM_YIELD_STEP} L/op`}
+              >
+                <Minus className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <input
+                id="minimum-fluid-yield"
+                type="number"
+                min={0}
+                step={MINIMUM_YIELD_STEP}
+                value={minimumYield}
+                onChange={(event) => {
+                  const value = event.currentTarget.valueAsNumber
+                  onMinimumYieldChange(
+                    Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0
+                  )
+                }}
+                className="min-w-0 flex-1 appearance-none bg-transparent px-2 py-2 text-center font-mono text-xs font-medium text-zinc-200 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  onMinimumYieldChange(minimumYield + MINIMUM_YIELD_STEP)
+                }
+                className="flex w-9 shrink-0 items-center justify-center border-l border-zinc-700 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                aria-label={`Increase minimum yield by ${MINIMUM_YIELD_STEP} L/op`}
+              >
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+              </button>
+              <span className="flex shrink-0 items-center border-l border-zinc-700 bg-zinc-900 px-2.5 font-mono text-xs text-zinc-500">
+                L/op
               </span>
             </div>
-            {shownRecommendations.length === 0 ? (
-              <p className="mt-2 text-xs text-zinc-500">
-                No positive-yield chunks found for this fluid.
-              </p>
-            ) : (
-              <div className="mt-1.5 space-y-1">
-                {shownRecommendations.map((recommendation, index) => {
-                  const selected = recommendation.key === selectedRigKey
-                  const areaEndX =
-                    recommendation.areaChunkX + recommendation.range - 1
-                  const areaEndZ =
-                    recommendation.areaChunkZ + recommendation.range - 1
-                  const controllerMinX = recommendation.controllerChunkX * 16
-                  const controllerMinZ = recommendation.controllerChunkZ * 16
-                  return (
-                    <button
-                      key={recommendation.key}
-                      onClick={() => onSelectRig(recommendation)}
-                      className={`w-full rounded border px-2 py-1.5 text-left font-mono transition-colors ${
-                        selected
-                          ? 'border-cyan-400/70 bg-cyan-400/10 text-zinc-100'
-                          : 'border-zinc-800 bg-zinc-900/50 text-zinc-300 hover:border-zinc-700 hover:bg-zinc-800'
-                      }`}
-                      title={`Place the controller anywhere in chunk ${recommendation.controllerChunkX}, ${recommendation.controllerChunkZ}`}
-                    >
-                      <span className="flex items-baseline gap-2">
-                        <span className="text-[11px] text-cyan-300">
-                          #{index + 1}
-                        </span>
-                        <span className="text-sm font-semibold text-white">
-                          ~
-                          {recommendation.estimatedLitersPerSecond.toLocaleString(
-                            undefined,
-                            { maximumFractionDigits: 1 }
-                          )}{' '}
-                          L/s
-                        </span>
-                        <span className="ml-auto text-[10px] text-zinc-500">
-                          {recommendation.activeChunks}/{rig.range * rig.range}{' '}
-                          chunks
-                        </span>
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-zinc-500">
-                        Σ {recommendation.totalYield.toLocaleString()} L/op
-                        shown ·{' '}
-                        {recommendation.baseOutputPerCycle.toLocaleString()} L /
-                        8 ticks
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-zinc-600">
-                        Suggested controller chunk{' '}
-                        {recommendation.controllerChunkX},{' '}
-                        {recommendation.controllerChunkZ} · blocks{' '}
-                        {controllerMinX}–{controllerMinX + 15}, {controllerMinZ}
-                        –{controllerMinZ + 15}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-zinc-600">
-                        Area chunks {recommendation.areaChunkX},{' '}
-                        {recommendation.areaChunkZ} to {areaEndX}, {areaEndZ} ·{' '}
-                        {recommendation.prospectedChunks}/
-                        {recommendation.activeChunks} active chunks prospected
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+            <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
+              Rig {rig.tier} estimates are shown with each matching field.
+            </p>
           </section>
         )}
 
-        <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wide text-zinc-600">
-          Individual fields
-        </p>
-        {sorted.map((field) => (
-          <button
-            key={`${field.chunk_x},${field.chunk_z}`}
-            onClick={() => onJump(field.x, field.z)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-            title={`Jump to ${field.x}, ${field.z} · ${field.source}`}
-          >
-            <MapPin
-              className={`h-3.5 w-3.5 shrink-0 ${
-                field.source === 'prospected'
-                  ? 'text-emerald-400'
-                  : 'text-amber-400'
-              }`}
-              aria-hidden
-            />
-            <span className="flex-1">
-              {field.x}, {field.z}
+        <div className="flex items-baseline justify-between px-3 pb-1 pt-3">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-zinc-600">
+            Individual fields
+          </span>
+          {minimumYield > 0 && (
+            <span className="text-[10px] text-zinc-600">
+              {sorted.length}/{group.fields.length} fields
             </span>
-            {!field.empty && (
-              <span className="shrink-0 text-zinc-500">
-                {field.min_yield}–{field.max_yield} L/Op
-              </span>
-            )}
-            {home && (
-              <span className="shrink-0 text-emerald-400/80">
-                {homeDistance(field.x, field.z, home).toLocaleString()} blk
-              </span>
-            )}
-          </button>
-        ))}
+          )}
+        </div>
+        {sorted.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-zinc-500">
+            No fields contain chunks at or above {minimumYield.toLocaleString()}{' '}
+            L/op.
+          </p>
+        ) : (
+          <div className="space-y-1 px-2 pb-2">
+            {sorted.map((field) => {
+              const stats = fluidFieldYieldStats(field, minimumYield)
+              const recommendation = recommendationsByField.get(
+                `${field.chunk_x},${field.chunk_z}`
+              )
+              const selected = recommendation?.key === selectedRigKey
+              return (
+                <button
+                  key={`${field.chunk_x},${field.chunk_z}`}
+                  onClick={() =>
+                    recommendation
+                      ? onSelectRig(recommendation)
+                      : onJump(field.x, field.z)
+                  }
+                  className={`w-full rounded border px-2 py-2 text-left font-mono transition-colors ${
+                    selected
+                      ? 'border-cyan-400/70 bg-cyan-400/10'
+                      : 'border-zinc-800 bg-zinc-900/40 hover:border-zinc-700 hover:bg-zinc-800'
+                  }`}
+                  title={`Jump to field ${field.x}, ${field.z}`}
+                >
+                  <span className="flex items-center gap-1.5 text-xs text-zinc-200">
+                    <MapPin
+                      className="h-3.5 w-3.5 shrink-0 text-cyan-400"
+                      aria-hidden
+                    />
+                    <span>
+                      {field.x}, {field.z}
+                    </span>
+                    {home && (
+                      <span className="ml-auto text-[10px] text-emerald-400/80">
+                        {homeDistance(field.x, field.z, home).toLocaleString()}{' '}
+                        blk
+                      </span>
+                    )}
+                  </span>
+                  {stats && (
+                    <span className="mt-1 block text-[10px] text-zinc-500">
+                      {stats.minimum.toLocaleString()}–
+                      {stats.maximum.toLocaleString()} L/op · avg{' '}
+                      {stats.average.toLocaleString()} · {stats.chunks} chunk
+                      {stats.chunks === 1 ? '' : 's'}
+                    </span>
+                  )}
+                  {recommendation && (
+                    <span className="mt-0.5 block text-[10px] text-zinc-400">
+                      Rig {rig.tier} ~
+                      {recommendation.estimatedLitersPerSecond.toLocaleString(
+                        undefined,
+                        { maximumFractionDigits: 1 }
+                      )}{' '}
+                      L/s · controller {recommendation.x}, {recommendation.z}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

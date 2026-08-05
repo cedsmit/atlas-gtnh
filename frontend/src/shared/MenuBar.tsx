@@ -80,7 +80,7 @@ export function MenuBar({
   // read straight off that config so they cannot drift out of sync with it.
   const grid = overlays?.items.grid
   const veins = overlays?.items.oreVeins
-  const fluids = overlays?.items.bedrockFluids
+  const fluids = overlays?.items.fluidsProspecting
 
   const showTools =
     !!worldPath && !!(view || overlays || search || saved || chunkOps || debug)
@@ -217,8 +217,8 @@ export function MenuBar({
                 on={!!fluids.on}
                 onClick={fluids.onToggle}
                 icon={fluids.loading ? <Spinner /> : <Droplets />}
-                label="Bedrock fluids"
-                title="All predicted bedrock-fluid fields; solid borders are prospected/current"
+                label="Fluids prospecting"
+                title="Fluid fields in this world"
               />
             )}
 

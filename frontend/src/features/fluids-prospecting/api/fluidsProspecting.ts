@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { API_BASE } from '../../../shared/api'
 
-export interface BedrockFluidField {
+export interface FluidsProspectingField {
   x: number
   z: number
   chunk_x: number
@@ -15,34 +15,36 @@ export interface BedrockFluidField {
   source: 'predicted' | 'prospected'
 }
 
-export interface BedrockFluidsResponse {
+export interface FluidsProspectingResponse {
   available: boolean
   prediction_available: boolean
   prospected_count: number
   predicted_count: number
-  fields: BedrockFluidField[]
+  fields: FluidsProspectingField[]
 }
 
-async function fetchBedrockFluids(
+async function fetchFluidsProspecting(
   dimensionPath: string
-): Promise<BedrockFluidsResponse> {
+): Promise<FluidsProspectingResponse> {
   const response = await fetch(
-    `${API_BASE}/worlds/bedrock-fluids?world_path=${encodeURIComponent(dimensionPath)}`
+    `${API_BASE}/worlds/fluids-prospecting?world_path=${encodeURIComponent(dimensionPath)}`
   )
   if (!response.ok)
-    throw new Error(`Failed to load bedrock fluids (${response.status})`)
-  return (await response.json()) as BedrockFluidsResponse
+    throw new Error(
+      `Failed to load fluids prospecting data (${response.status})`
+    )
+  return (await response.json()) as FluidsProspectingResponse
 }
 
-export function useBedrockFluids(
+export function useFluidsProspecting(
   dimensionPath: string | null,
   enabled: boolean
 ) {
   return useQuery({
     // Keep the source mode in the key: older dev sessions may still hold the
     // cache-only response that existed before pristine prediction was added.
-    queryKey: ['bedrockFluids', 'predicted-and-prospected', dimensionPath],
-    queryFn: () => fetchBedrockFluids(dimensionPath!),
+    queryKey: ['fluidsProspecting', 'predicted-and-prospected', dimensionPath],
+    queryFn: () => fetchFluidsProspecting(dimensionPath!),
     enabled: !!dimensionPath && enabled,
   })
 }

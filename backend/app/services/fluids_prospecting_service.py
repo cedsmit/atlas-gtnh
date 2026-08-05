@@ -5,8 +5,11 @@ from typing import Any
 
 import nbtlib
 
-from app.models.bedrock_fluids import BedrockFluidField, BedrockFluidsResponse
-from app.services.underground_fluid_generator import predict_bedrock_fluids
+from app.models.fluids_prospecting import (
+    FluidsProspectingField,
+    FluidsProspectingResponse,
+)
+from app.services.underground_fluid_generator import generate_fluids_prospecting_fields
 from app.services.visual_prospecting_service import (
     _find_dim_files,
     _read_world_id,
@@ -19,7 +22,7 @@ _CHUNK_BLOCKS = 16
 _FIELD_BLOCKS = _FIELD_CHUNKS * _CHUNK_BLOCKS
 
 
-def _decode_fields(fluids: Any) -> list[BedrockFluidField]:
+def _decode_fields(fluids: Any) -> list[FluidsProspectingField]:
     if fluids is None or "palette" not in fluids:
         return []
     palette = [str(value) for value in fluids.get("palette", [])]
@@ -31,7 +34,7 @@ def _decode_fields(fluids: Any) -> list[BedrockFluidField]:
     if size <= 0:
         return []
 
-    fields: list[BedrockFluidField] = []
+    fields: list[FluidsProspectingField] = []
     for index in range(min(len(chunk_x), len(chunk_z), len(fluid_types))):
         start = index * size
         raw_values = chunk_data[start : start + size]
@@ -54,7 +57,7 @@ def _decode_fields(fluids: Any) -> list[BedrockFluidField]:
         origin_x = chunk_x[index] * _CHUNK_BLOCKS
         origin_z = chunk_z[index] * _CHUNK_BLOCKS
         fields.append(
-            BedrockFluidField(
+            FluidsProspectingField(
                 x=origin_x + _FIELD_BLOCKS // 2,
                 z=origin_z + _FIELD_BLOCKS // 2,
                 chunk_x=chunk_x[index],
@@ -70,18 +73,18 @@ def _decode_fields(fluids: Any) -> list[BedrockFluidField]:
     return fields
 
 
-def _parse_fields(path: Path) -> list[BedrockFluidField]:
+def _parse_fields(path: Path) -> list[FluidsProspectingField]:
     nbt = nbtlib.load(str(path))
     return _decode_fields(_unnamed_get(nbt, "fluids"))
 
 
-def get_bedrock_fluids(dimension_path: str) -> BedrockFluidsResponse:
+def get_fluids_prospecting(dimension_path: str) -> FluidsProspectingResponse:
     root, dim = _root_and_dim(dimension_path)
     world_id = _read_world_id(root)
-    prediction_available, predicted = predict_bedrock_fluids(
+    prediction_available, predicted = generate_fluids_prospecting_fields(
         root, Path(dimension_path), dim, world_id
     )
-    prospected: list[BedrockFluidField] = []
+    prospected: list[FluidsProspectingField] = []
     if world_id is not None and dim is not None:
         for dim_file in _find_dim_files(root, world_id, dim):
             try:
@@ -96,7 +99,7 @@ def get_bedrock_fluids(dimension_path: str) -> BedrockFluidsResponse:
     merged = {(field.chunk_x, field.chunk_z): field for field in predicted}
     merged.update({(field.chunk_x, field.chunk_z): field for field in prospected})
     fields = sorted(merged.values(), key=lambda field: (field.chunk_x, field.chunk_z))
-    return BedrockFluidsResponse(
+    return FluidsProspectingResponse(
         available=prediction_available or world_id is not None,
         prediction_available=prediction_available,
         prospected_count=len(prospected),

@@ -1,4 +1,4 @@
-import type { BedrockFluidField } from './api/bedrockFluids'
+import type { FluidsProspectingField } from './api/fluidsProspecting'
 
 export type OilDrillingRigTier = 'I' | 'II' | 'III' | 'IV'
 
@@ -53,7 +53,7 @@ function floorDiv(value: number, divisor: number): number {
  * exact displayed-data contribution per cycle and output/8*20 gives L/s.
  */
 export function calculateRigRecommendations(
-  fields: BedrockFluidField[],
+  fields: FluidsProspectingField[],
   range: number
 ): RigRecommendation[] {
   if (range < 1) return []

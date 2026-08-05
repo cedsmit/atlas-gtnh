@@ -2,17 +2,17 @@ from pathlib import Path
 
 from pytest import MonkeyPatch
 
-from app.models.bedrock_fluids import BedrockFluidField
-from app.services import bedrock_fluid_service
-from app.services.bedrock_fluid_service import _decode_fields
+from app.models.fluids_prospecting import FluidsProspectingField
+from app.services import fluids_prospecting_service
+from app.services.fluids_prospecting_service import _decode_fields
 from app.services.underground_fluid_generator import (
     DimensionFluidConfig,
     FluidDefinition,
     _find_config,
+    _generate_field,
     _generated_field_origins,
     _guava_hash_bimap_order,
     _load_fluid_config,
-    _predict_field,
 )
 from app.services.visual_prospecting_service import _find_dim_file, _find_dim_files
 
@@ -108,10 +108,10 @@ def test_guava_hash_order_matches_gtnh_fluid_selection_order() -> None:
     ]
 
 
-def test_predict_field_matches_known_gtnh_290_world_result() -> None:
+def test_generate_field_matches_known_gtnh_290_world_result() -> None:
     config = DimensionFluidConfig("0", _guava_hash_bimap_order(_OVERWORLD_FLUIDS))
 
-    field = _predict_field(-743792462389800782, 0, -16, 16, config)
+    field = _generate_field(-743792462389800782, 0, -16, 16, config)
 
     assert field.fluid == "gas_natural_gas"
     assert (field.min_yield, field.max_yield) == (7, 12)
@@ -194,7 +194,7 @@ def test_prospected_field_overrides_pristine_prediction(
     world = tmp_path / "World"
     world.mkdir()
     (world / "level.dat").touch()
-    predicted = BedrockFluidField(
+    predicted = FluidsProspectingField(
         x=64,
         z=64,
         chunk_x=0,
@@ -210,17 +210,19 @@ def test_prospected_field_overrides_pristine_prediction(
         update={"yields": [10] * 64, "min_yield": 10, "max_yield": 10, "source": "prospected"}
     )
     monkeypatch.setattr(
-        bedrock_fluid_service,
-        "predict_bedrock_fluids",
+        fluids_prospecting_service,
+        "generate_fluids_prospecting_fields",
         lambda *_args: (True, [predicted]),
     )
-    monkeypatch.setattr(bedrock_fluid_service, "_read_world_id", lambda _root: "World_test")
+    monkeypatch.setattr(fluids_prospecting_service, "_read_world_id", lambda _root: "World_test")
     monkeypatch.setattr(
-        bedrock_fluid_service, "_find_dim_files", lambda *_args: [tmp_path / "DIM0.dat"]
+        fluids_prospecting_service,
+        "_find_dim_files",
+        lambda *_args: [tmp_path / "DIM0.dat"],
     )
-    monkeypatch.setattr(bedrock_fluid_service, "_parse_fields", lambda _path: [current])
+    monkeypatch.setattr(fluids_prospecting_service, "_parse_fields", lambda _path: [current])
 
-    response = bedrock_fluid_service.get_bedrock_fluids(str(world))
+    response = fluids_prospecting_service.get_fluids_prospecting(str(world))
 
     assert response.prospected_count == 1
     assert response.predicted_count == 0

@@ -4,7 +4,7 @@ Underground fluids are not blocks and therefore cannot be recovered by scanning
 Anvil chunks like ore veins can. GregTech derives every 8x8-chunk field from the
 world seed, dimension id, and ``UndergroundFluids.cfg``. This module ports that
 small generator so Atlas can show pristine, unprospected fields in generated map
-areas. Prospected values are merged by ``bedrock_fluid_service`` because those
+areas. Prospected values are merged by ``fluids_prospecting_service`` because those
 may reflect depletion.
 """
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import nbtlib
 
-from app.models.bedrock_fluids import BedrockFluidField
+from app.models.fluids_prospecting import FluidsProspectingField
 from app.services.region_service import _dim_name, _region_coords_from_filename
 
 _FIELD_CHUNKS = 8
@@ -344,13 +344,13 @@ def _select_fluid(random: _XSTR, fluids: tuple[FluidDefinition, ...]) -> FluidDe
     return None
 
 
-def _predict_field(
+def _generate_field(
     world_seed: int,
     dimension_id: int,
     origin_x: int,
     origin_z: int,
     config: DimensionFluidConfig,
-) -> BedrockFluidField:
+) -> FluidsProspectingField:
     random = _XSTR(world_seed + dimension_id * 2 + (origin_x >> 3) + 8267 * (origin_z >> 3))
     fluid = _select_fluid(random, config.fluids)
     if fluid is None:
@@ -374,7 +374,7 @@ def _predict_field(
         registry = fluid.registry
 
     positive = [value for value in values if value > 0]
-    return BedrockFluidField(
+    return FluidsProspectingField(
         x=origin_x * _CHUNK_BLOCKS + _FIELD_BLOCKS // 2,
         z=origin_z * _CHUNK_BLOCKS + _FIELD_BLOCKS // 2,
         chunk_x=origin_x,
@@ -388,12 +388,12 @@ def _predict_field(
     )
 
 
-def predict_bedrock_fluids(
+def generate_fluids_prospecting_fields(
     world_root: Path,
     dimension_path: Path,
     dimension_id: int | None,
     world_id: str | None = None,
-) -> tuple[bool, list[BedrockFluidField]]:
+) -> tuple[bool, list[FluidsProspectingField]]:
     """Return (prediction available, pristine fields in generated terrain)."""
 
     if dimension_id is None:
@@ -413,7 +413,7 @@ def predict_bedrock_fluids(
         return False, []
     origins = _generated_field_origins(dimension_path)
     fields = [
-        _predict_field(world_seed, dimension_id, chunk_x, chunk_z, config)
+        _generate_field(world_seed, dimension_id, chunk_x, chunk_z, config)
         for chunk_x, chunk_z in sorted(origins)
     ]
     return True, fields

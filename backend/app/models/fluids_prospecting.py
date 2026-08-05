@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-class BedrockFluidField(BaseModel):
+class FluidsProspectingField(BaseModel):
     """One 8x8-chunk underground-fluid field, measured or seed-predicted."""
 
     x: int  # world-space centre, used for labels and fly-to
@@ -20,9 +20,9 @@ class BedrockFluidField(BaseModel):
     source: Literal["predicted", "prospected"]
 
 
-class BedrockFluidsResponse(BaseModel):
+class FluidsProspectingResponse(BaseModel):
     available: bool
     prediction_available: bool
     prospected_count: int
     predicted_count: int
-    fields: list[BedrockFluidField]
+    fields: list[FluidsProspectingField]

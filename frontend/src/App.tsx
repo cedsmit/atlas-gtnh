@@ -33,19 +33,20 @@ import {
 } from './features/ore-veins/OreVeinLabels'
 import { veinDisplay } from './features/ore-veins/oreVeinRegistry'
 import { OreVeinSearchPanel } from './features/ore-veins/OreVeinSearchPanel'
-import { BedrockFluidOverlay } from './features/bedrock-fluids/BedrockFluidOverlay'
-import { BedrockFluidSearchPanel } from './features/bedrock-fluids/BedrockFluidSearchPanel'
-import { useBedrockFluids } from './features/bedrock-fluids/api/bedrockFluids'
+import { FluidsProspectingOverlay } from './features/fluids-prospecting/FluidsProspectingOverlay'
+import { FluidsProspectingPanel } from './features/fluids-prospecting/FluidsProspectingPanel'
+import { useFluidsProspecting } from './features/fluids-prospecting/api/fluidsProspecting'
 import {
+  applyMinimumFluidYield,
   EMPTY_FLUID_GROUP,
   fluidGroupKey,
-} from './features/bedrock-fluids/fluidGroups'
+} from './features/fluids-prospecting/fluidGroups'
 import {
   calculateRigRecommendations,
   OIL_DRILLING_RIGS,
   type OilDrillingRigTier,
   type RigRecommendation,
-} from './features/bedrock-fluids/rigPlanner'
+} from './features/fluids-prospecting/rigPlanner'
 import type {
   BlockColumn,
   ChunkCoord,
@@ -108,7 +109,7 @@ type PanelId =
   | 'lootGames'
   | 'biomeSearch'
   | 'oreVeinSearch'
-  | 'bedrockFluidSearch'
+  | 'fluidsProspecting'
   | 'chunkOps'
 
 export default function App() {
@@ -126,7 +127,7 @@ export default function App() {
   const lootGamesOpen = activePanel === 'lootGames'
   const biomeSearchOpen = activePanel === 'biomeSearch'
   const oreVeinSearchOpen = activePanel === 'oreVeinSearch'
-  const bedrockFluidSearchOpen = activePanel === 'bedrockFluidSearch'
+  const fluidsProspectingOpen = activePanel === 'fluidsProspecting'
   const chunkOpsOpen = activePanel === 'chunkOps'
   const closePanel = useCallback(() => setActivePanel(null), [])
   const togglePanel = (id: PanelId) =>
@@ -137,13 +138,16 @@ export default function App() {
   // resting state, 'labels' brightens it and adds coordinates, 'off' hides it.
   const [gridMode, setGridMode] = useState<'grid' | 'labels' | 'off'>('grid')
   const [oreVeinsOn, setOreVeinsOn] = useState(false)
-  const [bedrockFluidsOn, setBedrockFluidsOn] = useState(false)
+  const [fluidsProspectingOn, setFluidsProspectingOn] = useState(false)
   // The ore the map overlay is narrowed to (null = every vein), driven by the
   // ore-vein search panel drilling into one ore.
   const [selectedVeinKind, setSelectedVeinKind] = useState<string | null>(null)
   const [selectedFluidKey, setSelectedFluidKey] = useState<string | null>(null)
   const [oilRigTier, setOilRigTier] = useState<OilDrillingRigTier>('IV')
   const [selectedRigKey, setSelectedRigKey] = useState<string | null>(null)
+  const [selectedRigOverride, setSelectedRigOverride] =
+    useState<RigRecommendation | null>(null)
+  const [minimumFluidYield, setMinimumFluidYield] = useState(0)
   const [infraViewOn, setInfraViewOn] = useState(false)
   // Texture diagnostics: magenta-flag blocks whose texture never resolved, and
   // reveal debug-only blocks. Used to ride on the `debug` render preset; now an
@@ -513,9 +517,9 @@ export default function App() {
   // is toggled on, or the search panel opens to browse the veins with the overlay
   // still off. The effect below pushes the dots into the engine once data arrives.
   const oreVeins = useOreVeins(dimensionPath, oreVeinsOn || oreVeinSearchOpen)
-  const bedrockFluids = useBedrockFluids(
+  const fluidsProspecting = useFluidsProspecting(
     dimensionPath,
-    bedrockFluidsOn || bedrockFluidSearchOpen
+    fluidsProspectingOn || fluidsProspectingOpen
   )
   const oreVeinViews = useMemo<OreVeinView[]>(() => {
     if (!oreVeins.data) return []
@@ -541,11 +545,12 @@ export default function App() {
     [oreVeinViews, selectedVeinKind]
   )
   const visibleFluidFields = useMemo(() => {
-    const fields = bedrockFluids.data?.fields ?? []
-    return selectedFluidKey
+    const fields = fluidsProspecting.data?.fields ?? []
+    const selectedFields = selectedFluidKey
       ? fields.filter((field) => fluidGroupKey(field) === selectedFluidKey)
       : fields
-  }, [bedrockFluids.data?.fields, selectedFluidKey])
+    return applyMinimumFluidYield(selectedFields, minimumFluidYield)
+  }, [fluidsProspecting.data?.fields, minimumFluidYield, selectedFluidKey])
   const oilRig = OIL_DRILLING_RIGS.find((rig) => rig.tier === oilRigTier)!
   const rigRecommendations = useMemo(
     () =>
@@ -556,12 +561,13 @@ export default function App() {
   )
   const selectedRigPlacement = useMemo(
     () =>
+      selectedRigOverride ??
       rigRecommendations.find(
         (recommendation) => recommendation.key === selectedRigKey
       ) ??
       rigRecommendations[0] ??
       null,
-    [rigRecommendations, selectedRigKey]
+    [rigRecommendations, selectedRigKey, selectedRigOverride]
   )
   // Ore-overlay sprites (base64 PNG → data URL), keyed by the vein `texture`; the
   // engine tints each by the vein colour. Empty on an old (pre-sprite) dump.
@@ -608,17 +614,26 @@ export default function App() {
   const handleSelectFluidKey = useCallback((key: string | null) => {
     setSelectedFluidKey(key)
     setSelectedRigKey(null)
-    if (key) setBedrockFluidsOn(true)
+    setSelectedRigOverride(null)
+    if (key) setFluidsProspectingOn(true)
   }, [])
 
   const handleRigTierChange = useCallback((tier: OilDrillingRigTier) => {
     setOilRigTier(tier)
     setSelectedRigKey(null)
+    setSelectedRigOverride(null)
+  }, [])
+
+  const handleMinimumFluidYieldChange = useCallback((minimum: number) => {
+    setMinimumFluidYield(minimum)
+    setSelectedRigKey(null)
+    setSelectedRigOverride(null)
   }, [])
 
   const handleSelectRig = useCallback((recommendation: RigRecommendation) => {
     setSelectedRigKey(recommendation.key)
-    setBedrockFluidsOn(true)
+    setSelectedRigOverride(recommendation)
+    setFluidsProspectingOn(true)
     engineRef.current?.animateCameraTo({
       cx: recommendation.areaChunkX * 16 + recommendation.range * 8,
       cz: recommendation.areaChunkZ * 16 + recommendation.range * 8,
@@ -635,6 +650,7 @@ export default function App() {
     setSelectedVeinKind(null)
     setSelectedFluidKey(null)
     setSelectedRigKey(null)
+    setSelectedRigOverride(null)
   }, [dimensionPath])
 
   // Infrastructure View (Stage 5): draw pipe/cable runs as a connected network.
@@ -732,13 +748,13 @@ export default function App() {
                     loading: oreVeins.isFetching,
                     onToggle: () => setOreVeinsOn((o) => !o),
                   },
-                  bedrockFluids: {
-                    on: bedrockFluidsOn,
-                    loading: bedrockFluids.isFetching,
-                    hint: bedrockFluids.data
-                      ? `${bedrockFluids.data.predicted_count} predicted · ${bedrockFluids.data.prospected_count} current`
+                  fluidsProspecting: {
+                    on: fluidsProspectingOn,
+                    loading: fluidsProspecting.isFetching,
+                    hint: fluidsProspecting.data
+                      ? `${fluidsProspecting.data.fields.length} fields`
                       : undefined,
-                    onToggle: () => setBedrockFluidsOn((on) => !on),
+                    onToggle: () => setFluidsProspectingOn((on) => !on),
                   },
                   heatmap: {
                     on: heatmapOn,
@@ -776,9 +792,9 @@ export default function App() {
                   open: oreVeinSearchOpen,
                   onSelect: () => togglePanel('oreVeinSearch'),
                 },
-                bedrockFluidSearch: {
-                  open: bedrockFluidSearchOpen,
-                  onSelect: () => togglePanel('bedrockFluidSearch'),
+                fluidsProspecting: {
+                  open: fluidsProspectingOpen,
+                  onSelect: () => togglePanel('fluidsProspecting'),
                 },
               }
             : undefined
@@ -946,22 +962,20 @@ export default function App() {
             {oreVeinsOn && (
               <OreVeinLabels engineRef={engineRef} veins={visibleVeins} />
             )}
-            {bedrockFluidsOn && bedrockFluids.data && (
-              <BedrockFluidOverlay
+            {fluidsProspectingOn && fluidsProspecting.data && (
+              <FluidsProspectingOverlay
                 engineRef={engineRef}
                 fields={visibleFluidFields}
                 rigPlacement={selectedRigPlacement}
                 rigLabel={`Rig ${oilRig.tier}`}
               />
             )}
-            {bedrockFluidsOn &&
-              bedrockFluids.data &&
-              bedrockFluids.data.fields.length === 0 && (
+            {fluidsProspectingOn &&
+              fluidsProspecting.data &&
+              fluidsProspecting.data.fields.length === 0 && (
                 <MapNotice>
-                  {bedrockFluids.data.available
-                    ? bedrockFluids.data.prediction_available
-                      ? 'No bedrock-fluid fields overlap generated chunks in this dimension.'
-                      : 'No bedrock-fluid fields have been prospected in this dimension yet.'
+                  {fluidsProspecting.data.available
+                    ? 'No fluid fields overlap generated chunks in this dimension.'
                     : 'No Visual Prospecting data or UndergroundFluids.cfg found for this world.'}
                 </MapNotice>
               )}
@@ -1147,22 +1161,20 @@ export default function App() {
             />
           )}
 
-          {/* Bedrock fluid search panel */}
-          {bedrockFluidSearchOpen && dimensionPath && (
-            <BedrockFluidSearchPanel
-              fields={bedrockFluids.data?.fields ?? []}
-              loading={bedrockFluids.isPending}
-              available={bedrockFluids.data?.available ?? false}
-              predictionAvailable={
-                bedrockFluids.data?.prediction_available ?? false
-              }
-              overlayOn={bedrockFluidsOn}
-              onToggleOverlay={() => setBedrockFluidsOn((on) => !on)}
+          {/* Fluids prospecting panel */}
+          {fluidsProspectingOpen && dimensionPath && (
+            <FluidsProspectingPanel
+              fields={fluidsProspecting.data?.fields ?? []}
+              loading={fluidsProspecting.isPending}
+              available={fluidsProspecting.data?.available ?? false}
+              overlayOn={fluidsProspectingOn}
+              onToggleOverlay={() => setFluidsProspectingOn((on) => !on)}
               selectedKey={selectedFluidKey}
               onSelectKey={handleSelectFluidKey}
               rigTier={oilRigTier}
               onRigTierChange={handleRigTierChange}
-              rigRecommendations={rigRecommendations}
+              minimumYield={minimumFluidYield}
+              onMinimumYieldChange={handleMinimumFluidYieldChange}
               selectedRigKey={selectedRigPlacement?.key ?? null}
               onSelectRig={handleSelectRig}
               home={homePos}

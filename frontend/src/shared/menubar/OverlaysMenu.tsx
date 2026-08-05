@@ -43,10 +43,10 @@ const OVERLAY_DEFS = [
     desc: 'Ore veins recorded by Visual Prospecting',
   },
   {
-    id: 'bedrockFluids',
-    label: 'Bedrock fluids',
+    id: 'fluidsProspecting',
+    label: 'Fluids prospecting',
     Icon: Droplets,
-    desc: 'All seed-predicted fields, with current Visual Prospecting values where available',
+    desc: 'Fluid fields in this world',
   },
   {
     id: 'heatmap',

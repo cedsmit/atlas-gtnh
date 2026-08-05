@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
-import type { BedrockFluidField } from './api/bedrockFluids'
+import type { FluidsProspectingField } from './api/fluidsProspecting'
 import { fluidDisplay } from './fluidDisplay'
 import type { RigRecommendation } from './rigPlanner'
 
 interface Props {
   engineRef: MutableRefObject<MapEngine | null>
-  fields: BedrockFluidField[]
+  fields: FluidsProspectingField[]
   rigPlacement?: RigRecommendation | null
   rigLabel?: string
 }
@@ -24,7 +24,7 @@ const FIELD_BLOCKS = 128
 const CHUNK_BLOCKS = 16
 const MAX_FIELDS = 300
 
-export function BedrockFluidOverlay({
+export function FluidsProspectingOverlay({
   engineRef,
   fields,
   rigPlacement,
@@ -104,7 +104,6 @@ export function BedrockFluidOverlay({
               height: size,
               borderColor: fieldColor,
               opacity: field.empty ? 0.5 : 1,
-              borderStyle: field.source === 'predicted' ? 'dashed' : 'solid',
               boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${fieldColor} 35%, transparent)`,
             }}
           >
@@ -118,7 +117,8 @@ export function BedrockFluidOverlay({
                         ? (value - field.min_yield) / range
                         : 0.04
                       : 0
-                  const backgroundStrength = Math.round(18 + strength * 68)
+                  const backgroundStrength =
+                    value > 0 ? Math.round(18 + strength * 68) : 0
                   const fontSize = Math.min(
                     13,
                     Math.max(10, CHUNK_BLOCKS * scale * 0.16)
@@ -128,18 +128,23 @@ export function BedrockFluidOverlay({
                       key={index}
                       className="flex items-center justify-center border border-black/30"
                       style={{
-                        backgroundColor: `color-mix(in srgb, ${display.color} ${backgroundStrength}%, transparent)`,
+                        backgroundColor:
+                          value > 0
+                            ? `color-mix(in srgb, ${display.color} ${backgroundStrength}%, transparent)`
+                            : 'transparent',
                       }}
                     >
-                      <span
-                        className="bg-black/65 px-1 py-px font-semibold leading-none text-white shadow-sm"
-                        style={{
-                          fontSize,
-                          textShadow: '0 1px 2px #000, 0 0 3px #000',
-                        }}
-                      >
-                        {value}
-                      </span>
+                      {value > 0 && (
+                        <span
+                          className="bg-black/65 px-1 py-px font-semibold leading-none text-white shadow-sm"
+                          style={{
+                            fontSize,
+                            textShadow: '0 1px 2px #000, 0 0 3px #000',
+                          }}
+                        >
+                          {value}
+                        </span>
+                      )}
                     </span>
                   )
                 })}
@@ -148,9 +153,6 @@ export function BedrockFluidOverlay({
             {size >= 70 && (
               <span className="absolute left-0 top-0 max-w-full truncate bg-black/80 px-1 text-[11px] leading-4 text-white">
                 {label}
-                {field.source === 'predicted' && size >= 120
-                  ? ' · predicted'
-                  : ''}
               </span>
             )}
           </div>

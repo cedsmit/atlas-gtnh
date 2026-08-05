@@ -40,10 +40,10 @@ const SEARCH_DEFS = [
     desc: 'Find Visual Prospecting veins, grouped by ore and sorted by distance from home',
   },
   {
-    id: 'bedrockFluidSearch',
-    label: 'Bedrock fluids',
+    id: 'fluidsProspecting',
+    label: 'Fluids prospecting',
     Icon: Droplets,
-    desc: 'Find predicted and prospected underground-fluid fields, sorted by distance from home',
+    desc: 'Find underground-fluid fields, sorted by distance from home',
   },
 ] as const satisfies readonly {
   id: string
@@ -81,7 +81,7 @@ export function SearchMenu({
         icon={<Search />}
         caret
         active={anyOpen}
-        title="Search the world — blocks, LootGames, biomes, ore veins, bedrock fluids"
+        title="Search the world — blocks, LootGames, biomes, ore veins, fluids"
       >
         Search
       </MenuButton>

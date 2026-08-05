@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BedrockFluidField } from './api/bedrockFluids'
+import type { FluidsProspectingField } from './api/fluidsProspecting'
 import {
+  applyMinimumFluidYield,
   EMPTY_FLUID_GROUP,
+  fluidFieldYieldStats,
   fluidGroupKey,
   groupFieldsByFluid,
 } from './fluidGroups'
@@ -11,7 +13,7 @@ function field(
   fluid: string,
   source: 'predicted' | 'prospected',
   empty = false
-): BedrockFluidField {
+): FluidsProspectingField {
   return {
     x: 64,
     z: 64,
@@ -53,5 +55,29 @@ describe('groupFieldsByFluid', () => {
       fields: [emptyOil, emptyGas],
     })
     expect(fluidGroupKey(emptyGas)).toBe(EMPTY_FLUID_GROUP)
+  })
+})
+
+describe('minimum fluid yield', () => {
+  it('removes sub-threshold chunks and recalculates the field range', () => {
+    const oil = field('oil', 'predicted')
+    oil.yields = [100, 250, 400]
+
+    expect(applyMinimumFluidYield([oil], 250)[0]).toMatchObject({
+      yields: [0, 250, 400],
+      min_yield: 250,
+      max_yield: 400,
+    })
+    expect(fluidFieldYieldStats(oil, 250)).toEqual({
+      chunks: 2,
+      minimum: 250,
+      maximum: 400,
+      average: 325,
+      total: 650,
+    })
+  })
+
+  it('removes fields without matching chunks', () => {
+    expect(applyMinimumFluidYield([field('oil', 'predicted')], 11)).toEqual([])
   })
 })

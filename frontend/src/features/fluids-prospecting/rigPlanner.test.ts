@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { BedrockFluidField } from './api/bedrockFluids'
+import type { FluidsProspectingField } from './api/fluidsProspecting'
 import { calculateRigRecommendations } from './rigPlanner'
 
 function field(
@@ -8,7 +8,7 @@ function field(
   chunkZ: number,
   yields: number[],
   source: 'predicted' | 'prospected' = 'predicted'
-): BedrockFluidField {
+): FluidsProspectingField {
   const positive = yields.filter((value) => value > 0)
   return {
     x: chunkX * 16 + 64,
