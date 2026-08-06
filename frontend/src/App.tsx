@@ -68,6 +68,7 @@ import { LootGamesPanel } from './features/lootgames/LootGamesPanel'
 import { useBiomeNames } from './features/blocks/api/biomeNames'
 import { useChunkStats } from './features/search/api/chunkStats'
 import { WorldPicker } from './features/world/WorldPicker'
+import { closeWorld as releaseBackendWorld } from './features/world/api/closeWorld'
 import { useTexturePreloader } from './features/textures/useTexturePreloader'
 import { createResolvedRegistry } from './features/blocks/blockRenderRegistry'
 import { useRenderOverrides } from './features/blocks/api/renderOverrides'
@@ -420,6 +421,7 @@ export default function App() {
     textureDebugStore.clear()
     clearTextures()
     clearTextureAverages()
+    if (worldPath) void releaseBackendWorld(worldPath).catch(() => undefined)
     setWorldPath(null)
     setDimensionPath(null)
     // worldPath is read for the message only — re-running once the world is
@@ -429,6 +431,9 @@ export default function App() {
 
   // ── World picker handlers ──────────────────────────────────────────────
   function handleWorldSelected(path: string) {
+    if (worldPath && worldPath !== path) {
+      void releaseBackendWorld(worldPath).catch(() => undefined)
+    }
     setEvictedWorld(null)
     localStorage.setItem(LAST_WORLD_KEY, path)
     textureDebugStore.clear()
@@ -440,6 +445,7 @@ export default function App() {
   }
 
   function handleCloseWorld() {
+    if (worldPath) void releaseBackendWorld(worldPath).catch(() => undefined)
     localStorage.removeItem(LAST_WORLD_KEY)
     textureDebugStore.clear()
     clearTextures()

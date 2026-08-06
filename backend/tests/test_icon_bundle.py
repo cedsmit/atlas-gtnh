@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from app.services import pack_version
-from app.services.blockcolor import resolution
+from app.services.blockcolor import dump_resolver, resolution
 from app.services.blockcolor.dump_resolver import ForgeDumpResolver
 
 ICON_DUMP = {
@@ -83,3 +83,73 @@ def test_bundled_icon_dump_none_without_world(
     monkeypatch.setattr(resolution, "_DATA_DIR", tmp_path / "data")
     assert resolution._bundled_icon_dump(None) is None
     assert resolution._bundled_icon_dump("") is None
+
+
+def _write_dump(path: Path, icon: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "format": "atlas-gtnh-icon-dump-v1",
+        "blocks": {"example:block": {"0": {"1": icon}}},
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _reset_dump_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dump_resolver, "_resolver", ForgeDumpResolver())
+    monkeypatch.setattr(resolution, "_manual_dump_path", None)
+    monkeypatch.setattr(resolution, "_failed_dump_identities", set())
+    monkeypatch.delenv("ATLAS_ICON_DUMP_PATH", raising=False)
+
+
+def test_auto_dump_switches_with_world_and_keeps_old_snapshot_stable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reset_dump_state(monkeypatch)
+    instance_a = tmp_path / "instance-a"
+    instance_b = tmp_path / "instance-b"
+    dump_a = instance_a / "config" / "atlas" / "icon_dump.json"
+    dump_b = instance_b / "config" / "atlas" / "icon_dump.json"
+    _write_dump(dump_a, "example:a")
+    _write_dump(dump_b, "example:b")
+
+    resolution._try_auto_load_dump(instance_a, str(instance_a / "saves" / "world"))
+    snapshot_a = dump_resolver.get_dump_resolver()
+    assert snapshot_a.resolve("example:block").texture_key == "example:a"
+
+    resolution._try_auto_load_dump(instance_b, str(instance_b / "saves" / "world"))
+    snapshot_b = dump_resolver.get_dump_resolver()
+    assert snapshot_b is not snapshot_a
+    assert snapshot_b.resolve("example:block").texture_key == "example:b"
+    assert snapshot_a.resolve("example:block").texture_key == "example:a"
+
+
+def test_manual_dump_remains_the_candidate_during_map_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reset_dump_state(monkeypatch)
+    instance = tmp_path / "instance"
+    automatic = instance / "config" / "atlas" / "icon_dump.json"
+    manual = tmp_path / "manual.json"
+    _write_dump(automatic, "example:auto")
+    _write_dump(manual, "example:manual")
+
+    assert resolution.load_manual_dump(manual)
+    resolution._try_auto_load_dump(instance, str(instance / "saves" / "world"))
+
+    active = dump_resolver.get_dump_resolver()
+    assert active.identity == str(manual.resolve())
+    assert active.resolve("example:block").texture_key == "example:manual"
+
+
+def test_world_without_candidate_does_not_reuse_previous_dump(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reset_dump_state(monkeypatch)
+    previous = tmp_path / "previous.json"
+    _write_dump(previous, "example:previous")
+    assert dump_resolver.try_load_dump(previous)
+    monkeypatch.setattr(resolution, "_dump_candidate", lambda _mc, _world: None)
+
+    resolution._try_auto_load_dump(None, str(tmp_path / "other-world"))
+
+    assert not dump_resolver.get_dump_resolver().is_loaded

@@ -67,10 +67,14 @@ def test_all_maps_share_one_level_dat_parse(
     svc = bcs.BlockColorService(str(tmp_path))
     monkeypatch.setattr(bcs, "read_block_id_map", read_once)
     monkeypatch.setattr(svc, "asset_db", lambda: object())
-    monkeypatch.setattr(bcs, "_build_color_map", lambda ids, _db: {next(iter(ids)): [1, 2, 3]})
-    monkeypatch.setattr(bcs, "_build_texture_key_map", lambda ids, _db: {next(iter(ids)): "x"})
+    monkeypatch.setattr(
+        bcs, "_build_color_map", lambda ids, _db, _dump: {next(iter(ids)): [1, 2, 3]}
+    )
+    monkeypatch.setattr(
+        bcs, "_build_texture_key_map", lambda ids, _db, _dump: {next(iter(ids)): "x"}
+    )
     monkeypatch.setattr(bcs, "_build_meta_texture_map_for_world", lambda _ids: {})
-    monkeypatch.setattr(bcs, "_augment_meta_map_from_dump", lambda _ids, _db, _out: None)
+    monkeypatch.setattr(bcs, "_augment_meta_map_from_dump", lambda _ids, _db, _out, _dump: None)
 
     assert svc.block_id_map() is id_map
     svc.block_color_map()

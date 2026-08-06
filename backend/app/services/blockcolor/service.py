@@ -10,12 +10,16 @@ import threading
 from pathlib import Path
 
 from app.services.blockcolor.asset_database import AssetDatabase
+from app.services.blockcolor.dump_resolver import ForgeDumpResolver, get_dump_resolver
 from app.services.blockcolor.resolution import (
     _augment_meta_map_from_dump,
     _build_color_map,
     _build_meta_texture_map_for_world,
     _build_texture_key_map,
+    _collect_jars,
     _load_asset_db,
+    _try_auto_load_dump,
+    find_minecraft_dir,
 )
 from app.services.blockcolor.vanilla_tables import _VANILLA_COLORS, _VANILLA_TEXTURE_KEYS
 from app.world.block_registry import read_block_id_map
@@ -36,6 +40,7 @@ class BlockColorService:
         self._lock = threading.RLock()
         self._block_id_map: dict[int, str] | None = None
         self._asset_db: AssetDatabase | None = None
+        self._source_jars: tuple[str, ...] | None = None
         self._color_map: dict[int, list[int]] | None = None
         self._texture_key_map: dict[int, str] | None = None
         self._meta_texture_key_map: dict[str, str] | None = None
@@ -56,6 +61,30 @@ class BlockColorService:
                     self._asset_db = _load_asset_db(self.world_path)
         return self._asset_db
 
+    def source_jars(self) -> tuple[str, ...]:
+        """JAR paths belonging to this world's Minecraft instance."""
+        if self._source_jars is None:
+            with self._lock:
+                if self._source_jars is None:
+                    mc_dir = find_minecraft_dir(Path(self.world_path))
+                    self._source_jars = (
+                        tuple(str(path) for path in _collect_jars(mc_dir))
+                        if mc_dir is not None
+                        else ()
+                    )
+        return self._source_jars
+
+    def texture_scope(self) -> str:
+        """Stable in-process identity shared by worlds from the same modpack."""
+        mc_dir = find_minecraft_dir(Path(self.world_path))
+        base = mc_dir if mc_dir is not None else Path(self.world_path)
+        return str(base.resolve())
+
+    def dump_snapshot(self) -> ForgeDumpResolver:
+        """Select this world's dump and retain a stable resolver snapshot."""
+        _try_auto_load_dump(find_minecraft_dir(Path(self.world_path)), self.world_path)
+        return get_dump_resolver()
+
     def block_color_map(self) -> dict[int, list[int]]:
         """Block-id → RGB color map, with vanilla fallbacks filled in."""
         if self._color_map is not None:
@@ -66,7 +95,7 @@ class BlockColorService:
                 if not id_map:
                     self._color_map = {}
                 else:
-                    result = _build_color_map(id_map, self.asset_db())
+                    result = _build_color_map(id_map, self.asset_db(), self.dump_snapshot())
                     # Fill in vanilla blocks when the Minecraft JAR wasn't scanned.
                     for block_id, color in _VANILLA_COLORS.items():
                         if block_id not in result:
@@ -84,7 +113,7 @@ class BlockColorService:
                 if not id_map:
                     self._texture_key_map = {}
                 else:
-                    result = _build_texture_key_map(id_map, self.asset_db())
+                    result = _build_texture_key_map(id_map, self.asset_db(), self.dump_snapshot())
                     # Fill vanilla blocks whose JAR textures weren't scanned.
                     for block_id, registry_name in id_map.items():
                         if block_id not in result:
@@ -110,7 +139,7 @@ class BlockColorService:
                 else:
                     db = self.asset_db()  # also ensures the icon dump is loaded
                     result = _build_meta_texture_map_for_world(id_map)
-                    _augment_meta_map_from_dump(id_map, db, result)
+                    _augment_meta_map_from_dump(id_map, db, result, self.dump_snapshot())
                     self._meta_texture_key_map = result
         return self._meta_texture_key_map
 
@@ -133,9 +162,9 @@ class BlockColorServiceRegistry:
                 self._services[world_path] = svc
             return svc
 
-    def evict(self, world_path: str) -> None:
+    def evict(self, world_path: str) -> BlockColorService | None:
         with self._lock:
-            self._services.pop(world_path, None)
+            return self._services.pop(world_path, None)
 
     def clear(self) -> None:
         with self._lock:
@@ -148,6 +177,17 @@ _default_registry = BlockColorServiceRegistry()
 def get_block_color_service(world_path: str) -> BlockColorService:
     """Return the process-shared BlockColorService for *world_path*."""
     return _default_registry.get(world_path)
+
+
+def evict_block_color_service(world_path: str) -> str | None:
+    """Release one world's state and return its texture-pack scope, if cached."""
+    service = _default_registry.evict(world_path)
+    return service.texture_scope() if service is not None else None
+
+
+def clear_block_color_services() -> None:
+    """Invalidate every derived map after a process-wide dump override changes."""
+    _default_registry.clear()
 
 
 def build_block_color_map(world_path: str) -> dict[int, list[int]]:

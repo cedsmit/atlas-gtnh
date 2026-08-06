@@ -11,6 +11,7 @@ import json
 import logging
 import sqlite3
 import threading
+from collections.abc import Collection
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -124,32 +125,32 @@ def load_jar_colors(
         return None
 
 
-def get_texture_source_jar(texture_key: str) -> str | None:
-    """Return the source JAR path for *texture_key*, or None if not in cache."""
-    try:
-        with closing(_connect()) as conn:
-            row = conn.execute(
-                "SELECT source_jar FROM texture_colors WHERE registry_name = ? LIMIT 1",
-                (texture_key,),
-            ).fetchone()
-        return row[0] if row else None
-    except Exception:
-        log.warning("color cache: failed to look up source jar for %s", texture_key, exc_info=True)
-        return None
+def get_texture_source_jar(
+    texture_key: str, allowed_source_jars: Collection[str] | None = None
+) -> str | None:
+    """Return the first live source JAR for *texture_key* in the active pack."""
+    return get_texture_source_jars([texture_key], allowed_source_jars).get(texture_key)
 
 
-def get_texture_source_jars(texture_keys: list[str]) -> dict[str, str]:
-    """Return one source JAR per cached texture key using one connection.
+def get_texture_source_jars(
+    texture_keys: list[str], allowed_source_jars: Collection[str] | None = None
+) -> dict[str, str]:
+    """Return one live source JAR per cached texture key using one connection.
 
-    A texture may occur in several scanned instances. Keep the single-key
-    lookup's deterministic primary-key order by selecting the lexicographically
-    first source path for each registry name.
+    Restrict candidates to the current world's JAR set when supplied. Missing
+    JARs are skipped in favour of the next candidate and pruned from both cache
+    tables so they cannot poison future lookups.
     """
     if not texture_keys:
         return {}
 
     unique_keys = list(dict.fromkeys(texture_keys))
+    allowed = set(allowed_source_jars) if allowed_source_jars is not None else None
+    if allowed is not None and not allowed:
+        return {}
     result: dict[str, str] = {}
+    dead_jars: set[str] = set()
+    existence: dict[str, bool] = {}
     try:
         with closing(_connect()) as conn:
             # Stay below SQLite builds whose host-parameter limit is 999.
@@ -163,7 +164,27 @@ def get_texture_source_jars(texture_keys: list[str]) -> dict[str, str]:
                     batch,
                 ).fetchall()
                 for registry_name, source_jar in rows:
+                    if allowed is not None and source_jar not in allowed:
+                        continue
+                    exists = existence.get(source_jar)
+                    if exists is None:
+                        exists = Path(source_jar).is_file()
+                        existence[source_jar] = exists
+                    if not exists:
+                        dead_jars.add(source_jar)
+                        continue
                     result.setdefault(registry_name, source_jar)
+            if dead_jars:
+                conn.executemany(
+                    "DELETE FROM texture_colors WHERE source_jar = ?",
+                    ((jar,) for jar in dead_jars),
+                )
+                conn.executemany(
+                    "DELETE FROM json_assets WHERE source_jar = ?",
+                    ((jar,) for jar in dead_jars),
+                )
+                conn.commit()
+                log.info("color cache: pruned %d missing source JARs", len(dead_jars))
     except Exception:
         log.warning("color cache: failed to batch-look up source jars", exc_info=True)
         return {}

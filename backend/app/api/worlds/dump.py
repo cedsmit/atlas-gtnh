@@ -16,7 +16,10 @@ from app.services.blockcolor.diagnostics import (
     compute_dump_mismatch,
     missing_block_report_csv,
 )
-from app.services.blockcolor.dump_resolver import get_dump_resolver, try_load_dump
+from app.services.blockcolor.dump_resolver import get_dump_resolver
+from app.services.blockcolor.resolution import load_manual_dump
+from app.services.blockcolor.service import clear_block_color_services
+from app.services.texture_service import clear_texture_cache
 
 router = APIRouter()
 
@@ -45,12 +48,17 @@ async def load_dump_endpoint(request: LoadDumpRequest) -> dict[str, object]:
     if p.stat().st_size > _MAX_DUMP_BYTES:
         raise HTTPException(status_code=400, detail="Dump file is too large")
 
-    ok = await asyncio.to_thread(try_load_dump, p)
+    ok = await asyncio.to_thread(load_manual_dump, p)
     if not ok:
         raise HTTPException(
             status_code=422,
             detail="Failed to parse dump file — expected a valid atlas-gtnh-icon-dump-v1 JSON",
         )
+
+    # These maps embed dump resolutions and the PNG cache may contain keys from
+    # the previously active pack. Rebuild both from the newly selected dump.
+    clear_block_color_services()
+    clear_texture_cache()
 
     dump = get_dump_resolver()
     return {

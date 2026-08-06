@@ -7,6 +7,7 @@ from app.api.worlds import (
     debug,
     dump,
     fluids_prospecting,
+    lifecycle,
     ore_veins,
     overrides,
     regions,
@@ -24,3 +25,4 @@ router.include_router(overrides.router)
 router.include_router(search.router)
 router.include_router(ore_veins.router)
 router.include_router(fluids_prospecting.router)
+router.include_router(lifecycle.router)

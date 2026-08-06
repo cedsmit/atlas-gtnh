@@ -32,6 +32,7 @@ _DB_PATH = Path.home() / ".atlas_gtnh" / "search_index.db"
 # the chunk_biomes table (biome search); v3 fixed biome extraction for the modded
 # 16-bit Biomes16v2 format (v2 indexed 0 biomes on those worlds).
 _INDEX_VERSION = "v4"
+_VACUUM_DELETE_THRESHOLD = 100_000
 
 
 class IndexBuildCancelled(Exception):
@@ -77,6 +78,32 @@ CREATE TABLE IF NOT EXISTS region_meta (
 """
 
 
+def _prune_stale_dimensions(conn: sqlite3.Connection) -> int:
+    """Delete every indexed dimension whose directory no longer exists."""
+    dimensions = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT dim FROM dim_meta "
+            "UNION SELECT dim FROM region_meta "
+            "UNION SELECT dim FROM chunk_blocks "
+            "UNION SELECT dim FROM chunk_biomes"
+        )
+    }
+    stale = sorted(dim for dim in dimensions if not Path(dim).is_dir())
+    if not stale:
+        return 0
+
+    before = conn.total_changes
+    for dim in stale:
+        conn.execute("DELETE FROM chunk_blocks WHERE dim = ?", (dim,))
+        conn.execute("DELETE FROM chunk_biomes WHERE dim = ?", (dim,))
+        conn.execute("DELETE FROM region_meta WHERE dim = ?", (dim,))
+        conn.execute("DELETE FROM dim_meta WHERE dim = ?", (dim,))
+    deleted = conn.total_changes - before
+    log.info("search index: pruned %d stale dimensions (%d rows)", len(stale), deleted)
+    return deleted
+
+
 def _connect() -> sqlite3.Connection:
     global _initialized
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +128,13 @@ def _connect() -> sqlite3.Connection:
                     "CREATE INDEX IF NOT EXISTS idx_biomes_dim_region ON chunk_biomes (dim, region)"
                 )
                 conn.commit()
+                deleted = _prune_stale_dimensions(conn)
+                conn.commit()
+                if deleted >= _VACUUM_DELETE_THRESHOLD:
+                    # Plain VACUUM is intentional: incremental_vacuum is a no-op
+                    # for existing DBs that were not created with auto_vacuum.
+                    conn.execute("VACUUM")
+                    log.info("search index: reclaimed pages after stale-dimension pruning")
                 _initialized = True
     return conn
 

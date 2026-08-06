@@ -132,10 +132,11 @@ class ForgeDumpResolver:
             log.warning("ForgeDumpResolver: unrecognised format in %s", path)
 
         raw: dict[str, dict[str, dict[str, str]]] = data.get("blocks", {})
+        identity = str(path.resolve())
         with self._lock:
             # Lowercase registry names for case-insensitive lookup
             self._blocks = {k.lower(): v for k, v in raw.items()}
-            self._path = str(path)
+            self._path = identity
             self._summary = data.get("summary", {})
             self._mods = data.get("mods", []) or []
             self._loaded = True  # set last: readers see a fully-populated resolver
@@ -163,6 +164,11 @@ class ForgeDumpResolver:
 
     @property
     def path(self) -> str | None:
+        return self._path
+
+    @property
+    def identity(self) -> str | None:
+        """Canonical file identity of the currently loaded dump."""
         return self._path
 
     @property
@@ -279,9 +285,12 @@ class ForgeDumpResolver:
 
 
 # ── Module-level singleton ────────────────────────────────────────────────────
-# Loaded once at startup; shared across all requests.
+# The current resolver is replaced atomically when another world's dump wins.
+# Existing requests keep their immutable snapshot instead of observing a resolver
+# whose fields change halfway through a map build.
 
 _resolver = ForgeDumpResolver()
+_resolver_lock = threading.Lock()
 
 
 def get_dump_resolver() -> ForgeDumpResolver:
@@ -289,5 +298,18 @@ def get_dump_resolver() -> ForgeDumpResolver:
 
 
 def try_load_dump(path: Path | str) -> bool:
-    """Load a dump file into the module-level singleton. Returns True on success."""
-    return _resolver.load(Path(path))
+    """Atomically replace the process resolver with *path* on successful load."""
+    candidate = ForgeDumpResolver()
+    if not candidate.load(Path(path)):
+        return False
+    global _resolver
+    with _resolver_lock:
+        _resolver = candidate
+    return True
+
+
+def clear_dump() -> None:
+    """Publish an empty resolver when the active world has no suitable dump."""
+    global _resolver
+    with _resolver_lock:
+        _resolver = ForgeDumpResolver()
