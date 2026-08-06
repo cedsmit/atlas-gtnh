@@ -420,7 +420,7 @@ def build_missing_block_report(
         if ":" not in reg_name or (dump.is_loaded and dump.has_block(reg_name)):
             continue
         domain = reg_name.split(":", 1)[0]
-        key, method = _resolve_unified(reg_name, 0, db)
+        key, method = _resolve_unified(reg_name, 0, db, dump)
         fallback_reason = ""
         if key is None:
             modern = resolve_block_texture(reg_name, 0, db)

@@ -425,6 +425,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
     id_map = read_block_id_map(Path(world_path))
     color_map = build_block_color_map(world_path)
     texture_map = build_block_texture_map(world_path)  # block_id -> texture key (PNG)
+    encoded_world_path = quote(world_path, safe="")
 
     # Build rows: resolved blocks first, then fallbacks, both sorted by ID
     resolved_rows: list[tuple[int, str, tuple[int, int, int], bool]] = []
@@ -498,7 +499,8 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         if tex_key:
             sw_cell = (
                 f'<img class="sw thumb" loading="lazy" alt="" '
-                f'src="/worlds/textures?key={quote(tex_key, safe="")}">'
+                f'src="/worlds/textures?key={quote(tex_key, safe="")}'
+                f'&world_path={encoded_world_path}">'
             )
         else:
             sw_cell = f'<div class="sw" style="background:{hex_col}"></div>'
@@ -693,7 +695,8 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         pvMeta.textContent = 'id ' + row.dataset.id + ' · ' + tex;
         pvNone.style.display = 'none';
         pvImg.style.display = 'block';
-        pvImg.src = '/worlds/textures?key=' + encodeURIComponent(tex);
+        pvImg.src = '/worlds/textures?key=' + encodeURIComponent(tex) +
+          '&world_path=__WORLD_PATH__';
       } else {
         pvImg.removeAttribute('src');
         pvImg.style.display = 'none';
@@ -739,6 +742,7 @@ async def debug_texture_grid(world_path: str = Query(...)) -> HTMLResponse:
         .replace("__MOD_OPTIONS__", mod_options)
         .replace("__CAT_OPTIONS__", cat_options)
         .replace("__SECTIONS__", sections_html)
+        .replace("__WORLD_PATH__", encoded_world_path)
     )
     return HTMLResponse(content=html)
 

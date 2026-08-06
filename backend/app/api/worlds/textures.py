@@ -117,7 +117,7 @@ async def post_textures_batch(req: TexturesBatchRequest) -> dict[str, str]:
             status_code=400,
             detail=f"Too many keys requested ({len(req.keys)} > {MAX_TEXTURE_BATCH})",
         )
-    raw = await asyncio.to_thread(get_textures_batch, req.keys)
+    raw = await asyncio.to_thread(get_textures_batch, req.keys, req.world_path)
     out: dict[str, str] = {}
     for key, png in raw.items():
         if png is not None:
@@ -126,7 +126,7 @@ async def post_textures_batch(req: TexturesBatchRequest) -> dict[str, str]:
 
 
 @router.get("/textures")
-async def get_texture(key: str = Query(...)) -> Response:
+async def get_texture(key: str = Query(...), world_path: str | None = Query(None)) -> Response:
     """Serve the raw PNG bytes for a texture key such as 'minecraft:stone'.
 
     The PNG is read directly from the scanned mod JAR; results are cached
@@ -134,7 +134,7 @@ async def get_texture(key: str = Query(...)) -> Response:
     """
     from app.services.texture_service import get_texture_png
 
-    png = await asyncio.to_thread(get_texture_png, key)
+    png = await asyncio.to_thread(get_texture_png, key, world_path)
     if png is None:
         raise HTTPException(status_code=404, detail=f"Texture not found: {key}")
     return Response(

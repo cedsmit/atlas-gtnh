@@ -7,17 +7,24 @@ cached in-process; the first read opens the JAR and extracts the PNG once.
 
 import threading
 import zipfile
-from pathlib import Path
 
+from app.services.blockcolor.service import get_block_color_service
 from app.services.color_cache import get_texture_source_jar, get_texture_source_jars
 
-# In-process cache: texture_key → PNG bytes (None = confirmed missing).
+# In-process cache: (pack identity, texture key) -> PNG bytes or confirmed miss.
 # _cache_lock serialises the miss path so a key isn't read from disk twice.
-_cache: dict[str, bytes | None] = {}
+_cache: dict[tuple[str, str], bytes | None] = {}
 _cache_lock = threading.Lock()
 
 
-def get_texture_png(texture_key: str) -> bytes | None:
+def _texture_context(world_path: str | None) -> tuple[str, tuple[str, ...] | None]:
+    if world_path is None:
+        return "<global>", None
+    service = get_block_color_service(world_path)
+    return service.texture_scope(), service.source_jars()
+
+
+def get_texture_png(texture_key: str, world_path: str | None = None) -> bytes | None:
     """Return PNG bytes for *texture_key*, or None if unavailable.
 
     The key format is 'domain:name', e.g. 'minecraft:stone' which maps to
@@ -25,17 +32,19 @@ def get_texture_png(texture_key: str) -> bytes | None:
     For sub-directory textures the name includes slashes:
     'gregtech:machines/furnace_top' → assets/gregtech/textures/blocks/machines/furnace_top.png
     """
-    if texture_key in _cache:
-        return _cache[texture_key]
+    scope, source_jars = _texture_context(world_path)
+    cache_key = (scope, texture_key)
+    if cache_key in _cache:
+        return _cache[cache_key]
     with _cache_lock:
-        if texture_key in _cache:  # another thread may have just loaded it
-            return _cache[texture_key]
-        png = _load_texture_png(texture_key)
-        _cache[texture_key] = png
+        if cache_key in _cache:  # another thread may have just loaded it
+            return _cache[cache_key]
+        png = _load_texture_png(texture_key, source_jars)
+        _cache[cache_key] = png
         return png
 
 
-def get_textures_batch(keys: list[str]) -> dict[str, bytes | None]:
+def get_textures_batch(keys: list[str], world_path: str | None = None) -> dict[str, bytes | None]:
     """Return PNG bytes for many keys, opening each source JAR only once.
 
     The initial preload needs hundreds of textures; resolving them one-by-one
@@ -45,17 +54,19 @@ def get_textures_batch(keys: list[str]) -> dict[str, bytes | None]:
     """
     result: dict[str, bytes | None] = {}
     misses_by_jar: dict[str, list[str]] = {}
-    misses = [key for key in keys if key not in _cache]
-    source_jars = get_texture_source_jars(misses)
+    scope, allowed_source_jars = _texture_context(world_path)
+    misses = [key for key in keys if (scope, key) not in _cache]
+    source_jars = get_texture_source_jars(misses, allowed_source_jars)
 
     for key in keys:
-        if key in _cache:
-            result[key] = _cache[key]
+        cache_key = (scope, key)
+        if cache_key in _cache:
+            result[key] = _cache[cache_key]
             continue
         source_jar = source_jars.get(key)
-        if not source_jar or ":" not in key or not Path(source_jar).exists():
+        if not source_jar or ":" not in key:
             with _cache_lock:
-                _cache.setdefault(key, None)
+                _cache.setdefault(cache_key, None)
             result[key] = None
             continue
         misses_by_jar.setdefault(source_jar, []).append(key)
@@ -64,8 +75,9 @@ def get_textures_batch(keys: list[str]) -> dict[str, bytes | None]:
         loaded = _read_keys_from_jar(source_jar, jar_keys)
         with _cache_lock:
             for key in jar_keys:
-                _cache.setdefault(key, loaded.get(key))
-                result[key] = _cache[key]
+                cache_key = (scope, key)
+                _cache.setdefault(cache_key, loaded.get(key))
+                result[key] = _cache[cache_key]
     return result
 
 
@@ -120,10 +132,12 @@ def _read_keys_from_jar(source_jar: str, keys: list[str]) -> dict[str, bytes]:
     return out
 
 
-def _load_texture_png(texture_key: str) -> bytes | None:
+def _load_texture_png(
+    texture_key: str, allowed_source_jars: tuple[str, ...] | None = None
+) -> bytes | None:
     """Read the PNG bytes for *texture_key* from its source JAR (no caching)."""
-    source_jar = get_texture_source_jar(texture_key)
-    if not source_jar or not Path(source_jar).exists():
+    source_jar = get_texture_source_jar(texture_key, allowed_source_jars)
+    if not source_jar:
         return None
 
     if ":" not in texture_key:
@@ -144,5 +158,11 @@ def _load_texture_png(texture_key: str) -> bytes | None:
         return None
 
 
-def clear_texture_cache() -> None:
-    _cache.clear()
+def clear_texture_cache(scope: str | None = None) -> None:
+    """Clear every cached PNG, or only entries belonging to one pack scope."""
+    with _cache_lock:
+        if scope is None:
+            _cache.clear()
+            return
+        for key in [key for key in _cache if key[0] == scope]:
+            del _cache[key]

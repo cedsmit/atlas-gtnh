@@ -14,7 +14,13 @@ from typing import Any
 
 from app.services.blockcolor.asset_database import AssetDatabase
 from app.services.blockcolor.blockstate_resolver import resolve_block_texture
-from app.services.blockcolor.dump_resolver import get_dump_resolver, resolve_db_key, try_load_dump
+from app.services.blockcolor.dump_resolver import (
+    ForgeDumpResolver,
+    clear_dump,
+    get_dump_resolver,
+    resolve_db_key,
+    try_load_dump,
+)
 from app.services.blockcolor.legacy_resolver import resolve_legacy_texture
 from app.services.blockcolor.scan_progress import get_scan_progress_tracker
 from app.services.blockcolor.vanilla_tables import (
@@ -204,6 +210,7 @@ def _resolve_unified(
     registry_name: str,
     meta: int,
     db: AssetDatabase,
+    dump: ForgeDumpResolver | None = None,
 ) -> tuple[str | None, str]:
     """
     Full four-stage texture resolver.
@@ -224,7 +231,7 @@ def _resolve_unified(
         return override, "override"
 
     # Stage 2: Forge icon dump — exact IIcon names from running Minecraft
-    dump = get_dump_resolver()
+    dump = dump or get_dump_resolver()
     if dump.is_loaded:
         dr = dump.resolve(registry_name, meta)
         if dr.resolved and dr.texture_key:
@@ -251,10 +258,11 @@ def _resolve_unified(
 def _build_color_map(
     id_map: dict[int, str],
     db: AssetDatabase,
+    dump: ForgeDumpResolver | None = None,
 ) -> dict[int, list[int]]:
     result: dict[int, list[int]] = {}
     for block_id, registry_name in id_map.items():
-        key, _ = _resolve_unified(registry_name, 0, db)
+        key, _ = _resolve_unified(registry_name, 0, db, dump)
         if key:
             r, g, b = db.texture_colors[key]
             result[block_id] = [r, g, b]
@@ -264,11 +272,12 @@ def _build_color_map(
 def _build_texture_key_map(
     id_map: dict[int, str],
     db: AssetDatabase,
+    dump: ForgeDumpResolver | None = None,
 ) -> dict[int, str]:
     """Same resolution as _build_color_map but returns the texture key string."""
     result: dict[int, str] = {}
     for block_id, registry_name in id_map.items():
-        key, _ = _resolve_unified(registry_name, 0, db)
+        key, _ = _resolve_unified(registry_name, 0, db, dump)
         if key:
             result[block_id] = key
     return result
@@ -367,6 +376,7 @@ def _augment_meta_map_from_dump(
     id_map: dict[int, str],
     db: AssetDatabase,
     result: dict[str, str],
+    dump: ForgeDumpResolver | None = None,
 ) -> None:
     """Fill per-meta texture overrides from the Forge icon dump (in place).
 
@@ -379,7 +389,7 @@ def _augment_meta_map_from_dump(
     other modded meta-variant blocks their correct per-meta texture instead of
     repeating the meta-0 texture for every value.
     """
-    dump = get_dump_resolver()
+    dump = dump or get_dump_resolver()
     if not dump.is_loaded:
         return
 
@@ -387,7 +397,7 @@ def _augment_meta_map_from_dump(
         meta_icons = dump.get_all_meta_icons(registry_name)
         if not meta_icons:
             continue
-        base_key, _ = _resolve_unified(registry_name, 0, db)
+        base_key, _ = _resolve_unified(registry_name, 0, db, dump)
         for meta, raw_icon in meta_icons.items():
             if meta == 0:
                 continue
@@ -416,11 +426,10 @@ def _augment_meta_map_from_dump(
 # backend/app/services/blockcolor/, so parent x3 is backend/app/).
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
-_dump_attempted_dirs: set[str] = set()
-# Serialises the auto-load: the check-then-add guard below and the resulting
-# try_load_dump() must not interleave across threads (the dump singleton is not
-# safe to rebuild concurrently).
-_dump_attempt_lock = threading.Lock()
+_manual_dump_path: Path | None = None
+_failed_dump_identities: set[str] = set()
+# Serialises dump candidate selection and atomic resolver publication.
+_dump_attempt_lock = threading.RLock()
 
 
 def _bundled_icon_dump(world_path: str | None) -> Path | None:
@@ -444,44 +453,79 @@ def _bundled_icon_dump(world_path: str | None) -> Path | None:
     return None
 
 
-def _try_auto_load_dump(mc_dir: Path | None, world_path: str | None = None) -> None:
-    """Try to load the Forge icon dump if not already loaded."""
-    dump = get_dump_resolver()
+def _dump_candidate(mc_dir: Path | None, world_path: str | None) -> Path | None:
+    """Resolve the dump that should serve *world_path*, highest priority first."""
+    if _manual_dump_path is not None:
+        return _manual_dump_path
 
-    # Already loaded — nothing to do (lock-free fast path).
-    if dump.is_loaded:
+    env_path = os.environ.get("ATLAS_ICON_DUMP_PATH", "").strip()
+    if env_path:
+        return Path(env_path)
+
+    candidates: list[Path] = []
+    if mc_dir is not None:
+        candidates.append(mc_dir / "config" / "atlas" / "icon_dump.json")
+    candidates.append(Path.home() / ".atlas_gtnh" / "icon_dump.json")
+    bundled = _bundled_icon_dump(world_path)
+    if bundled is not None:
+        candidates.append(bundled)
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def _candidate_failure_identity(path: Path) -> str:
+    """Identity that changes when an invalid dump is replaced in place."""
+    resolved = path.resolve()
+    try:
+        stat = resolved.stat()
+        return f"{resolved}:{stat.st_mtime_ns}:{stat.st_size}"
+    except OSError:
+        return f"{resolved}:missing"
+
+
+def load_manual_dump(path: Path | str) -> bool:
+    """Load and remember a runtime dump override selected through the API."""
+    global _manual_dump_path
+    candidate = Path(path).resolve()
+    with _dump_attempt_lock:
+        if not try_load_dump(candidate):
+            return False
+        _manual_dump_path = candidate
+        _failed_dump_identities.discard(_candidate_failure_identity(candidate))
+        return True
+
+
+def clear_manual_dump_override() -> None:
+    """Return future world loads to automatic dump discovery."""
+    global _manual_dump_path
+    with _dump_attempt_lock:
+        _manual_dump_path = None
+
+
+def _try_auto_load_dump(mc_dir: Path | None, world_path: str | None = None) -> None:
+    """Ensure the process resolver matches the dump selected for this world."""
+    candidate = _dump_candidate(mc_dir, world_path)
+    candidate_path = str(candidate.resolve()) if candidate is not None else None
+    if get_dump_resolver().identity == candidate_path:
         return
 
     with _dump_attempt_lock:
-        if dump.is_loaded:  # re-check: another thread may have just loaded it
+        candidate = _dump_candidate(mc_dir, world_path)
+        candidate_path = str(candidate.resolve()) if candidate is not None else None
+        if get_dump_resolver().identity == candidate_path:
+            return
+        if candidate is None:
+            clear_dump()
             return
 
-        # Env-var override (highest priority)
-        env_path = os.environ.get("ATLAS_ICON_DUMP_PATH", "").strip()
-        if env_path:
-            try_load_dump(env_path)
+        failed_identity = _candidate_failure_identity(candidate)
+        if failed_identity in _failed_dump_identities:
+            clear_dump()
             return
-
-        # Instance-relative first (most specific), then the global drop-in spot,
-        # then the version-bundled canonical dump (the zero-setup default).
-        candidates: list[Path] = []
-        if mc_dir is not None:
-            candidates.append(mc_dir / "config" / "atlas" / "icon_dump.json")
-        candidates.append(Path.home() / ".atlas_gtnh" / "icon_dump.json")
-        bundled = _bundled_icon_dump(world_path)
-        if bundled is not None:
-            candidates.append(bundled)
-
-        # Attempt-once guard avoids re-parsing a file that exists but fails to load.
-        dir_key = str(mc_dir) if mc_dir is not None else "<global>"
-        if dir_key in _dump_attempted_dirs:
-            return
-
-        for candidate in candidates:
-            if candidate.exists():
-                _dump_attempted_dirs.add(dir_key)  # only mark once we actually try a file
-                try_load_dump(candidate)
-                return
+        if not try_load_dump(candidate):
+            _failed_dump_identities.add(failed_identity)
+            # A malformed candidate must not leave the previous world's valid
+            # resolver active.
+            clear_dump()
 
 
 # ── Asset database loader ─────────────────────────────────────────────────────
