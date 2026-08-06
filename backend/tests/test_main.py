@@ -27,10 +27,15 @@ def test_close_world_evicts_maps_and_its_texture_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, str | None]] = []
+
+    def evict(world: str) -> str:
+        calls.append(("evict", world))
+        return "pack-a"
+
     monkeypatch.setattr(
         lifecycle,
         "evict_block_color_service",
-        lambda world: calls.append(("evict", world)) or "pack-a",
+        evict,
     )
     monkeypatch.setattr(
         lifecycle,
