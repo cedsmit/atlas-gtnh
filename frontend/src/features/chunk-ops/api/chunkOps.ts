@@ -19,6 +19,8 @@ export interface ChunkOpResult {
   copied?: number
   kept?: number
   missing?: number
+  block_ids_remapped?: number
+  block_ids_inferred?: number[]
   regions: string[]
   rotation?: RotationReport
 }

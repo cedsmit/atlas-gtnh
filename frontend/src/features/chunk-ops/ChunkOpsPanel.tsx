@@ -6,6 +6,7 @@ import {
   Boxes,
   ClipboardCopy,
   ClipboardPaste,
+  FolderOpen,
   FolderPlus,
   Loader2,
   RotateCw,
@@ -150,9 +151,24 @@ export function ChunkOpsPanel({
                     {baseName(clipboard.srcWorld)}
                   </span>
                 </p>
-                <Action onClick={ops.enterPaste} icon={<ClipboardPaste />}>
+                <Action
+                  onClick={ops.enterPaste}
+                  disabled={busy}
+                  icon={<ClipboardPaste />}
+                >
                   Paste into this world…
                 </Action>
+                <Action
+                  onClick={() => void ops.pasteToExistingWorld()}
+                  disabled={busy}
+                  icon={busy ? <Spin /> : <FolderOpen />}
+                >
+                  Paste into existing world…
+                </Action>
+                <p className="mt-1 text-[11px] leading-relaxed text-zinc-600">
+                  Atlas opens the chosen save; select its dimension, then click
+                  the destination chunk.
+                </p>
               </Step>
             )}
           </>
@@ -313,7 +329,7 @@ function PasteDialog({
 
   return (
     <Dialog
-      title={`Write ${n} chunk${n === 1 ? '' : 's'} to this world?`}
+      title={`Write ${n} chunk${n === 1 ? '' : 's'} to ${baseName(ops.worldPath)}?`}
       icon={
         <TriangleAlert
           className="mt-0.5 h-4 w-4 shrink-0 text-atlas-amber"
@@ -342,6 +358,11 @@ function PasteDialog({
       }
     >
       <dl className="space-y-1 text-xs">
+        <Row label="World">
+          <span className="font-mono" title={ops.worldPath}>
+            {baseName(ops.worldPath)}
+          </span>
+        </Row>
         <Row label="Landing at">
           <span className="font-mono">
             {anchor.cx}, {anchor.cz}

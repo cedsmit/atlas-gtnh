@@ -119,6 +119,9 @@ export default function App() {
     localStorage.getItem(LAST_WORLD_KEY)
   )
   const [dimensionPath, setDimensionPath] = useState<string | null>(null)
+  // A cross-world paste survives the target world's loading/dimension picker.
+  // Once its dimension exists, Chunk tools reopens directly in placement mode.
+  const [pasteTargetWorld, setPasteTargetWorld] = useState<string | null>(null)
   // Only one side panel is open at a time, so a single "which one" beats a
   // boolean per panel that every toggle has to remember to clear.
   const [activePanel, setActivePanel] = useState<PanelId | null>(null)
@@ -190,8 +193,30 @@ export default function App() {
     dimensionPath ?? '',
     worldPath ?? '',
     engineRef,
-    chunkOpsOpen
+    chunkOpsOpen,
+    handlePasteWorldSelected
   )
+  const pasteClipboard = chunkOps.clipboard
+  const enterChunkPaste = chunkOps.enterPaste
+
+  useEffect(() => {
+    if (
+      !pasteTargetWorld ||
+      worldPath !== pasteTargetWorld ||
+      !dimensionPath ||
+      !pasteClipboard
+    )
+      return
+    setActivePanel('chunkOps')
+    enterChunkPaste()
+    setPasteTargetWorld(null)
+  }, [
+    pasteTargetWorld,
+    worldPath,
+    dimensionPath,
+    pasteClipboard,
+    enterChunkPaste,
+  ])
 
   // Home waypoint (your base) for the current dimension: drives the map marker and
   // is the reference point search panels sort dungeons by distance from. The map
@@ -430,10 +455,11 @@ export default function App() {
   }, [worldFailure, backendDown])
 
   // ── World picker handlers ──────────────────────────────────────────────
-  function handleWorldSelected(path: string) {
+  function loadSelectedWorld(path: string, resumePaste: boolean) {
     if (worldPath && worldPath !== path) {
       void releaseBackendWorld(worldPath).catch(() => undefined)
     }
+    setPasteTargetWorld(resumePaste ? path : null)
     setEvictedWorld(null)
     localStorage.setItem(LAST_WORLD_KEY, path)
     textureDebugStore.clear()
@@ -444,6 +470,14 @@ export default function App() {
     closePanel()
   }
 
+  function handleWorldSelected(path: string) {
+    loadSelectedWorld(path, false)
+  }
+
+  function handlePasteWorldSelected(path: string) {
+    loadSelectedWorld(path, true)
+  }
+
   function handleCloseWorld() {
     if (worldPath) void releaseBackendWorld(worldPath).catch(() => undefined)
     localStorage.removeItem(LAST_WORLD_KEY)
@@ -452,6 +486,7 @@ export default function App() {
     clearTextureAverages()
     setWorldPath(null)
     setDimensionPath(null)
+    setPasteTargetWorld(null)
     closePanel()
   }
 

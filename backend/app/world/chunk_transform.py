@@ -4,7 +4,8 @@ Same-coordinate copies transplant the compressed record verbatim. Pasting at a
 different coordinate must rewrite the coordinates *inside* the chunk NBT: the
 chunk's own ``xPos``/``zPos`` plus every block-position it stores — TileEntities,
 Entities, and TileTicks — shifted by the paste offset. Blocks (Sections) use
-chunk-local coords, so they need no change.
+chunk-local coords, so they need no positional change. Cross-world pastes also
+translate their numeric block IDs through the two worlds' Forge registries.
 
 Uses nbtlib for correctness (volumes are small — a copied selection).
 """
@@ -15,6 +16,7 @@ import gzip
 import io
 import struct
 import zlib
+from collections.abc import Mapping
 
 import nbtlib
 import numpy as np
@@ -47,6 +49,14 @@ _SECTION_ARRAYS = (
 
 #: Per-column arrays (256 entries, ZX order).
 _COLUMN_ARRAYS = ("Biomes", "Biomes16v2", "HeightMap")
+
+# source numeric id -> (stable Forge registry name, destination numeric id,
+# inferred-from-target). The last case repairs chunks written by Atlas' former
+# byte-copy path: their source level.dat never learned the transplanted ID, but
+# the original/target world's registry can still identify that same number.
+# A missing destination id is retained so the transform can reject only when a
+# selected chunk actually uses that registration.
+BlockIdRemap = Mapping[int, tuple[str, int | None, bool]]
 
 
 def _as_bytes(value: object) -> bytes:
@@ -191,6 +201,72 @@ def _orient_blocks(level: nbtlib.Compound, turn: int, report: OrientReport) -> N
             )
 
 
+def _write_section_ids(
+    section: nbtlib.Compound,
+    ids: npt.NDArray[np.int32],
+    meta: npt.NDArray[np.int32],
+    packing: str,
+) -> None:
+    """Write remapped ids back without truncating GTNH's extended ids."""
+    if bool((ids < 0).any()) or bool((ids > 0xFFFF).any()):
+        raise ValueError("Remapped block ID is outside the supported uint16 range")
+
+    if packing == "u16" or int(ids.max()) > 0xFFF:
+        section["Blocks16"] = ByteArray(
+            np.frombuffer(pack_u16(ids.astype(np.uint16)), dtype=np.int8).tolist()
+        )
+        # A narrow section promoted to Blocks16 also needs wide metadata.
+        if packing != "u16":
+            section["Data16"] = ByteArray(
+                np.frombuffer(pack_u16(meta.astype(np.uint16)), dtype=np.int8).tolist()
+            )
+            section.pop("Blocks", None)
+            section.pop("Add", None)
+            section.pop("Data", None)
+        return
+
+    low = (ids & 0xFF).astype(np.uint16)
+    section["Blocks"] = ByteArray(np.frombuffer(pack_bytes(low), dtype=np.int8).tolist())
+    high = (ids >> 8).astype(np.uint16)
+    if bool(high.any()):
+        section["Add"] = ByteArray(np.frombuffer(pack_nibbles(high), dtype=np.int8).tolist())
+    else:
+        section.pop("Add", None)
+
+
+def _remap_block_ids(
+    level: nbtlib.Compound,
+    remap: BlockIdRemap,
+    inferred_ids: set[int] | None,
+) -> None:
+    """Translate section block IDs through Forge registry names."""
+    for section in level.get("Sections") or []:
+        read = _section_ids_and_meta(section)
+        if read is None:
+            continue
+        ids, meta, packing = read
+        out = ids.copy()
+        for raw_id in np.unique(ids):
+            source_id = int(raw_id)
+            mapped = remap.get(source_id)
+            if mapped is None:
+                raise ValueError(
+                    f"Source chunk uses block ID {source_id}, but it is absent "
+                    "from the source world's Forge registry"
+                )
+            registry_name, destination_id, inferred = mapped
+            if destination_id is None:
+                raise ValueError(
+                    "Target world has no block registration for "
+                    f"{registry_name!r} (source ID {source_id})"
+                )
+            if inferred and inferred_ids is not None:
+                inferred_ids.add(source_id)
+            out[ids == source_id] = destination_id
+        if not np.array_equal(out, ids):
+            _write_section_ids(section, out, meta, packing)
+
+
 def _turn_local(lx: float, lz: float, turn: int, span: float) -> tuple[float, float]:
     """Turn a position within one chunk's square about that square's centre.
 
@@ -223,6 +299,8 @@ def remap_chunk_record(
     old_cx: int | None = None,
     old_cz: int | None = None,
     report: OrientReport | None = None,
+    block_id_remap: BlockIdRemap | None = None,
+    inferred_block_ids: set[int] | None = None,
 ) -> bytes:
     """Return a new region record for the chunk moved to (new_cx, new_cz).
 
@@ -253,6 +331,8 @@ def remap_chunk_record(
     if turn:
         _rotate_chunk_arrays(level, turn)
         _orient_blocks(level, turn, rep)
+    if block_id_remap is not None:
+        _remap_block_ids(level, block_id_remap, inferred_block_ids)
 
     def move_block(x: int, z: int) -> tuple[int, int]:
         if not turn:
@@ -267,6 +347,16 @@ def remap_chunk_record(
 
     for tt in level.get("TileTicks") or []:
         tt["x"], tt["z"] = (Int(v) for v in move_block(int(tt["x"]), int(tt["z"])))
+        tick_id = tt.get("i")
+        if block_id_remap is not None and tick_id is not None and not isinstance(tick_id, str):
+            source_id = int(tick_id)
+            mapped = block_id_remap.get(source_id)
+            if mapped is None or mapped[1] is None:
+                name = mapped[0] if mapped is not None else f"source ID {source_id}"
+                raise ValueError(f"Target world has no block registration for {name!r}")
+            if mapped[2] and inferred_block_ids is not None:
+                inferred_block_ids.add(source_id)
+            tt["i"] = type(tick_id)(mapped[1])
 
     for ent in level.get("Entities") or []:
         pos = ent.get("Pos")

@@ -8,6 +8,8 @@ import {
 } from 'react'
 
 import type { MapEngine } from '../map/mapEngine'
+import { validateWorld } from '../world/api/worlds'
+import { addRecentWorld } from '../world/recentWorlds'
 import {
   copyChunks,
   createWorld,
@@ -212,7 +214,9 @@ export function useChunkOps(
   worldPath: string,
   engineRef: RefObject<MapEngine | null>,
   /** True while the panel is open — drives the map overlays. */
-  open_: boolean
+  open_: boolean,
+  /** Switch worlds while remembering that paste placement should resume there. */
+  onTargetWorldSelected: (path: string) => void
 ) {
   const clipboard = useClipboard()
   const [mode, setMode] = useState<ChunkOpsMode>('select')
@@ -300,16 +304,18 @@ export function useChunkOps(
     if (!bounds) return
     const chunks = chunkList(selection)
     setClipboard({ srcDim: dimensionPath, srcWorld: worldPath, chunks, bounds })
-    say(`Copied ${chunks.length} chunk(s). Open any world, then Paste.`)
+    say(
+      `Copied ${chunks.length} chunk(s). Paste here or choose an existing target world.`
+    )
   }
 
-  function enterPaste() {
+  const enterPaste = useCallback(() => {
     if (!clipboard) return
     clearSelection()
     setAnchor({ cx: clipboard.bounds.cx0, cz: clipboard.bounds.cz0 })
     setResult(null)
     setMode('paste')
-  }
+  }, [clipboard, clearSelection])
 
   function exitPaste() {
     setMode('select')
@@ -384,6 +390,12 @@ export function useChunkOps(
           `Pasted ${r.copied ?? 0} chunk(s)` +
           (r.missing ? `, ${r.missing} missing` : '') +
           '.' +
+          (r.block_ids_remapped
+            ? ` Remapped ${r.block_ids_remapped} block ID registration(s) for the target world.`
+            : '') +
+          (r.block_ids_inferred?.length
+            ? ` Recovered unregistered source block ID(s) ${r.block_ids_inferred.join(', ')} from the target registry; verify those blocks in-game.`
+            : '') +
           rotationNote(r.rotation)
         )
       }
@@ -409,8 +421,30 @@ export function useChunkOps(
     )
   }
 
+  async function pasteToExistingWorld() {
+    if (!clipboard || busy) return
+    const picked = await open({ directory: true, multiple: false })
+    if (typeof picked !== 'string') return
+
+    setBusy(true)
+    setResult(null)
+    try {
+      const validation = await validateWorld(picked)
+      if (!validation.valid) {
+        throw new Error(validation.error ?? 'Invalid world folder')
+      }
+      addRecentWorld(picked)
+      onTargetWorldSelected(picked)
+    } catch (e) {
+      say(`Could not open target world: ${errMsg(e)}`, true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return {
     clipboard,
+    worldPath,
     mode,
     selection,
     anchor,
@@ -430,6 +464,7 @@ export function useChunkOps(
     exitPaste,
     runDestructive,
     pasteHere,
+    pasteToExistingWorld,
     pasteToNewWorld,
   }
 }
