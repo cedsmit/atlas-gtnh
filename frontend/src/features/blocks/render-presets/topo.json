@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "order": 30,
+  "preset": {
+    "id": "topo",
+    "name": "Topo",
+    "description": "Topographic — maximum relief shading, dense contours, muted colors.",
+    "showOverlays": true,
+    "showTorches": false,
+    "showFlowers": false,
+    "showTallgrass": false,
+    "showRails": true,
+    "showRedstone": false,
+    "showMachines": true,
+    "showPipes": false,
+    "showCables": false,
+    "foliageMode": "hidden",
+    "waterMode": "simple",
+    "elevationMode": "strong",
+    "elevationStrength": 2.5,
+    "contourMode": "strong",
+    "colorSaturation": 0.25,
+    "terrainTextures": true,
+    "biomeTint": true,
+    "textureFilter": "smooth"
+  }
+}

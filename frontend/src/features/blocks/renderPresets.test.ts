@@ -4,12 +4,25 @@ import {
   BUILT_IN_PRESETS,
   applyLayerOverrides,
   isTagHidden,
+  loadRenderPresets,
   presetShowsTag,
   presetToConfig,
 } from './renderPresets'
 
 const journeymap =
   BUILT_IN_PRESETS.find((p) => p.id === 'journeymap') ?? BUILT_IN_PRESETS[0]
+
+function presetModule(
+  id: string,
+  order: number,
+  overrides: Record<string, unknown> = {}
+): unknown {
+  return {
+    schemaVersion: 1,
+    order,
+    preset: { ...journeymap, id, name: id, ...overrides },
+  }
+}
 
 describe('layer overrides (Stage 3.1)', () => {
   it('empty / undefined overrides return the base set unchanged', () => {
@@ -74,6 +87,65 @@ describe('built-in preset list', () => {
     expect(BUILT_IN_PRESETS[0].id).toBe('journeymap')
     const stale = BUILT_IN_PRESETS.find((p) => p.id === 'technical')
     expect(stale ?? BUILT_IN_PRESETS[0]).toBe(BUILT_IN_PRESETS[0])
+  })
+
+  it('preserves the intentional style details from the JSON definitions', () => {
+    expect(journeymap.textureFilter).toBe('pixel')
+    expect(BUILT_IN_PRESETS.find((p) => p.id === 'vanilla')?.showFire).toBe(
+      true
+    )
+    expect(BUILT_IN_PRESETS.find((p) => p.id === 'topo')?.colorSaturation).toBe(
+      0.25
+    )
+  })
+})
+
+describe('data-driven preset loader (Stage 3.4)', () => {
+  it('orders modules by their explicit order, not file iteration order', () => {
+    const presets = loadRenderPresets({
+      './render-presets/topo.json': presetModule('topo', 30),
+      './render-presets/journeymap.json': presetModule('journeymap', 10),
+      './render-presets/vanilla.json': presetModule('vanilla', 20),
+    })
+    expect(presets.map((preset) => preset.id)).toEqual([
+      'journeymap',
+      'vanilla',
+      'topo',
+    ])
+  })
+
+  it('rejects duplicate persistence ids', () => {
+    expect(() =>
+      loadRenderPresets({
+        first: presetModule('journeymap', 10),
+        second: presetModule('journeymap', 20),
+      })
+    ).toThrow('Duplicate render preset id: journeymap')
+  })
+
+  it('rejects typoed fields instead of silently ignoring them', () => {
+    expect(() =>
+      loadRenderPresets({
+        broken: presetModule('journeymap', 10, { biomeTnit: true }),
+      })
+    ).toThrow('unknown field(s): biomeTnit')
+  })
+
+  it('rejects out-of-range style values', () => {
+    expect(() =>
+      loadRenderPresets({
+        broken: presetModule('journeymap', 10, { colorSaturation: 1.5 }),
+      })
+    ).toThrow('colorSaturation must be between 0 and 1')
+  })
+
+  it('keeps JourneyMap first because it is the stale-id fallback', () => {
+    expect(() =>
+      loadRenderPresets({
+        vanilla: presetModule('vanilla', 10),
+        journeymap: presetModule('journeymap', 20),
+      })
+    ).toThrow('JourneyMap must remain the first render preset')
   })
 })
 
