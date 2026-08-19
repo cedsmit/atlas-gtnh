@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "order": 10,
+  "preset": {
+    "id": "journeymap",
+    "name": "JourneyMap",
+    "description": "Familiar minimap — terrain, structures, water. Hides visual noise.",
+    "showOverlays": true,
+    "showTorches": false,
+    "showFlowers": false,
+    "showTallgrass": false,
+    "showRails": false,
+    "showRedstone": false,
+    "showMachines": true,
+    "showPipes": true,
+    "showCables": true,
+    "foliageMode": "full",
+    "waterMode": "simple",
+    "elevationMode": "subtle",
+    "elevationStrength": 0.8,
+    "contourMode": "off",
+    "colorSaturation": 1.0,
+    "terrainTextures": true,
+    "biomeTint": true,
+    "textureFilter": "pixel"
+  }
+}

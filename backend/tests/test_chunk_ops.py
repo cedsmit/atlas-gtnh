@@ -4,17 +4,20 @@ import zlib
 from pathlib import Path
 
 import nbtlib
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from nbtlib import Compound, Double, Int, List, String
 
 from app.main import app
+from app.services import chunk_ops_service
 from app.services.chunk_ops_service import (
     copy_chunks,
     create_world,
     delete_chunks,
     delete_chunks_except,
 )
+from app.world.chunk_rotate import pack_nibbles
 from app.world.region_writer import (
     local_index,
     make_record,
@@ -125,6 +128,82 @@ def test_copy_chunks_service(tmp_path: Path) -> None:
         read_region_records(dst / "region" / "r.0.0.mca")[idx]
         == read_region_records(src / "region" / "r.0.0.mca")[idx]
     )
+
+
+def test_cross_world_copy_remaps_block_ids_by_registry_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    dst.mkdir()
+    (src / "level.dat").touch()
+    (dst / "level.dat").touch()
+    _write_chunk(src, 0, 0, _blocks_chunk(0, 0, [(3, 4)]))
+
+    def registry(path: Path) -> dict[int, str]:
+        if path == src:
+            return {0: "minecraft:air", 1: "minecraft:stone"}
+        return {0: "minecraft:air", 37: "minecraft:stone"}
+
+    monkeypatch.setattr(chunk_ops_service, "read_block_id_map", registry)
+    result = copy_chunks(str(src), str(dst), [(0, 0)])
+
+    section = _read_level(dst, 0, 0)["Sections"][0]
+    ids = np.asarray(section["Blocks"], dtype=np.int8).astype(np.uint8)
+    assert int(ids[4 * 16 + 3]) == 37
+    assert result["block_ids_remapped"] == 1
+
+
+def test_missing_target_registration_aborts_before_any_region_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    dst.mkdir()
+    (src / "level.dat").touch()
+    (dst / "level.dat").touch()
+    _write_chunk(src, 0, 0, _blocks_chunk(0, 0, [(3, 4)]))
+    _write_chunk(dst, 0, 0, b"existing-target" * 100, ts=91)
+    before = (dst / "region" / "r.0.0.mca").read_bytes()
+
+    def registry(path: Path) -> dict[int, str]:
+        if path == src:
+            return {0: "minecraft:air", 1: "example:missing_machine"}
+        return {0: "minecraft:air"}
+
+    monkeypatch.setattr(chunk_ops_service, "read_block_id_map", registry)
+    with pytest.raises(ValueError, match="example:missing_machine"):
+        copy_chunks(str(src), str(dst), [(0, 0)])
+
+    assert (dst / "region" / "r.0.0.mca").read_bytes() == before
+    assert not (dst / "region" / "r.0.0.mca.bak").exists()
+
+
+def test_target_registry_recovers_an_orphan_left_by_the_old_copy_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    dst.mkdir()
+    (src / "level.dat").touch()
+    (dst / "level.dat").touch()
+    _write_chunk(src, 0, 0, _blocks_chunk_with_id(0, 0, 519, [(3, 4)]))
+
+    def registry(path: Path) -> dict[int, str]:
+        if path == src:
+            return {0: "minecraft:air", 626: "TConstruct:SearedBrick"}
+        return {0: "minecraft:air", 519: "TConstruct:SearedBrick"}
+
+    monkeypatch.setattr(chunk_ops_service, "read_block_id_map", registry)
+    result = copy_chunks(str(src), str(dst), [(0, 0)])
+
+    section = _read_level(dst, 0, 0)["Sections"][0]
+    ids = np.asarray(section["Blocks"], dtype=np.int8).astype(np.uint8)
+    add = np.asarray(section["Add"], dtype=np.int8).astype(np.uint8)
+    index = 4 * 16 + 3
+    high = int(add[index // 2] & 0xF) if index % 2 == 0 else int(add[index // 2] >> 4)
+    assert int(ids[index]) | (high << 8) == 519
+    assert result["block_ids_inferred"] == [519]
 
 
 def test_copy_offset_remaps_coords(tmp_path: Path) -> None:
@@ -259,23 +338,30 @@ def test_same_world_rotation_in_place_is_allowed(tmp_path: Path) -> None:
 
 def _blocks_chunk(cx: int, cz: int, marks: list[tuple[int, int]]) -> bytes:
     """A chunk whose y=0 layer has stone at each (x, z) in *marks*."""
+    return _blocks_chunk_with_id(cx, cz, 1, marks)
+
+
+def _blocks_chunk_with_id(cx: int, cz: int, block_id: int, marks: list[tuple[int, int]]) -> bytes:
     blocks = bytearray(4096)
+    high = np.zeros(4096, dtype=np.uint16)
     for x, z in marks:
-        blocks[z * 16 + x] = 1  # y=0 => index is z*16 + x
+        index = z * 16 + x  # y=0 => index is z*16 + x
+        blocks[index] = block_id & 0xFF
+        high[index] = block_id >> 8
+    section = Compound(
+        {
+            "Y": nbtlib.Byte(0),
+            "Blocks": nbtlib.ByteArray([b - 256 if b > 127 else b for b in blocks]),
+        }
+    )
+    if bool(high.any()):
+        raw_add = pack_nibbles(high)
+        section["Add"] = nbtlib.ByteArray([b - 256 if b > 127 else b for b in raw_add])
     level = Compound(
         {
             "xPos": Int(cx),
             "zPos": Int(cz),
-            "Sections": List[Compound](
-                [
-                    Compound(
-                        {
-                            "Y": nbtlib.Byte(0),
-                            "Blocks": nbtlib.ByteArray([b - 256 if b > 127 else b for b in blocks]),
-                        }
-                    )
-                ]
-            ),
+            "Sections": List[Compound]([section]),
             "TileEntities": List[Compound]([]),
             "Entities": List[Compound]([]),
         }

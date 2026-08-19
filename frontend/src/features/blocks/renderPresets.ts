@@ -81,86 +81,225 @@ export interface RenderConfig {
   textureFilter: TextureFilter
 }
 
-// ── Built-in presets ──────────────────────────────────────────────────────────
+// ── Data-driven built-in presets (Stage 3.4) ─────────────────────────────────
 
-export const BUILT_IN_PRESETS: readonly RenderPreset[] = [
-  {
-    id: 'journeymap',
-    name: 'JourneyMap',
-    description:
-      'Familiar minimap — terrain, structures, water. Hides visual noise.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: false,
-    showRedstone: false,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'full',
-    waterMode: 'simple',
-    elevationMode: 'subtle',
-    elevationStrength: 0.8,
-    contourMode: 'off',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    // Crisp/nearest, no upscale: keeps block textures saturated instead of the
-    // 'journeymap' filter's 256->512 bilinear + GPU-linear blur that averaged
-    // them toward grey. Flat biome grass (flatBiome) keeps the smooth look.
-    textureFilter: 'pixel',
-  },
-  {
-    id: 'vanilla',
-    name: 'Vanilla',
-    description:
-      'World as close to Minecraft as possible — all overlays, full tint.',
-    showOverlays: true,
-    showFire: true,
-    showTorches: true,
-    showFlowers: true,
-    showTallgrass: true,
-    showRails: true,
-    showRedstone: true,
-    showMachines: true,
-    showPipes: true,
-    showCables: true,
-    foliageMode: 'full',
-    waterMode: 'textured',
-    elevationMode: 'subtle',
-    elevationStrength: 1.0,
-    contourMode: 'off',
-    colorSaturation: 1.0,
-    terrainTextures: true,
-    biomeTint: true,
-    textureFilter: 'smooth',
-  },
-  {
-    id: 'topo',
-    name: 'Topo',
-    description:
-      'Topographic — maximum relief shading, dense contours, muted colors.',
-    showOverlays: true,
-    showTorches: false,
-    showFlowers: false,
-    showTallgrass: false,
-    showRails: true,
-    showRedstone: false,
-    showMachines: true,
-    showPipes: false,
-    showCables: false,
-    foliageMode: 'hidden',
-    waterMode: 'simple',
-    elevationMode: 'strong',
-    elevationStrength: 2.5,
-    contourMode: 'strong',
-    colorSaturation: 0.25,
-    terrainTextures: true,
-    biomeTint: true,
-    textureFilter: 'smooth',
-  },
-]
+interface OrderedPreset {
+  order: number
+  preset: RenderPreset
+}
+
+const PRESET_KEYS = new Set([
+  'id',
+  'name',
+  'description',
+  'showOverlays',
+  'showTorches',
+  'showFlowers',
+  'showTallgrass',
+  'showRails',
+  'showRedstone',
+  'showMachines',
+  'showPipes',
+  'showCables',
+  'showFire',
+  'foliageMode',
+  'waterMode',
+  'elevationMode',
+  'elevationStrength',
+  'contourMode',
+  'colorSaturation',
+  'terrainTextures',
+  'biomeTint',
+  'textureFilter',
+])
+
+function asRecord(value: unknown, location: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${location} must be an object`)
+  }
+  return value as Record<string, unknown>
+}
+
+function assertOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  location: string
+): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key))
+  if (unknown.length > 0) {
+    throw new Error(`${location} has unknown field(s): ${unknown.join(', ')}`)
+  }
+}
+
+function readString(
+  value: Record<string, unknown>,
+  key: string,
+  location: string
+): string {
+  const result = value[key]
+  if (typeof result !== 'string' || result.trim() === '') {
+    throw new Error(`${location}.${key} must be a non-empty string`)
+  }
+  return result
+}
+
+function readBoolean(
+  value: Record<string, unknown>,
+  key: string,
+  location: string
+): boolean {
+  const result = value[key]
+  if (typeof result !== 'boolean') {
+    throw new Error(`${location}.${key} must be a boolean`)
+  }
+  return result
+}
+
+function readOptionalBoolean(
+  value: Record<string, unknown>,
+  key: string,
+  location: string
+): boolean | undefined {
+  if (!(key in value)) return undefined
+  return readBoolean(value, key, location)
+}
+
+function readNumber(
+  value: Record<string, unknown>,
+  key: string,
+  location: string
+): number {
+  const result = value[key]
+  if (typeof result !== 'number' || !Number.isFinite(result)) {
+    throw new Error(`${location}.${key} must be a finite number`)
+  }
+  return result
+}
+
+function readEnum<T extends string>(
+  value: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+  location: string
+): T {
+  const result = value[key]
+  if (typeof result !== 'string' || !allowed.includes(result as T)) {
+    throw new Error(`${location}.${key} must be one of: ${allowed.join(', ')}`)
+  }
+  return result as T
+}
+
+function parsePresetModule(path: string, value: unknown): OrderedPreset {
+  const root = asRecord(value, path)
+  assertOnlyKeys(root, new Set(['schemaVersion', 'order', 'preset']), path)
+  if (root.schemaVersion !== 1) {
+    throw new Error(`${path}.schemaVersion must be 1`)
+  }
+  const order = root.order
+  if (typeof order !== 'number' || !Number.isInteger(order)) {
+    throw new Error(`${path}.order must be an integer`)
+  }
+
+  const location = `${path}.preset`
+  const raw = asRecord(root.preset, location)
+  assertOnlyKeys(raw, PRESET_KEYS, location)
+  const id = readString(raw, 'id', location)
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) {
+    throw new Error(
+      `${location}.id must use lowercase letters, numbers or dashes`
+    )
+  }
+  const elevationStrength = readNumber(raw, 'elevationStrength', location)
+  if (elevationStrength < 0) {
+    throw new Error(`${location}.elevationStrength must be at least 0`)
+  }
+  const colorSaturation = readNumber(raw, 'colorSaturation', location)
+  if (colorSaturation < 0 || colorSaturation > 1) {
+    throw new Error(`${location}.colorSaturation must be between 0 and 1`)
+  }
+  const showFire = readOptionalBoolean(raw, 'showFire', location)
+
+  return {
+    order,
+    preset: {
+      id,
+      name: readString(raw, 'name', location),
+      description: readString(raw, 'description', location),
+      showOverlays: readBoolean(raw, 'showOverlays', location),
+      showTorches: readBoolean(raw, 'showTorches', location),
+      showFlowers: readBoolean(raw, 'showFlowers', location),
+      showTallgrass: readBoolean(raw, 'showTallgrass', location),
+      showRails: readBoolean(raw, 'showRails', location),
+      showRedstone: readBoolean(raw, 'showRedstone', location),
+      showMachines: readBoolean(raw, 'showMachines', location),
+      showPipes: readBoolean(raw, 'showPipes', location),
+      showCables: readBoolean(raw, 'showCables', location),
+      ...(showFire === undefined ? {} : { showFire }),
+      foliageMode: readEnum(
+        raw,
+        'foliageMode',
+        ['hidden', 'simplified', 'full'],
+        location
+      ),
+      waterMode: readEnum(raw, 'waterMode', ['simple', 'textured'], location),
+      elevationMode: readEnum(
+        raw,
+        'elevationMode',
+        ['off', 'subtle', 'strong', 'debug-heightmap'],
+        location
+      ),
+      elevationStrength,
+      contourMode: readEnum(
+        raw,
+        'contourMode',
+        ['off', 'subtle', 'normal', 'strong'],
+        location
+      ),
+      colorSaturation,
+      terrainTextures: readBoolean(raw, 'terrainTextures', location),
+      biomeTint: readBoolean(raw, 'biomeTint', location),
+      textureFilter: readEnum(
+        raw,
+        'textureFilter',
+        ['pixel', 'smooth', 'journeymap'],
+        location
+      ),
+    },
+  }
+}
+
+/** Validate and combine every bundled `render-presets/*.json` module. */
+export function loadRenderPresets(
+  modules: Readonly<Record<string, unknown>>
+): readonly RenderPreset[] {
+  const ordered = Object.entries(modules).map(([path, value]) =>
+    parsePresetModule(path, value)
+  )
+  ordered.sort(
+    (a, b) => a.order - b.order || a.preset.id.localeCompare(b.preset.id)
+  )
+  if (ordered.length === 0) throw new Error('No render presets were bundled')
+
+  const ids = new Set<string>()
+  for (const { preset } of ordered) {
+    if (ids.has(preset.id))
+      throw new Error(`Duplicate render preset id: ${preset.id}`)
+    ids.add(preset.id)
+  }
+  if (ordered[0].preset.id !== 'journeymap') {
+    throw new Error(
+      'JourneyMap must remain the first render preset (the fallback view)'
+    )
+  }
+  return ordered.map(({ preset }) => preset)
+}
+
+const presetModules = import.meta.glob('./render-presets/*.json', {
+  eager: true,
+  import: 'default',
+}) as Record<string, unknown>
+
+export const BUILT_IN_PRESETS = loadRenderPresets(presetModules)
 
 // ── Conversion ────────────────────────────────────────────────────────────────
 

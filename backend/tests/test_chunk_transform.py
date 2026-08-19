@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 from nbtlib import ByteArray, Compound, Double, Int, List, String
 
+from app.world.chunk_rotate import unpack_u16
 from app.world.chunk_transform import remap_chunk_record
 
 MARKER = 200  # a block id nothing else in the fixture uses
@@ -200,3 +201,26 @@ def test_offset_paste_is_unchanged_by_the_rotation_work() -> None:
     te = level["TileEntities"][0]
     assert (int(te["x"]), int(te["z"])) == (4 + 48, 9 + 80)
     assert _marker_local(level) == (4, 9)  # blocks untouched
+
+
+def test_registry_remap_promotes_a_narrow_section_for_extended_target_id() -> None:
+    """A target ID above 4095 cannot fit Blocks+Add and must become Blocks16."""
+    out = remap_chunk_record(
+        _chunk(0, 0, 4, 9),
+        0,
+        0,
+        0,
+        0,
+        block_id_remap={
+            0: ("minecraft:air", 0, False),
+            MARKER: ("example:machine", 5000, False),
+        },
+    )
+    section = _parse(out)["Sections"][0]
+
+    assert "Blocks" not in section
+    assert "Add" not in section
+    raw = np.asarray(section["Blocks16"], dtype=np.int8).tobytes()
+    ids = unpack_u16(raw)
+    assert int(ids[5 * 256 + 9 * 16 + 4]) == 5000
+    assert int((ids == 5000).sum()) == 1

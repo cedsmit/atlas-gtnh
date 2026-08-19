@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "order": 20,
+  "preset": {
+    "id": "vanilla",
+    "name": "Vanilla",
+    "description": "World as close to Minecraft as possible — all overlays, full tint.",
+    "showOverlays": true,
+    "showFire": true,
+    "showTorches": true,
+    "showFlowers": true,
+    "showTallgrass": true,
+    "showRails": true,
+    "showRedstone": true,
+    "showMachines": true,
+    "showPipes": true,
+    "showCables": true,
+    "foliageMode": "full",
+    "waterMode": "textured",
+    "elevationMode": "subtle",
+    "elevationStrength": 1.0,
+    "contourMode": "off",
+    "colorSaturation": 1.0,
+    "terrainTextures": true,
+    "biomeTint": true,
+    "textureFilter": "smooth"
+  }
+}
